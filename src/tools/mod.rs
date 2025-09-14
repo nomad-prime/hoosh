@@ -1,0 +1,193 @@
+use anyhow::Result;
+use async_trait::async_trait;
+use std::{collections::HashMap, sync::Arc};
+
+/// Core trait for all tools in the hoosh system
+#[async_trait]
+pub trait Tool: Send + Sync {
+    /// Execute the tool with the given arguments
+    async fn execute(&self, args: &serde_json::Value) -> Result<String>;
+
+    /// Get the tool's name (used for identification)
+    fn tool_name(&self) -> &'static str;
+
+    /// Get a description of what this tool does
+    fn description(&self) -> &'static str;
+}
+
+pub mod bash;
+pub mod file_ops;
+
+pub use bash::BashTool;
+pub use file_ops::{ListDirectoryTool, ReadFileTool, WriteFileTool};
+
+/// Tool registry for managing available tools
+pub struct ToolRegistry {
+    tools: HashMap<&'static str, Arc<dyn Tool>>,
+}
+
+impl ToolRegistry {
+    pub fn new() -> Self {
+        Self {
+            tools: HashMap::new(),
+        }
+    }
+
+    pub fn with_tool(mut self, tool: Arc<dyn Tool>) -> Self {
+        self.register_tool(tool).expect("Failed to register tool");
+        self
+    }
+
+    pub fn register_tool(&mut self, tool: Arc<dyn Tool>) -> Result<(), String> {
+        let name = tool.tool_name();
+        if self.tools.contains_key(name) {
+            return Err(format!("Tool with name '{}' already exists", name));
+        }
+        self.tools.insert(name, tool);
+        Ok(())
+    }
+
+    pub fn get_tool(&self, name: &str) -> Option<&dyn Tool> {
+        self.tools.get(name).map(|tool| tool.as_ref())
+    }
+
+    pub fn list_tools(&self) -> Vec<(&str, &str)> {
+        self.tools
+            .iter()
+            .map(|(name, tool)| (*name, tool.description()))
+            .collect()
+    }
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+            .with_tool(Arc::new(ReadFileTool::new()))
+            .with_tool(Arc::new(WriteFileTool::new()))
+            .with_tool(Arc::new(ListDirectoryTool::new()))
+            .with_tool(Arc::new(BashTool::new()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct MockTool {
+        name: &'static str,
+        description: &'static str,
+        response: &'static str,
+    }
+
+    impl MockTool {
+        fn new(name: &'static str, description: &'static str, response: &'static str) -> Self {
+            Self {
+                name,
+                description,
+                response,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for MockTool {
+        fn tool_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn description(&self) -> &'static str {
+            self.description
+        }
+
+        async fn execute(&self, _args: &serde_json::Value) -> Result<String> {
+            Ok(self.response.to_string())
+        }
+    }
+
+    #[test]
+    fn test_tool_registry() {
+        let mut registry = ToolRegistry::new();
+
+        // Register a new tool
+        let _ = registry.register_tool(Arc::new(MockTool::new(
+            "mock_tool",
+            "Mock tool",
+            "Mock response",
+        )));
+
+        // Get the tool by name
+        let tool = registry
+            .get_tool("mock_tool")
+            .expect("mock_tool should exist, but it did not");
+        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.description(), "Mock tool");
+
+        // List all tools
+        let tools = registry.list_tools();
+        assert_eq!(tools.len(), 1);
+    }
+
+    #[test]
+    fn test_tool_registry_with_tool() {
+        // Register a new tool
+        let registry = ToolRegistry::new().with_tool(Arc::new(MockTool::new(
+            "mock_tool",
+            "Mock tool",
+            "Mock response",
+        )));
+
+        // Get the tool by name
+        let tool = registry
+            .get_tool("mock_tool")
+            .expect("mock_tool should exist, but it did not");
+        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.description(), "Mock tool");
+
+        // List all tools
+        let tools = registry.list_tools();
+        assert_eq!(tools.len(), 1);
+    }
+
+    #[test]
+    fn test_tool_registry_with_tool_chain() {
+        let registry = ToolRegistry::new()
+            .with_tool(Arc::new(MockTool::new(
+                "mock_tool",
+                "Mock tool",
+                "Mock response",
+            )))
+            .with_tool(Arc::new(MockTool::new(
+                "another_mock_tool",
+                "Another mock tool",
+                "Another mock response",
+            )));
+
+        // Get the tool by name
+        let tool = registry
+            .get_tool("mock_tool")
+            .expect("mock_tool should exist, but it did not");
+        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.description(), "Mock tool");
+
+        // List all tools
+        let tools = registry.list_tools();
+        assert_eq!(tools.len(), 2);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Failed to register tool: \"Tool with name 'mock_tool' already exists\""
+    )]
+    fn test_tool_registry_with_same_tool() {
+        let _registry = ToolRegistry::new()
+            .with_tool(Arc::new(MockTool::new(
+                "mock_tool",
+                "Mock tool",
+                "Mock response",
+            )))
+            .with_tool(Arc::new(MockTool::new(
+                "mock_tool",
+                "Mock tool2",
+                "Mock response3",
+            )));
+    }
+}
