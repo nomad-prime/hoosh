@@ -66,17 +66,14 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
         #[cfg(feature = "together-ai")]
         "together_ai" => {
             let backend_config = config.get_backend_config("together_ai");
-            let together_config = TogetherAiConfig {
-                api_key: backend_config
-                    .and_then(|c| c.api_key.clone())
-                    .unwrap_or_default(),
-                model: backend_config
-                    .and_then(|c| c.model.clone())
-                    .unwrap_or_else(|| "meta-llama/Llama-2-7b-chat-hf".to_string()),
-                base_url: backend_config
-                    .and_then(|c| c.base_url.clone())
-                    .unwrap_or_else(|| "https://api.together.xyz/v1".to_string()),
-            };
+            let api_key = backend_config.and_then(|c| c.api_key.clone()).unwrap_or_default();
+            let model = backend_config.and_then(|c| c.model.clone())
+                .unwrap_or_else(|| "meta-llama/Llama-2-7b-chat-hf".to_string());
+            let base_url = backend_config.and_then(|c| c.base_url.clone())
+                .unwrap_or_else(|| "https://api.together.xyz/v1".to_string());
+
+            let together_config = TogetherAiConfig { api_key, model, base_url };
+
             Ok(Box::new(TogetherAiBackend::new(together_config)?))
         }
         _ => {
@@ -90,7 +87,7 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
 }
 
 async fn interactive_chat(backend: Box<dyn LlmBackend>) -> Result<()> {
-    println!("🚀 Welcome to Hoosh! Using backend: {}", backend.backend_name());
+    println!("🚀 Welcome to hoosh! Using backend: {}", backend.backend_name());
     println!("Type 'exit', 'quit', or Ctrl+C to quit.\n");
 
     let stdin = tokio::io::stdin();
