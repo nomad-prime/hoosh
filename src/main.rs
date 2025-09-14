@@ -1,15 +1,16 @@
 use anyhow::Result;
 use clap::Parser;
-use futures_util::StreamExt;
 #[cfg(feature = "together-ai")]
 use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
 use hoosh::{
     backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
+    conversation::Conversation,
     parser::MessageParser,
     permissions::PermissionManager,
-    tools::{Tool, ToolRegistry},
+    tool_executor::ToolExecutor,
+    tools::ToolRegistry,
 };
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -58,8 +59,8 @@ async fn handle_chat(
     let parser = MessageParser::with_working_directory(working_dir.clone());
     let permission_manager = PermissionManager::new().with_skip_permissions(skip_permissions);
 
-    // Create tool registry
-    let tool_registry = ToolRegistry::default();
+    // Create tool registry with working directory
+    let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
     if let Some(msg) = message {
         // Expand @-file references
@@ -76,22 +77,22 @@ async fn handle_chat(
             }
         };
 
-        println!("🤖 Thinking...\n");
-        let mut stream = backend.stream_message(&expanded_message).await?;
+        // Create conversation and tool executor
+        let mut conversation = Conversation::new();
+        conversation.add_user_message(expanded_message);
 
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(chunk) => {
-                    print!("{}", chunk);
-                    io::stdout().flush()?;
-                }
-                Err(e) => {
-                    eprintln!("Stream error: {}", e);
-                    break;
-                }
-            }
-        }
-        println!("\n");
+        let tool_executor = ToolExecutor::new(
+            tool_registry.clone(),
+            permission_manager,
+        );
+
+        // Handle the conversation with tool support
+        handle_conversation_turn(
+            &backend,
+            &mut conversation,
+            &tool_registry,
+            &tool_executor,
+        ).await?;
     } else {
         interactive_chat(backend, parser, permission_manager, tool_registry).await?;
     }
@@ -164,6 +165,50 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
     }
 }
 
+/// Handle a single conversation turn with tool support
+async fn handle_conversation_turn(
+    backend: &Box<dyn LlmBackend>,
+    conversation: &mut Conversation,
+    tool_registry: &ToolRegistry,
+    tool_executor: &ToolExecutor,
+) -> Result<()> {
+    println!("🤖 Thinking...");
+
+    let response = backend.send_message_with_tools(conversation, tool_registry).await?;
+
+    // Handle tool calls if present
+    if let Some(tool_calls) = response.tool_calls {
+        // Add assistant message with tool calls to conversation
+        conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
+
+        println!("🔧 Executing tools...");
+
+        // Execute tool calls
+        let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
+
+        // Add tool results to conversation
+        for tool_result in tool_results {
+            conversation.add_tool_result(tool_result);
+        }
+
+        // Get the follow-up response from the LLM
+        let follow_up_response = backend.send_message_with_tools(conversation, tool_registry).await?;
+
+        if let Some(content) = follow_up_response.content {
+            println!("{}\n", content);
+            conversation.add_assistant_message(Some(content), None);
+        }
+    } else if let Some(content) = response.content {
+        // Simple response without tool calls
+        println!("{}\n", content);
+        conversation.add_assistant_message(Some(content), None);
+    } else {
+        println!("No response received.\n");
+    }
+
+    Ok(())
+}
+
 async fn interactive_chat(
     backend: Box<dyn LlmBackend>,
     parser: MessageParser,
@@ -183,6 +228,13 @@ async fn interactive_chat(
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin);
     let mut line = String::new();
+
+    // Create conversation and tool executor
+    let mut conversation = Conversation::new();
+    let tool_executor = ToolExecutor::new(
+        tool_registry.clone(),
+        permission_manager,
+    );
 
     loop {
         print!("🔸 ");
@@ -228,27 +280,17 @@ async fn interactive_chat(
                     }
                 };
 
-                println!("🤖 ");
+                // Add user message to conversation
+                conversation.add_user_message(expanded_input);
 
-                match backend.stream_message(&expanded_input).await {
-                    Ok(mut stream) => {
-                        while let Some(chunk_result) = stream.next().await {
-                            match chunk_result {
-                                Ok(chunk) => {
-                                    print!("{}", chunk);
-                                    io::stdout().flush()?;
-                                }
-                                Err(e) => {
-                                    eprintln!("\nStream error: {}", e);
-                                    break;
-                                }
-                            }
-                        }
-                        println!("\n");
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {}\n", e);
-                    }
+                // Handle the conversation turn
+                if let Err(e) = handle_conversation_turn(
+                    &backend,
+                    &mut conversation,
+                    &tool_registry,
+                    &tool_executor,
+                ).await {
+                    eprintln!("Error: {}\n", e);
                 }
             }
             Err(e) => {
