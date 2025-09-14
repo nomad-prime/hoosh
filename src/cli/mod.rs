@@ -12,6 +12,10 @@ pub enum Commands {
     Chat {
         #[arg(short, long)]
         backend: Option<String>,
+        #[arg(long)]
+        add_dir: Vec<String>,
+        #[arg(long)]
+        skip_permissions: bool,
         message: Option<String>,
     },
     Config {
