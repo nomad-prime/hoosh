@@ -43,7 +43,20 @@ impl MessageParser {
         let mut references = Vec::new();
 
         for captures in re.captures_iter(message) {
-            let full_match = captures.get(0).unwrap().as_str();
+            let full_match_obj = captures.get(0).unwrap();
+            let full_match = full_match_obj.as_str();
+            let match_start = full_match_obj.start();
+
+            // Check if the @ is preceded by an alphanumeric character (indicating an email)
+            if match_start > 0 {
+                let preceding_char = message.chars().nth(match_start - 1);
+                if let Some(ch) = preceding_char {
+                    if ch.is_alphanumeric() {
+                        continue; // Skip this match as it's likely an email
+                    }
+                }
+            }
+
             let file_path = captures.get(1).unwrap().as_str();
             let line_spec = captures.get(2).map(|m| m.as_str());
 

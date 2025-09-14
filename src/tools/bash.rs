@@ -2,6 +2,7 @@ use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -197,6 +198,25 @@ impl Tool for BashTool {
 
     fn description(&self) -> &'static str {
         "Execute bash commands safely with timeout and security restrictions."
+    }
+
+    fn parameter_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The bash command to execute"
+                },
+                "timeout_override": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 300,
+                    "description": "Optional: timeout in seconds (max 300 seconds)"
+                }
+            },
+            "required": ["command"]
+        })
     }
 }
 

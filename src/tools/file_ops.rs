@@ -2,6 +2,7 @@ use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -105,6 +106,29 @@ impl Tool for ReadFileTool {
     fn description(&self) -> &'static str {
         "Read the contents of a file. Supports optional line range selection."
     }
+
+    fn parameter_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The path to the file to read (relative to working directory)"
+                },
+                "start_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional: starting line number (1-indexed)"
+                },
+                "end_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional: ending line number (1-indexed)"
+                }
+            },
+            "required": ["path"]
+        })
+    }
 }
 
 /// Tool for writing/creating files
@@ -182,6 +206,28 @@ impl Tool for WriteFileTool {
 
     fn description(&self) -> &'static str {
         "Write content to a file. Can create parent directories if needed."
+    }
+
+    fn parameter_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The path to the file to write (relative to working directory)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The content to write to the file"
+                },
+                "create_dirs": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether to create parent directories if they don't exist"
+                }
+            },
+            "required": ["path", "content"]
+        })
     }
 }
 
@@ -325,6 +371,25 @@ impl Tool for ListDirectoryTool {
 
     fn description(&self) -> &'static str {
         "List the contents of a directory, showing files and subdirectories."
+    }
+
+    fn parameter_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "The path to the directory to list (empty or '.' for current directory)"
+                },
+                "show_hidden": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether to show hidden files (those starting with '.')"
+                }
+            },
+            "required": []
+        })
     }
 }
 

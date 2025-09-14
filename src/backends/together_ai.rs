@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
-use super::{LlmBackend, StreamResponse};
+use serde_json::Value;
+use super::{LlmBackend, LlmResponse, StreamResponse};
+use crate::conversation::{Conversation, ConversationMessage, ToolCall};
+use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
 pub struct TogetherAiConfig {
@@ -29,10 +32,14 @@ pub struct TogetherAiBackend {
 #[derive(Debug, Serialize)]
 struct ChatCompletionRequest {
     model: String,
-    messages: Vec<ChatMessage>,
+    messages: Vec<ConversationMessage>,
     stream: bool,
     max_tokens: Option<u32>,
     temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,8 +55,15 @@ struct ChatCompletionResponse {
 
 #[derive(Debug, Deserialize)]
 struct Choice {
-    message: Option<ChatMessage>,
-    delta: Option<ChatMessage>,
+    message: Option<ResponseMessage>,
+    delta: Option<ResponseMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseMessage {
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,13 +80,46 @@ impl TogetherAiBackend {
     fn create_request(&self, message: &str, stream: bool) -> ChatCompletionRequest {
         ChatCompletionRequest {
             model: self.config.model.clone(),
-            messages: vec![ChatMessage {
+            messages: vec![ConversationMessage {
                 role: "user".to_string(),
-                content: message.to_string(),
+                content: Some(message.to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
             }],
             stream,
             max_tokens: Some(4096),
             temperature: Some(0.7),
+            tools: None,
+            tool_choice: None,
+        }
+    }
+
+    fn create_request_with_tools(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        stream: bool,
+    ) -> ChatCompletionRequest {
+        let tool_schemas = tools.get_tool_schemas();
+        let has_tools = !tool_schemas.is_empty();
+
+        ChatCompletionRequest {
+            model: self.config.model.clone(),
+            messages: conversation.get_messages_for_api().clone(),
+            stream,
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+            tools: if has_tools {
+                Some(tool_schemas)
+            } else {
+                None
+            },
+            tool_choice: if has_tools {
+                Some("auto".to_string())
+            } else {
+                None
+            },
         }
     }
 }
@@ -110,7 +157,8 @@ impl LlmBackend for TogetherAiBackend {
             .choices
             .first()
             .and_then(|choice| choice.message.as_ref())
-            .map(|message| message.content.clone())
+            .and_then(|message| message.content.as_ref())
+            .map(|content| content.clone())
             .ok_or_else(|| anyhow::anyhow!("No response from Together AI"))
     }
 
@@ -154,9 +202,126 @@ impl LlmBackend for TogetherAiBackend {
                         if let Ok(streaming_response) = serde_json::from_str::<StreamingResponse>(data) {
                             if let Some(choice) = streaming_response.choices.first() {
                                 if let Some(delta) = &choice.delta {
-                                    if !delta.content.is_empty() {
-                                        return Ok(delta.content.clone());
+                                    if let Some(content) = &delta.content {
+                                        if !content.is_empty() {
+                                            return Ok(content.clone());
+                                        }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Ok(String::new())
+            })
+            .try_filter(|s| {
+                // Filter out empty strings
+                futures_util::future::ready(!s.is_empty())
+            });
+
+        Ok(Box::pin(stream))
+    }
+
+    async fn send_message_with_tools(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+    ) -> Result<LlmResponse> {
+        if self.config.api_key.is_empty() {
+            anyhow::bail!("Together AI API key not configured. Set it with: hoosh config set together_ai_api_key <your_key>");
+        }
+
+        let request = self.create_request_with_tools(conversation, tools, false);
+        let url = format!("{}/chat/completions", self.config.base_url);
+
+        let response = self.client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send request to Together AI")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Together AI API error {}: {}", status, error_text);
+        }
+
+        let response_data: ChatCompletionResponse = response
+            .json()
+            .await
+            .context("Failed to parse response from Together AI")?;
+
+        if let Some(choice) = response_data.choices.first() {
+            if let Some(message) = &choice.message {
+                if let Some(tool_calls) = &message.tool_calls {
+                    // Response contains tool calls
+                    return Ok(LlmResponse::with_tool_calls(
+                        message.content.clone(),
+                        tool_calls.clone(),
+                    ));
+                } else if let Some(content) = &message.content {
+                    // Response contains only content
+                    return Ok(LlmResponse::content_only(content.clone()));
+                }
+            }
+        }
+
+        anyhow::bail!("No valid response from Together AI")
+    }
+
+    async fn stream_message_with_tools(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+    ) -> Result<StreamResponse> {
+        if self.config.api_key.is_empty() {
+            anyhow::bail!("Together AI API key not configured. Set it with: hoosh config set together_ai_api_key <your_key>");
+        }
+
+        let request = self.create_request_with_tools(conversation, tools, true);
+        let url = format!("{}/chat/completions", self.config.base_url);
+
+        let response = self.client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send streaming request to Together AI")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Together AI API error {}: {}", status, error_text);
+        }
+
+        // Handle Server-Sent Events (SSE) streaming
+        let stream = response
+            .bytes_stream()
+            .map_err(|e| anyhow::anyhow!("Stream error: {}", e))
+            .map(|chunk| {
+                let chunk = chunk?;
+                let text = String::from_utf8_lossy(&chunk);
+
+                // Parse SSE format: "data: {...}\n\n"
+                for line in text.lines() {
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" {
+                            continue;
+                        }
+
+                        if let Ok(streaming_response) = serde_json::from_str::<StreamingResponse>(data) {
+                            if let Some(choice) = streaming_response.choices.first() {
+                                if let Some(delta) = &choice.delta {
+                                    if let Some(content) = &delta.content {
+                                        if !content.is_empty() {
+                                            return Ok(content.clone());
+                                        }
+                                    }
+                                    // TODO: Handle streaming tool calls here if needed
                                 }
                             }
                         }

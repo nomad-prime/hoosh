@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
 /// Core trait for all tools in the hoosh system
@@ -13,6 +14,21 @@ pub trait Tool: Send + Sync {
 
     /// Get a description of what this tool does
     fn description(&self) -> &'static str;
+
+    /// Get the parameter schema for this tool (JSON Schema format)
+    fn parameter_schema(&self) -> Value;
+
+    /// Get the complete tool schema in OpenAI function calling format
+    fn tool_schema(&self) -> Value {
+        json!({
+            "type": "function",
+            "function": {
+                "name": self.tool_name(),
+                "description": self.description(),
+                "parameters": self.parameter_schema()
+            }
+        })
+    }
 }
 
 pub mod bash;
@@ -22,6 +38,7 @@ pub use bash::BashTool;
 pub use file_ops::{ListDirectoryTool, ReadFileTool, WriteFileTool};
 
 /// Tool registry for managing available tools
+#[derive(Clone)]
 pub struct ToolRegistry {
     tools: HashMap<&'static str, Arc<dyn Tool>>,
 }
@@ -55,6 +72,13 @@ impl ToolRegistry {
         self.tools
             .iter()
             .map(|(name, tool)| (*name, tool.description()))
+            .collect()
+    }
+
+    pub fn get_tool_schemas(&self) -> Vec<Value> {
+        self.tools
+            .values()
+            .map(|tool| tool.tool_schema())
             .collect()
     }
 }
@@ -96,6 +120,14 @@ mod tests {
 
         fn description(&self) -> &'static str {
             self.description
+        }
+
+        fn parameter_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            })
         }
 
         async fn execute(&self, _args: &serde_json::Value) -> Result<String> {
