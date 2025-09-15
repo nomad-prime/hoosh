@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-/// Represents a single message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
     pub role: String,
@@ -14,7 +13,6 @@ pub struct ConversationMessage {
     pub name: Option<String>,
 }
 
-/// Represents a tool call from the LLM
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
@@ -22,14 +20,12 @@ pub struct ToolCall {
     pub function: ToolFunction,
 }
 
-/// Represents the function details in a tool call
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolFunction {
     pub name: String,
     pub arguments: String, // JSON string
 }
 
-/// Represents the result of executing a tool
 #[derive(Debug)]
 pub struct ToolResult {
     pub tool_call_id: String,
@@ -54,7 +50,6 @@ impl ToolResult {
         }
     }
 
-    /// Convert tool result to a conversation message
     pub fn to_message(&self) -> ConversationMessage {
         let content = match &self.result {
             Ok(output) => output.clone(),
@@ -71,7 +66,6 @@ impl ToolResult {
     }
 }
 
-/// Manages conversation state including tool calls and results
 #[derive(Debug, Clone)]
 pub struct Conversation {
     pub messages: Vec<ConversationMessage>,
@@ -116,7 +110,6 @@ impl Conversation {
         &self.messages
     }
 
-    /// Check if the last assistant message contains tool calls
     pub fn has_pending_tool_calls(&self) -> bool {
         if let Some(last_message) = self.messages.last() {
             if last_message.role == "assistant" {
@@ -126,7 +119,6 @@ impl Conversation {
         false
     }
 
-    /// Get pending tool calls from the last assistant message
     pub fn get_pending_tool_calls(&self) -> Option<&Vec<ToolCall>> {
         if let Some(last_message) = self.messages.last() {
             if last_message.role == "assistant" {
@@ -143,7 +135,6 @@ impl Default for Conversation {
     }
 }
 
-/// Context for executing tools, including conversation state and permissions
 pub struct ToolExecutionContext {
     pub conversation: Conversation,
     pub working_directory: std::path::PathBuf,

@@ -2,6 +2,18 @@
 
 ## Coding Style
 
+### Comments
+- Use `///` for public items and `//!` for module-level documentation
+- Keep comments concise and descriptive
+- Only use comments when necessary and add them where they provide clarity or context
+
+e.g.
+BAD: the comment does not provide any value
+// This function calculates the sum of two numbers
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
 ### Module Organization
 - Use `mod.rs` files for module declarations
 - Group related functionality in modules (e.g., `backends/`, `cli/`, `config/`)
@@ -115,7 +127,7 @@ mod tests {
     }
 
     // Integration tests - test component interactions
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_backend_integration() {
         let mock_client = MockClient::new();
         let backend = Backend::new_with_client(mock_client);
