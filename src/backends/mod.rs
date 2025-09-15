@@ -8,7 +8,6 @@ use crate::tools::ToolRegistry;
 
 pub type StreamResponse = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 
-/// Response from LLM that may contain tool calls
 #[derive(Debug)]
 pub struct LlmResponse {
     pub content: Option<String>,
@@ -33,20 +32,16 @@ impl LlmResponse {
 
 #[async_trait]
 pub trait LlmBackend: Send + Sync {
-    /// Send a simple message (legacy method)
     async fn send_message(&self, message: &str) -> Result<String>;
 
-    /// Stream a simple message (legacy method)
     async fn stream_message(&self, message: &str) -> Result<StreamResponse>;
 
-    /// Send a message with tool support
     async fn send_message_with_tools(
         &self,
         conversation: &Conversation,
-        tools: &ToolRegistry
+        tools: &ToolRegistry,
     ) -> Result<LlmResponse>;
 
-    /// Stream a message with tool support
     async fn stream_message_with_tools(
         &self,
         conversation: &Conversation,

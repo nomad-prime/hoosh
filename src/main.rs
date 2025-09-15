@@ -48,22 +48,18 @@ async fn handle_chat(
 
     let backend: Box<dyn LlmBackend> = create_backend(&backend_name, &config)?;
 
-    // Set up working directory (use first add_dir or current directory)
     let working_dir = if !add_dirs.is_empty() {
         PathBuf::from(&add_dirs[0])
     } else {
         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
     };
 
-    // Create message parser and permission manager
     let parser = MessageParser::with_working_directory(working_dir.clone());
     let permission_manager = PermissionManager::new().with_skip_permissions(skip_permissions);
 
-    // Create tool registry with working directory
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
     if let Some(msg) = message {
-        // Expand @-file references
         let expanded_message = match parser.expand_message(&msg).await {
             Ok(expanded) => {
                 if expanded != msg {
@@ -77,22 +73,13 @@ async fn handle_chat(
             }
         };
 
-        // Create conversation and tool executor
         let mut conversation = Conversation::new();
         conversation.add_user_message(expanded_message);
 
-        let tool_executor = ToolExecutor::new(
-            tool_registry.clone(),
-            permission_manager,
-        );
+        let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
 
-        // Handle the conversation with tool support
-        handle_conversation_turn(
-            &backend,
-            &mut conversation,
-            &tool_registry,
-            &tool_executor,
-        ).await?;
+        handle_conversation_turn(&backend, &mut conversation, &tool_registry, &tool_executor)
+            .await?;
     } else {
         interactive_chat(backend, parser, permission_manager, tool_registry).await?;
     }
@@ -174,32 +161,30 @@ async fn handle_conversation_turn(
 ) -> Result<()> {
     println!("🤖 Thinking...");
 
-    let response = backend.send_message_with_tools(conversation, tool_registry).await?;
+    let response = backend
+        .send_message_with_tools(conversation, tool_registry)
+        .await?;
 
-    // Handle tool calls if present
     if let Some(tool_calls) = response.tool_calls {
-        // Add assistant message with tool calls to conversation
         conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
 
         println!("🔧 Executing tools...");
 
-        // Execute tool calls
         let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
 
-        // Add tool results to conversation
         for tool_result in tool_results {
             conversation.add_tool_result(tool_result);
         }
 
-        // Get the follow-up response from the LLM
-        let follow_up_response = backend.send_message_with_tools(conversation, tool_registry).await?;
+        let follow_up_response = backend
+            .send_message_with_tools(conversation, tool_registry)
+            .await?;
 
         if let Some(content) = follow_up_response.content {
             println!("{}\n", content);
             conversation.add_assistant_message(Some(content), None);
         }
     } else if let Some(content) = response.content {
-        // Simple response without tool calls
         println!("{}\n", content);
         conversation.add_assistant_message(Some(content), None);
     } else {
@@ -231,10 +216,7 @@ async fn interactive_chat(
 
     // Create conversation and tool executor
     let mut conversation = Conversation::new();
-    let tool_executor = ToolExecutor::new(
-        tool_registry.clone(),
-        permission_manager,
-    );
+    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
 
     loop {
         print!("🔸 ");
@@ -255,7 +237,6 @@ async fn interactive_chat(
                     break;
                 }
 
-                // Check for special commands
                 if input.starts_with("/help") {
                     print_help(&tool_registry);
                     continue;
@@ -289,7 +270,9 @@ async fn interactive_chat(
                     &mut conversation,
                     &tool_registry,
                     &tool_executor,
-                ).await {
+                )
+                .await
+                {
                     eprintln!("Error: {}\n", e);
                 }
             }
