@@ -161,6 +161,25 @@ async fn handle_conversation_turn(
 ) -> Result<()> {
     println!("🤖 Thinking...");
 
+    handle_conversation_step(backend, conversation, tool_registry, tool_executor, 0).await
+}
+
+/// Recursively handle conversation steps with tool calls
+fn handle_conversation_step<'a>(
+    backend: &'a Box<dyn LlmBackend>,
+    conversation: &'a mut Conversation,
+    tool_registry: &'a ToolRegistry,
+    tool_executor: &'a ToolExecutor,
+    step: usize,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + 'a>> {
+    Box::pin(async move {
+    // Safety limit to prevent infinite recursion
+    const MAX_STEPS: usize = 30;
+    if step >= MAX_STEPS {
+        println!("⚠️ Maximum conversation steps ({}) reached, stopping.", MAX_STEPS);
+        return Ok(());
+    }
+
     let response = backend
         .send_message_with_tools(conversation, tool_registry)
         .await?;
@@ -168,7 +187,11 @@ async fn handle_conversation_turn(
     if let Some(tool_calls) = response.tool_calls {
         conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
 
-        println!("🔧 Executing tools...");
+        if step == 0 {
+            println!("🔧 Executing tools...");
+        } else {
+            println!("🔧 Executing more tools...");
+        }
 
         let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
 
@@ -176,22 +199,16 @@ async fn handle_conversation_turn(
             conversation.add_tool_result(tool_result);
         }
 
-        let follow_up_response = backend
-            .send_message_with_tools(conversation, tool_registry)
-            .await?;
-
-        if let Some(content) = follow_up_response.content {
-            println!("{}\n", content);
-            conversation.add_assistant_message(Some(content), None);
-        }
+        handle_conversation_step(backend, conversation, tool_registry, tool_executor, step + 1).await
     } else if let Some(content) = response.content {
         println!("{}\n", content);
         conversation.add_assistant_message(Some(content), None);
+        Ok(())
     } else {
         println!("No response received.\n");
+        Ok(())
     }
-
-    Ok(())
+    })
 }
 
 async fn interactive_chat(

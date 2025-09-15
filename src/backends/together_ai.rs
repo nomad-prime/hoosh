@@ -48,18 +48,18 @@ struct ChatMessage {
     content: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ChatCompletionResponse {
     choices: Vec<Choice>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Choice {
     message: Option<ResponseMessage>,
     delta: Option<ResponseMessage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ResponseMessage {
     content: Option<String>,
     #[serde(default)]
@@ -234,6 +234,7 @@ impl LlmBackend for TogetherAiBackend {
 
         let request = self.create_request_with_tools(conversation, tools, false);
         let url = format!("{}/chat/completions", self.config.base_url);
+
 
         let response = self.client
             .post(&url)
