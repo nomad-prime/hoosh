@@ -3,13 +3,11 @@
 ## Coding Style
 
 ### Comments
-- Use `///` for public items and `//!` for module-level documentation
-- Keep comments concise and descriptive
 - Only use comments when necessary and add them where they provide clarity or context
 
 e.g.
 BAD: the comment does not provide any value
-// This function calculates the sum of two numbers
+/// This function calculates the sum of two numbers
 fn add(a: i32, b: i32) -> i32 {
     a + b
 }
