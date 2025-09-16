@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
+use crate::console::VerbosityLevel;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BackendConfig {
@@ -14,6 +15,8 @@ pub struct AppConfig {
     pub default_backend: String,
     #[serde(default)]
     pub backends: HashMap<String, BackendConfig>,
+    #[serde(default)]
+    pub verbosity: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -21,6 +24,7 @@ impl Default for AppConfig {
         Self {
             default_backend: "mock".to_string(),
             backends: HashMap::new(),
+            verbosity: None,
         }
     }
 }
@@ -76,6 +80,25 @@ impl AppConfig {
         }
 
         Ok(())
+    }
+
+    /// Get the configured verbosity level, falling back to Normal if not set
+    pub fn get_verbosity(&self) -> VerbosityLevel {
+        self.verbosity
+            .as_ref()
+            .and_then(|v| match v.as_str() {
+                "quiet" => Some(VerbosityLevel::Quiet),
+                "normal" => Some(VerbosityLevel::Normal),
+                "verbose" => Some(VerbosityLevel::Verbose),
+                "debug" => Some(VerbosityLevel::Debug),
+                _ => None,
+            })
+            .unwrap_or(VerbosityLevel::Normal)
+    }
+
+    /// Set the verbosity level in configuration
+    pub fn set_verbosity(&mut self, verbosity: VerbosityLevel) {
+        self.verbosity = Some(verbosity.to_string());
     }
 
     fn config_path() -> Result<PathBuf> {

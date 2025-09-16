@@ -6,6 +6,7 @@ use hoosh::{
     backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
+    console::{console, init_console},
     conversation::Conversation,
     parser::MessageParser,
     permissions::PermissionManager,
@@ -20,6 +21,13 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Load config to get configured verbosity level
+    let config = AppConfig::load().unwrap_or_default();
+
+    // Initialize console with effective verbosity (CLI takes precedence over config)
+    let effective_verbosity = cli.get_effective_verbosity(config.get_verbosity());
+    init_console(effective_verbosity);
+
     match cli.command {
         Commands::Chat {
             backend,
@@ -27,7 +35,7 @@ async fn main() -> Result<()> {
             skip_permissions,
             message,
         } => {
-            handle_chat(backend, add_dir, skip_permissions, message).await?;
+            handle_chat(backend, add_dir, skip_permissions, message, &config).await?;
         }
         Commands::Config { action } => {
             handle_config(action)?;
@@ -42,8 +50,8 @@ async fn handle_chat(
     add_dirs: Vec<String>,
     skip_permissions: bool,
     message: Option<String>,
+    config: &AppConfig,
 ) -> Result<()> {
-    let config = AppConfig::load()?;
     let backend_name = backend_name.unwrap_or(config.default_backend.clone());
 
     let backend: Box<dyn LlmBackend> = create_backend(&backend_name, &config)?;
@@ -63,12 +71,12 @@ async fn handle_chat(
         let expanded_message = match parser.expand_message(&msg).await {
             Ok(expanded) => {
                 if expanded != msg {
-                    println!("📁 Expanded file references in message...\n");
+                    console().verbose("Expanded file references in message...");
                 }
                 expanded
             }
             Err(e) => {
-                eprintln!("⚠️  Error expanding file references: {}", e);
+                console().warning(&format!("Error expanding file references: {}", e));
                 msg // Use original message if expansion fails
             }
         };
@@ -88,26 +96,26 @@ async fn handle_chat(
 }
 
 fn print_help(tool_registry: &ToolRegistry) {
-    println!("📚 Hoosh Help:");
-    println!("  @filename       - Reference a file (e.g., @src/main.rs)");
-    println!("  @filename:10-20 - Reference specific lines of a file");
-    println!("  /help           - Show this help");
-    println!("  /tools          - List available tools");
-    println!("  exit, quit, q   - Exit the chat");
-    println!();
-    println!("🔧 Available tools: {}", tool_registry.list_tools().len());
+    console().help_header();
+    console().plain("  @filename       - Reference a file (e.g., @src/main.rs)");
+    console().plain("  @filename:10-20 - Reference specific lines of a file");
+    console().plain("  /help           - Show this help");
+    console().plain("  /tools          - List available tools");
+    console().plain("  exit, quit, q   - Exit the chat");
+    console().newline();
+    console().plain(&format!("🔧 Available tools: {}", tool_registry.list_tools().len()));
     for (name, description) in tool_registry.list_tools() {
-        println!("  • {}: {}", name, description);
+        console().plain(&format!("  • {}: {}", name, description));
     }
-    println!();
+    console().newline();
 }
 
 fn print_available_tools(tool_registry: &ToolRegistry) {
-    println!("🔧 Available Tools:");
+    console().tools_header();
     for (name, description) in tool_registry.list_tools() {
-        println!("  • {}: {}", name, description);
+        console().plain(&format!("  • {}: {}", name, description));
     }
-    println!();
+    console().newline();
 }
 
 fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
@@ -159,7 +167,7 @@ async fn handle_conversation_turn(
     tool_registry: &ToolRegistry,
     tool_executor: &ToolExecutor,
 ) -> Result<()> {
-    println!("🤖 Thinking...");
+    console().thinking();
 
     handle_conversation_step(backend, conversation, tool_registry, tool_executor, 0).await
 }
@@ -176,7 +184,7 @@ fn handle_conversation_step<'a>(
     // Safety limit to prevent infinite recursion
     const MAX_STEPS: usize = 30;
     if step >= MAX_STEPS {
-        println!("⚠️ Maximum conversation steps ({}) reached, stopping.", MAX_STEPS);
+        console().max_steps_reached(MAX_STEPS);
         return Ok(());
     }
 
@@ -185,27 +193,44 @@ fn handle_conversation_step<'a>(
         .await?;
 
     if let Some(tool_calls) = response.tool_calls {
+        // Show LLM's reasoning in verbose mode before moving
+        if let Some(ref content) = response.content {
+            console().verbose(&format!("LLM Response: {}", content));
+        }
+
         conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
 
         if step == 0 {
-            println!("🔧 Executing tools...");
+            console().executing_tools();
         } else {
-            println!("🔧 Executing more tools...");
+            console().executing_more_tools();
         }
 
         let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
 
         for tool_result in tool_results {
+            // Show tool results in verbose mode
+            if let Ok(ref result) = tool_result.result {
+                console().verbose(&format!("Tool '{}' result: {}",
+                    tool_result.tool_name,
+                    if result.len() > 200 {
+                        format!("{}...", &result[..200])
+                    } else {
+                        result.clone()
+                    }
+                ));
+            }
             conversation.add_tool_result(tool_result);
         }
 
         handle_conversation_step(backend, conversation, tool_registry, tool_executor, step + 1).await
     } else if let Some(content) = response.content {
-        println!("{}\n", content);
+        console().plain(&format!("{}", content));
+        console().newline();
         conversation.add_assistant_message(Some(content), None);
         Ok(())
     } else {
-        println!("No response received.\n");
+        console().warning("No response received.");
         Ok(())
     }
     })
@@ -217,15 +242,13 @@ async fn interactive_chat(
     permission_manager: PermissionManager,
     tool_registry: ToolRegistry,
 ) -> Result<()> {
-    println!(
-        "🚀 Welcome to hoosh! Using backend: {}",
-        backend.backend_name()
-    );
-    println!("📁 File system integration enabled - use @filename to reference files");
+    console().welcome(backend.backend_name());
+    console().file_system_enabled();
     if !permission_manager.is_enforcing() {
-        println!("⚠️  Permission checks disabled (--skip-permissions)");
+        console().permissions_disabled();
     }
-    println!("Type 'exit', 'quit', or Ctrl+C to quit.\n");
+    console().plain("Type 'exit', 'quit', or Ctrl+C to quit.");
+    console().newline();
 
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin);
@@ -250,7 +273,7 @@ async fn interactive_chat(
                 }
 
                 if matches!(input, "exit" | "quit" | "q") {
-                    println!("👋 Goodbye!");
+                    console().goodbye();
                     break;
                 }
 
@@ -268,12 +291,12 @@ async fn interactive_chat(
                 let expanded_input = match parser.expand_message(input).await {
                     Ok(expanded) => {
                         if expanded != input {
-                            println!("📁 Found file references, expanding...\n");
+                            console().file_references_found();
                         }
                         expanded
                     }
                     Err(e) => {
-                        eprintln!("⚠️  Error expanding file references: {}\n", e);
+                        console().warning(&format!("Error expanding file references: {}", e));
                         input.to_string() // Use original input if expansion fails
                     }
                 };
@@ -290,11 +313,11 @@ async fn interactive_chat(
                 )
                 .await
                 {
-                    eprintln!("Error: {}\n", e);
+                    console().error(&format!("Error: {}", e));
                 }
             }
             Err(e) => {
-                eprintln!("Error reading input: {}", e);
+                console().error(&format!("Error reading input: {}", e));
                 break;
             }
         }
@@ -307,23 +330,27 @@ fn handle_config(action: ConfigAction) -> Result<()> {
     match action {
         ConfigAction::Show => {
             let config = AppConfig::load()?;
-            println!("default_backend = \"{}\"", config.default_backend);
+            console().plain(&format!("default_backend = \"{}\"", config.default_backend));
+            if let Some(ref verbosity) = config.verbosity {
+                console().plain(&format!("verbosity = \"{}\"", verbosity));
+            }
 
             for (backend_name, backend_config) in &config.backends {
-                println!("\n[{}]", backend_name);
+                console().newline();
+                console().plain(&format!("[{}]", backend_name));
                 if let Some(ref api_key) = backend_config.api_key {
                     let masked_key = if api_key.len() > 8 {
                         format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..])
                     } else {
                         "***".to_string()
                     };
-                    println!("api_key = \"{}\"", masked_key);
+                    console().plain(&format!("api_key = \"{}\"", masked_key));
                 }
                 if let Some(ref model) = backend_config.model {
-                    println!("model = \"{}\"", model);
+                    console().plain(&format!("model = \"{}\"", model));
                 }
                 if let Some(ref base_url) = backend_config.base_url {
-                    println!("base_url = \"{}\"", base_url);
+                    console().plain(&format!("base_url = \"{}\"", base_url));
                 }
             }
         }
@@ -333,7 +360,20 @@ fn handle_config(action: ConfigAction) -> Result<()> {
             if key == "default_backend" {
                 config.default_backend = value;
                 config.save()?;
-                println!("Configuration updated successfully");
+                console().success("Configuration updated successfully");
+            } else if key == "verbosity" {
+                // Validate verbosity value
+                match value.as_str() {
+                    "quiet" | "normal" | "verbose" | "debug" => {
+                        config.verbosity = Some(value);
+                        config.save()?;
+                        console().success("Verbosity configuration updated successfully");
+                    }
+                    _ => {
+                        console().error("Invalid verbosity level. Valid options: quiet, normal, verbose, debug");
+                        return Ok(());
+                    }
+                }
             } else if let Some((backend_name, setting_key)) = key.split_once('_') {
                 if matches!(backend_name, "together")
                     && matches!(setting_key, "ai_api_key" | "ai_model" | "ai_base_url")
@@ -343,15 +383,15 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                         let actual_key = &setting_key[3..]; // Remove "ai_" prefix
                         config.update_backend_setting("together_ai", actual_key, value)?;
                         config.save()?;
-                        println!("Backend configuration updated successfully");
+                        console().success("Backend configuration updated successfully");
                     } else {
-                        eprintln!("Unknown config key: {}. Available keys: default_backend, together_ai_api_key, together_ai_model, together_ai_base_url", key);
+                        console().error(&format!("Unknown config key: {}. Available keys: default_backend, verbosity, together_ai_api_key, together_ai_model, together_ai_base_url", key));
                     }
                 } else {
-                    eprintln!("Unknown config key: {}. Available keys: default_backend, together_ai_api_key, together_ai_model, together_ai_base_url", key);
+                    console().error(&format!("Unknown config key: {}. Available keys: default_backend, verbosity, together_ai_api_key, together_ai_model, together_ai_base_url", key));
                 }
             } else {
-                eprintln!("Unknown config key: {}. Available keys: default_backend, together_ai_api_key, together_ai_model, together_ai_base_url", key);
+                console().error(&format!("Unknown config key: {}. Available keys: default_backend, verbosity, together_ai_api_key, together_ai_model, together_ai_base_url", key));
             }
         }
     }
