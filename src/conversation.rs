@@ -78,6 +78,16 @@ impl Conversation {
         }
     }
 
+    pub fn add_system_message(&mut self, content: String) {
+        self.messages.push(ConversationMessage {
+            role: "system".to_string(),
+            content: Some(content),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+    }
+
     pub fn add_user_message(&mut self, content: String) {
         self.messages.push(ConversationMessage {
             role: "user".to_string(),
