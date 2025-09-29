@@ -197,35 +197,45 @@ fn handle_conversation_step<'a>(
         .await?;
 
     if let Some(tool_calls) = response.tool_calls {
-        if let Some(ref content) = response.content {
-            console().verbose(&format!("LLM Response: {}", content));
-        }
-
-        conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
-
-        if step == 0 {
-            console().executing_tools();
-        } else {
-            console().executing_more_tools();
-        }
-
-        let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
-
-        for tool_result in tool_results {
-            if let Ok(ref result) = tool_result.result {
-                console().verbose(&format!("Tool '{}' result: {}",
-                    tool_result.tool_name,
-                    if result.len() > 200 {
-                        format!("{}...", &result[..200])
-                    } else {
-                        result.clone()
-                    }
-                ));
+        if !tool_calls.is_empty() {
+            if let Some(ref content) = response.content {
+                console().verbose(&format!("LLM Response: {}", content));
             }
-            conversation.add_tool_result(tool_result);
-        }
 
-        handle_conversation_step(backend, conversation, tool_registry, tool_executor, step + 1).await
+            conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
+
+            if step == 0 {
+                console().executing_tools();
+            } else {
+                console().executing_more_tools();
+            }
+
+            let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
+
+            for tool_result in tool_results {
+                if let Ok(ref result) = tool_result.result {
+                    console().verbose(&format!("Tool '{}' result: {}",
+                        tool_result.tool_name,
+                        if result.len() > 200 {
+                            format!("{}...", &result[..200])
+                        } else {
+                            result.clone()
+                        }
+                    ));
+                }
+                conversation.add_tool_result(tool_result);
+            }
+
+            handle_conversation_step(backend, conversation, tool_registry, tool_executor, step + 1).await
+        } else if let Some(content) = response.content {
+            console().plain(&format!("{}", content));
+            console().newline();
+            conversation.add_assistant_message(Some(content), None);
+            Ok(())
+        } else {
+            console().warning("No response received.");
+            Ok(())
+        }
     } else if let Some(content) = response.content {
         console().plain(&format!("{}", content));
         console().newline();
