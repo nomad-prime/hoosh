@@ -42,12 +42,6 @@ struct ChatCompletionRequest {
     tool_choice: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ChatMessage {
-    role: String,
-    content: String,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 struct ChatCompletionResponse {
     choices: Vec<Choice>,
