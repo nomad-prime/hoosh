@@ -25,17 +25,11 @@ pub enum Commands {
         add_dir: Vec<String>,
         #[arg(long)]
         skip_permissions: bool,
-        #[arg(short = 's', long)]
-        system_prompt: Option<String>,
         message: Option<String>,
     },
     Config {
         #[command(subcommand)]
         action: ConfigAction,
-    },
-    Prompts {
-        #[command(subcommand)]
-        action: PromptAction,
     },
 }
 
@@ -43,30 +37,6 @@ pub enum Commands {
 pub enum ConfigAction {
     Show,
     Set { key: String, value: String },
-}
-
-#[derive(Subcommand)]
-pub enum PromptAction {
-    /// List all available system prompts
-    List {
-        #[arg(long)]
-        tag: Option<String>,
-    },
-    /// Show a specific system prompt
-    Show { name: String },
-    /// Add a new system prompt
-    Add {
-        name: String,
-        content: String,
-        #[arg(short, long)]
-        description: Option<String>,
-        #[arg(short, long)]
-        tags: Vec<String>,
-    },
-    /// Remove a system prompt
-    Remove { name: String },
-    /// Set the default system prompt
-    SetDefault { name: String },
 }
 
 impl Cli {

@@ -4,13 +4,12 @@ use clap::Parser;
 use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
 use hoosh::{
     backends::{LlmBackend, MockBackend},
-    cli::{Cli, Commands, ConfigAction, PromptAction},
+    cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
     console::{console, init_console},
     conversation::Conversation,
     parser::MessageParser,
     permissions::PermissionManager,
-    system_prompts::{SystemPrompt, SystemPromptManager},
     tool_executor::ToolExecutor,
     tools::ToolRegistry,
 };
@@ -34,16 +33,12 @@ async fn main() -> Result<()> {
             backend,
             add_dir,
             skip_permissions,
-            system_prompt,
             message,
         } => {
-            handle_chat(backend, add_dir, skip_permissions, system_prompt, message, &config).await?;
+            handle_chat(backend, add_dir, skip_permissions, message, &config).await?;
         }
         Commands::Config { action } => {
             handle_config(action)?;
-        }
-        Commands::Prompts { action } => {
-            handle_prompts(action)?;
         }
     }
 
@@ -54,7 +49,6 @@ async fn handle_chat(
     backend_name: Option<String>,
     add_dirs: Vec<String>,
     skip_permissions: bool,
-    system_prompt_name: Option<String>,
     message: Option<String>,
     config: &AppConfig,
 ) -> Result<()> {
@@ -73,14 +67,7 @@ async fn handle_chat(
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    // Load system prompt if specified
-    let system_prompt = if let Some(prompt_name) = system_prompt_name {
-        let prompt_manager = SystemPromptManager::new()?;
-        prompt_manager.get_prompt(&prompt_name)
-            .map(|p| p.content.clone())
-    } else {
-        None
-    };
+    let system_prompt = config.load_system_prompt()?;
 
     if let Some(msg) = message {
         let expanded_message = match parser.expand_message(&msg).await {
@@ -107,7 +94,7 @@ async fn handle_chat(
         handle_conversation_turn(&backend, &mut conversation, &tool_registry, &tool_executor)
             .await?;
     } else {
-        interactive_chat(backend, parser, permission_manager, tool_registry, system_prompt).await?;
+        interactive_chat(backend, parser, permission_manager, tool_registry, config).await?;
     }
 
     Ok(())
@@ -199,7 +186,6 @@ fn handle_conversation_step<'a>(
     step: usize,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + 'a>> {
     Box::pin(async move {
-    // Safety limit to prevent infinite recursion
     const MAX_STEPS: usize = 30;
     if step >= MAX_STEPS {
         console().max_steps_reached(MAX_STEPS);
@@ -211,7 +197,6 @@ fn handle_conversation_step<'a>(
         .await?;
 
     if let Some(tool_calls) = response.tool_calls {
-        // Show LLM's reasoning in verbose mode before moving
         if let Some(ref content) = response.content {
             console().verbose(&format!("LLM Response: {}", content));
         }
@@ -227,7 +212,6 @@ fn handle_conversation_step<'a>(
         let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
 
         for tool_result in tool_results {
-            // Show tool results in verbose mode
             if let Ok(ref result) = tool_result.result {
                 console().verbose(&format!("Tool '{}' result: {}",
                     tool_result.tool_name,
@@ -259,7 +243,7 @@ async fn interactive_chat(
     parser: MessageParser,
     permission_manager: PermissionManager,
     tool_registry: ToolRegistry,
-    system_prompt: Option<String>,
+    config: &AppConfig,
 ) -> Result<()> {
     console().welcome(backend.backend_name());
     console().file_system_enabled();
@@ -273,9 +257,10 @@ async fn interactive_chat(
     let mut reader = BufReader::new(stdin);
     let mut line = String::new();
 
-    // Create conversation and tool executor
     let mut conversation = Conversation::new();
-    if let Some(system_content) = system_prompt {
+    let system_prompt_content = config.load_system_prompt()?;
+
+    if let Some(system_content) = system_prompt_content {
         conversation.add_system_message(system_content);
     }
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
@@ -356,6 +341,9 @@ fn handle_config(action: ConfigAction) -> Result<()> {
             if let Some(ref verbosity) = config.verbosity {
                 console().plain(&format!("verbosity = \"{}\"", verbosity));
             }
+            if let Some(ref system_prompt) = config.system_prompt {
+                console().plain(&format!("system_prompt = \"{}\"", system_prompt));
+            }
 
             for (backend_name, backend_config) in &config.backends {
                 console().newline();
@@ -384,7 +372,6 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                 config.save()?;
                 console().success("Configuration updated successfully");
             } else if key == "verbosity" {
-                // Validate verbosity value
                 match value.as_str() {
                     "quiet" | "normal" | "verbose" | "debug" => {
                         config.verbosity = Some(value);
@@ -396,6 +383,10 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                         return Ok(());
                     }
                 }
+            } else if key == "system_prompt" {
+                config.system_prompt = Some(value);
+                config.save()?;
+                console().success("System prompt path updated successfully");
             } else if let Some((backend_name, setting_key)) = key.split_once('_') {
                 if matches!(backend_name, "together")
                     && matches!(setting_key, "ai_api_key" | "ai_model" | "ai_base_url")
@@ -420,87 +411,3 @@ fn handle_config(action: ConfigAction) -> Result<()> {
     Ok(())
 }
 
-fn handle_prompts(action: PromptAction) -> Result<()> {
-    let mut prompt_manager = SystemPromptManager::new()?;
-
-    match action {
-        PromptAction::List { tag } => {
-            let prompts = if let Some(tag_filter) = tag {
-                prompt_manager.find_prompts_by_tag(&tag_filter)
-            } else {
-                prompt_manager.list_prompts()
-            };
-
-            if prompts.is_empty() {
-                console().plain("No system prompts found.");
-                return Ok(());
-            }
-
-            console().plain("Available system prompts:");
-            console().newline();
-
-            for prompt in prompts {
-                let default_marker = if prompt_manager.get_default_prompt()
-                    .map(|p| p.name == prompt.name)
-                    .unwrap_or(false) {
-                    " (default)"
-                } else {
-                    ""
-                };
-
-                console().plain(&format!("  • {}{}", prompt.name, default_marker));
-                if let Some(ref description) = prompt.description {
-                    console().plain(&format!("    {}", description));
-                }
-                if !prompt.tags.is_empty() {
-                    console().plain(&format!("    Tags: {}", prompt.tags.join(", ")));
-                }
-                console().newline();
-            }
-        }
-        PromptAction::Show { name } => {
-            if let Some(prompt) = prompt_manager.get_prompt(&name) {
-                console().plain(&format!("Name: {}", prompt.name));
-                if let Some(ref description) = prompt.description {
-                    console().plain(&format!("Description: {}", description));
-                }
-                if !prompt.tags.is_empty() {
-                    console().plain(&format!("Tags: {}", prompt.tags.join(", ")));
-                }
-                console().newline();
-                console().plain("Content:");
-                console().plain(&prompt.content);
-            } else {
-                console().error(&format!("System prompt '{}' not found", name));
-            }
-        }
-        PromptAction::Add { name, content, description, tags } => {
-            let mut prompt = SystemPrompt::new(name.clone(), content);
-            if let Some(desc) = description {
-                prompt = prompt.with_description(desc);
-            }
-            if !tags.is_empty() {
-                prompt = prompt.with_tags(tags);
-            }
-
-            prompt_manager.add_prompt(prompt)?;
-            console().success(&format!("System prompt '{}' added successfully", name));
-        }
-        PromptAction::Remove { name } => {
-            if prompt_manager.remove_prompt(&name)? {
-                console().success(&format!("System prompt '{}' removed successfully", name));
-            } else {
-                console().error(&format!("System prompt '{}' not found", name));
-            }
-        }
-        PromptAction::SetDefault { name } => {
-            if prompt_manager.set_default_prompt(&name)? {
-                console().success(&format!("Set '{}' as default system prompt", name));
-            } else {
-                console().error(&format!("System prompt '{}' not found", name));
-            }
-        }
-    }
-
-    Ok(())
-}
