@@ -103,7 +103,7 @@ impl Console {
 
     pub fn verbose(&self, message: &str) {
         if self.should_show(VerbosityLevel::Verbose) {
-            println!("🔍 {}", message);
+            println!("{}", message);
         }
     }
 

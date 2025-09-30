@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
-use crate::config::{AppConfig, PromptConfig};
+use crate::config::{AgentConfig, AppConfig};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemPrompt {
+pub struct Agent {
     pub name: String,
     #[serde(skip)]
     pub content: String,
@@ -14,12 +14,12 @@ pub struct SystemPrompt {
     pub tags: Vec<String>,
 }
 
-pub struct SystemPromptManager {
+pub struct AgentManager {
     config: AppConfig,
 }
 
-impl SystemPrompt {
-    pub fn from_config(name: String, config: PromptConfig, content: String) -> Self {
+impl Agent {
+    pub fn from_config(name: String, config: AgentConfig, content: String) -> Self {
         Self {
             name,
             content,
@@ -30,7 +30,7 @@ impl SystemPrompt {
     }
 }
 
-const DEFAULT_ASSISTANT_PROMPT: &str = r#"You are a helpful AI assistant with access to tools for file operations and bash commands.
+const DEFAULT_ASSISTANT_AGENT: &str = r#"You are a helpful AI assistant with access to tools for file operations and bash commands.
 
 # Tool Usage Guidelines
 
@@ -61,65 +61,65 @@ User: "Create a hello world program"
 
 Remember: Your goal is to help efficiently and then return control to the user by ending with a text-only response."#;
 
-impl SystemPromptManager {
+impl AgentManager {
     pub fn new() -> Result<Self> {
         let config = AppConfig::load()?;
-        let prompts_dir = Self::prompts_dir()?;
-        Self::initialize_default_prompts(&prompts_dir)?;
+        let agents_dir = Self::agents_dir()?;
+        Self::initialize_default_agents(&agents_dir)?;
 
         Ok(Self { config })
     }
 
-    fn prompts_dir() -> Result<PathBuf> {
+    fn agents_dir() -> Result<PathBuf> {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .context("Failed to get home directory")?;
-        let prompts_dir = PathBuf::from(home)
+        let agents_dir = PathBuf::from(home)
             .join(".config")
             .join("hoosh")
-            .join("prompts");
+            .join("agents");
 
-        fs::create_dir_all(&prompts_dir)
-            .context("Failed to create prompts directory")?;
+        fs::create_dir_all(&agents_dir)
+            .context("Failed to create agents directory")?;
 
-        Ok(prompts_dir)
+        Ok(agents_dir)
     }
 
-    fn initialize_default_prompts(prompts_dir: &PathBuf) -> Result<()> {
-        let assistant_path = prompts_dir.join("assistant.txt");
+    fn initialize_default_agents(agents_dir: &PathBuf) -> Result<()> {
+        let assistant_path = agents_dir.join("assistant.txt");
         if !assistant_path.exists() {
-            fs::write(&assistant_path, DEFAULT_ASSISTANT_PROMPT)
-                .context("Failed to write default assistant prompt")?;
+            fs::write(&assistant_path, DEFAULT_ASSISTANT_AGENT)
+                .context("Failed to write default assistant agent")?;
         }
 
         Ok(())
     }
 
-    fn load_prompt_content(&self, prompt_config: &PromptConfig) -> Result<String> {
-        let prompts_dir = Self::prompts_dir()?;
-        let prompt_path = prompts_dir.join(&prompt_config.file);
-        fs::read_to_string(&prompt_path)
-            .with_context(|| format!("Failed to read prompt file: {}", prompt_config.file))
+    fn load_agent_content(&self, agent_config: &AgentConfig) -> Result<String> {
+        let agents_dir = Self::agents_dir()?;
+        let agent_path = agents_dir.join(&agent_config.file);
+        fs::read_to_string(&agent_path)
+            .with_context(|| format!("Failed to read agent file: {}", agent_config.file))
     }
 
-    pub fn get_prompt(&self, name: &str) -> Option<SystemPrompt> {
-        self.config.prompts.get(name).and_then(|prompt_config| {
-            self.load_prompt_content(prompt_config).ok().map(|content| {
-                SystemPrompt::from_config(name.to_string(), prompt_config.clone(), content)
+    pub fn get_agent(&self, name: &str) -> Option<Agent> {
+        self.config.agents.get(name).and_then(|agent_config| {
+            self.load_agent_content(agent_config).ok().map(|content| {
+                Agent::from_config(name.to_string(), agent_config.clone(), content)
             })
         })
     }
 
-    pub fn get_default_prompt(&self) -> Option<SystemPrompt> {
-        self.config.default_prompt.as_ref()
-            .and_then(|name| self.get_prompt(name))
+    pub fn get_default_agent(&self) -> Option<Agent> {
+        self.config.default_agent.as_ref()
+            .and_then(|name| self.get_agent(name))
     }
 
-    pub fn list_prompts(&self) -> Vec<SystemPrompt> {
-        self.config.prompts.iter()
-            .filter_map(|(name, prompt_config)| {
-                self.load_prompt_content(prompt_config).ok().map(|content| {
-                    SystemPrompt::from_config(name.clone(), prompt_config.clone(), content)
+    pub fn list_agents(&self) -> Vec<Agent> {
+        self.config.agents.iter()
+            .filter_map(|(name, agent_config)| {
+                self.load_agent_content(agent_config).ok().map(|content| {
+                    Agent::from_config(name.clone(), agent_config.clone(), content)
                 })
             })
             .collect()
