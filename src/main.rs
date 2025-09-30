@@ -211,7 +211,7 @@ async fn handle_conversation_turn(
             if !tool_calls.is_empty() {
                 // Show assistant thinking content if present
                 if let Some(ref content) = response.content {
-                    console().verbose(&format!("ه {}", content));
+                    console().verbose(&format!("\x1b[1;36mه\x1b[0m {}", content));
                 }
 
                 conversation.add_assistant_message(response.content, Some(tool_calls.clone()));

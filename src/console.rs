@@ -90,13 +90,13 @@ impl Console {
     }
 
     pub fn executing_tools(&self) {
-        if self.should_show(VerbosityLevel::Normal) {
+        if self.should_show(VerbosityLevel::Debug) {
             println!("🔧 Executing tools...");
         }
     }
 
     pub fn executing_more_tools(&self) {
-        if self.should_show(VerbosityLevel::Normal) {
+        if self.should_show(VerbosityLevel::Debug) {
             println!("🔧 Executing more tools...");
         }
     }

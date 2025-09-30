@@ -51,8 +51,8 @@ impl ToolExecutor {
             }
         };
 
-        // Check permissions
-        if let Err(e) = self.check_tool_permissions(tool_name, &args).await {
+        // Check permissions using the tool's own permission check
+        if let Err(e) = self.check_tool_permissions(tool, &args).await {
             return ToolResult::error(tool_call_id, tool_name.clone(), e);
         }
 
@@ -76,50 +76,18 @@ impl ToolExecutor {
     }
 
     /// Check if a tool execution is permitted
-    async fn check_tool_permissions(&self, tool_name: &str, args: &serde_json::Value) -> Result<()> {
+    /// Delegates to the tool's own permission check implementation
+    async fn check_tool_permissions(&self, tool: &dyn crate::tools::Tool, args: &serde_json::Value) -> Result<()> {
         // Skip permission checks if enforcement is disabled
         if !self.permission_manager.is_enforcing() {
             return Ok(());
         }
 
-        let allowed = match tool_name {
-            "read_file" => {
-                if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
-                    self.permission_manager.request_file_read(path).await?
-                } else {
-                    false
-                }
-            }
-            "write_file" => {
-                if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
-                    self.permission_manager.request_file_write(path).await?
-                } else {
-                    false
-                }
-            }
-            "list_directory" => {
-                let path = args
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
-                self.permission_manager.request_directory_list(path).await?
-            }
-            "bash" => {
-                if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
-                    self.permission_manager.request_bash_execution(command).await?
-                } else {
-                    false
-                }
-            }
-            _ => {
-                // Unknown tool - let it through but log a warning
-                eprintln!("⚠️  Unknown tool for permission check: {}", tool_name);
-                true
-            }
-        };
+        // Ask the tool to check its own permissions
+        let allowed = tool.check_permission(args, &self.permission_manager).await?;
 
         if !allowed {
-            anyhow::bail!("Permission denied for {} operation", tool_name);
+            anyhow::bail!("Permission denied for {} operation", tool.tool_name());
         }
 
         Ok(())

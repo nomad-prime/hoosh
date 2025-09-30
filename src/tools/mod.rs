@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
+use crate::permissions::PermissionManager;
+
 /// Core trait for all tools in the hoosh system
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -17,6 +19,18 @@ pub trait Tool: Send + Sync {
 
     /// Get the parameter schema for this tool (JSON Schema format)
     fn parameter_schema(&self) -> Value;
+
+    /// Check if this tool execution is permitted
+    /// Each tool knows how to request its own permissions
+    /// Default implementation allows all operations (for safe/readonly tools)
+    async fn check_permission(
+        &self,
+        _args: &serde_json::Value,
+        _permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        // Default: no permission needed (safe operations)
+        Ok(true)
+    }
 
     /// Get the complete tool schema in OpenAI function calling format
     fn tool_schema(&self) -> Value {
