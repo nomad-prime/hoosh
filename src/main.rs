@@ -198,80 +198,79 @@ async fn handle_conversation_turn(
     tool_registry: &ToolRegistry,
     tool_executor: &ToolExecutor,
 ) -> Result<()> {
+    const MAX_STEPS: usize = 30;
+
     console().thinking();
 
-    handle_conversation_step(backend, conversation, tool_registry, tool_executor, 0).await
-}
+    for step in 0..MAX_STEPS {
+        let response = backend
+            .send_message_with_tools(conversation, tool_registry)
+            .await?;
 
-/// Recursively handle conversation steps with tool calls
-fn handle_conversation_step<'a>(
-    backend: &'a Box<dyn LlmBackend>,
-    conversation: &'a mut Conversation,
-    tool_registry: &'a ToolRegistry,
-    tool_executor: &'a ToolExecutor,
-    step: usize,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + 'a>> {
-    Box::pin(async move {
-    const MAX_STEPS: usize = 30;
-    if step >= MAX_STEPS {
-        console().max_steps_reached(MAX_STEPS);
-        return Ok(());
-    }
-
-    let response = backend
-        .send_message_with_tools(conversation, tool_registry)
-        .await?;
-
-    if let Some(tool_calls) = response.tool_calls {
-        if !tool_calls.is_empty() {
-            if let Some(ref content) = response.content {
-                console().verbose(&format!("ه {}", content));
-            }
-
-            conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
-
-            if step == 0 {
-                console().executing_tools();
-            } else {
-                console().executing_more_tools();
-            }
-
-            let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
-
-            for tool_result in tool_results {
-                if let Ok(ref result) = tool_result.result {
-                    console().verbose(&format!("Tool '{}' result: {}",
-                        tool_result.tool_name,
-                        if result.len() > 200 {
-                            format!("{}...", &result[..200])
-                        } else {
-                            result.clone()
-                        }
-                    ));
+        if let Some(tool_calls) = response.tool_calls {
+            if !tool_calls.is_empty() {
+                // Show assistant thinking content if present
+                if let Some(ref content) = response.content {
+                    console().verbose(&format!("ه {}", content));
                 }
-                conversation.add_tool_result(tool_result);
-            }
 
-            handle_conversation_step(backend, conversation, tool_registry, tool_executor, step + 1).await
+                conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
+
+                // Show appropriate tool execution message
+                if step == 0 {
+                    console().executing_tools();
+                } else {
+                    console().executing_more_tools();
+                }
+
+                // Execute all tool calls
+                let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
+
+                // Log and add tool results to conversation
+                for tool_result in tool_results {
+                    if let Ok(ref result) = tool_result.result {
+                        console().verbose(&format!(
+                            "Tool '{}' result: {}",
+                            tool_result.tool_name,
+                            if result.len() > 200 {
+                                format!("{}...", &result[..200])
+                            } else {
+                                result.clone()
+                            }
+                        ));
+                    }
+                    conversation.add_tool_result(tool_result);
+                }
+
+                // Continue to next iteration to process tool results
+                continue;
+            } else if let Some(content) = response.content {
+                // No tool calls, just content - we're done
+                console().plain(&format!("{}", content));
+                console().newline();
+                conversation.add_assistant_message(Some(content), None);
+                return Ok(());
+            } else {
+                // No tool calls and no content
+                console().warning("No response received.");
+                return Ok(());
+            }
         } else if let Some(content) = response.content {
+            // No tool calls, just content - we're done
             console().plain(&format!("{}", content));
             console().newline();
             conversation.add_assistant_message(Some(content), None);
-            Ok(())
+            return Ok(());
         } else {
+            // No response at all
             console().warning("No response received.");
-            Ok(())
+            return Ok(());
         }
-    } else if let Some(content) = response.content {
-        console().plain(&format!("{}", content));
-        console().newline();
-        conversation.add_assistant_message(Some(content), None);
-        Ok(())
-    } else {
-        console().warning("No response received.");
-        Ok(())
     }
-    })
+
+    // If we've reached here, we've hit MAX_STEPS
+    console().max_steps_reached(MAX_STEPS);
+    Ok(())
 }
 
 async fn interactive_chat(
@@ -402,8 +401,12 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                 console().newline();
                 console().plain(&format!("[{}]", backend_name));
                 if let Some(ref api_key) = backend_config.api_key {
-                    let masked_key = if api_key.len() > 8 {
-                        format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..])
+                    // Use char-based slicing to safely handle UTF-8 and avoid panics
+                    let masked_key = if api_key.chars().count() > 8 {
+                        let chars: Vec<char> = api_key.chars().collect();
+                        let prefix: String = chars.iter().take(4).collect();
+                        let suffix: String = chars.iter().rev().take(4).rev().collect();
+                        format!("{}...{}", prefix, suffix)
                     } else {
                         "***".to_string()
                     };
