@@ -11,7 +11,7 @@ pub struct BackendConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct PromptConfig {
+pub struct AgentConfig {
     pub file: String,
     #[serde(default)]
     pub description: Option<String>,
@@ -27,17 +27,17 @@ pub struct AppConfig {
     #[serde(default)]
     pub verbosity: Option<String>,
     #[serde(default)]
-    pub default_prompt: Option<String>,
+    pub default_agent: Option<String>,
     #[serde(default)]
-    pub prompts: HashMap<String, PromptConfig>,
+    pub agents: HashMap<String, AgentConfig>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let mut prompts = HashMap::new();
-        prompts.insert(
+        let mut agents = HashMap::new();
+        agents.insert(
             "assistant".to_string(),
-            PromptConfig {
+            AgentConfig {
                 file: "assistant.txt".to_string(),
                 description: Some("General purpose assistant".to_string()),
                 tags: vec![],
@@ -48,8 +48,8 @@ impl Default for AppConfig {
             default_backend: "mock".to_string(),
             backends: HashMap::new(),
             verbosity: None,
-            default_prompt: Some("assistant".to_string()),
-            prompts,
+            default_agent: Some("assistant".to_string()),
+            agents,
         }
     }
 }

@@ -3,6 +3,7 @@ use clap::Parser;
 #[cfg(feature = "together-ai")]
 use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
 use hoosh::{
+    agents::AgentManager,
     backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
@@ -11,7 +12,6 @@ use hoosh::{
     input::InputHandler,
     parser::MessageParser,
     permissions::PermissionManager,
-    system_prompts::SystemPromptManager,
     tool_executor::ToolExecutor,
     tools::ToolRegistry,
 };
@@ -67,8 +67,8 @@ async fn handle_chat(
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    let prompt_manager = SystemPromptManager::new()?;
-    let system_prompt = prompt_manager.get_default_prompt().map(|p| p.content);
+    let agent_manager = AgentManager::new()?;
+    let default_agent = agent_manager.get_default_agent();
 
     if let Some(msg) = message {
         let expanded_message = match parser.expand_message(&msg).await {
@@ -85,8 +85,8 @@ async fn handle_chat(
         };
 
         let mut conversation = Conversation::new();
-        if let Some(system_content) = system_prompt {
-            conversation.add_system_message(system_content);
+        if let Some(agent) = default_agent {
+            conversation.add_system_message(agent.content);
         }
         conversation.add_user_message(expanded_message);
 
@@ -225,7 +225,7 @@ fn handle_conversation_step<'a>(
     if let Some(tool_calls) = response.tool_calls {
         if !tool_calls.is_empty() {
             if let Some(ref content) = response.content {
-                console().verbose(&format!("LLM Response: {}", content));
+                console().verbose(&format!("ه {}", content));
             }
 
             conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
@@ -287,11 +287,11 @@ async fn interactive_chat(
         console().permissions_disabled();
     }
 
-    let prompt_manager = SystemPromptManager::new()?;
-    let default_prompt = prompt_manager.get_default_prompt();
+    let agent_manager = AgentManager::new()?;
+    let default_agent = agent_manager.get_default_agent();
 
-    if let Some(ref prompt) = default_prompt {
-        console().plain(&format!("📝 Agent: {}", prompt.name));
+    if let Some(ref agent) = default_agent {
+        console().plain(&format!("📝 Agent: {}", agent.name));
     } else {
         console().warning("No agent loaded");
     }
@@ -307,13 +307,13 @@ async fn interactive_chat(
     }
 
     let mut conversation = Conversation::new();
-    if let Some(prompt) = default_prompt {
-        conversation.add_system_message(prompt.content);
+    if let Some(agent) = default_agent {
+        conversation.add_system_message(agent.content);
     }
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
 
     loop {
-        match input_handler.readline("ه ") {
+        match input_handler.readline("> ") {
             Ok(Some(input)) => {
                 let input = input.trim();
 
