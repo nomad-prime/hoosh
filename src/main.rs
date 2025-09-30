@@ -8,15 +8,14 @@ use hoosh::{
     config::AppConfig,
     console::{console, init_console},
     conversation::Conversation,
+    input::InputHandler,
     parser::MessageParser,
     permissions::PermissionManager,
     system_prompts::SystemPromptManager,
     tool_executor::ToolExecutor,
     tools::ToolRegistry,
 };
-use std::io::{self, Write};
 use std::path::PathBuf;
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -108,11 +107,36 @@ fn print_help(tool_registry: &ToolRegistry) {
     console().plain("  @filename:10-20 - Reference specific lines of a file");
     console().plain("  /help           - Show this help");
     console().plain("  /tools          - List available tools");
+    console().plain("  /history        - Show command history");
+    console().plain("  /clear          - Clear command history");
     console().plain("  exit, quit, q   - Exit the chat");
+    console().newline();
+    console().plain("Keybindings:");
+    console().plain("  Up/Down         - Navigate command history");
+    console().plain("  Tab             - Autocomplete files and commands");
+    console().plain("  Ctrl+A          - Move to beginning of line");
+    console().plain("  Ctrl+E          - Move to end of line");
+    console().plain("  Ctrl+W          - Delete word backwards");
+    console().plain("  Ctrl+K          - Kill to end of line");
+    console().plain("  Ctrl+U          - Kill to beginning of line");
+    console().plain("  Ctrl+C/D        - Exit");
     console().newline();
     console().plain(&format!("🔧 Available tools: {}", tool_registry.list_tools().len()));
     for (name, description) in tool_registry.list_tools() {
         console().plain(&format!("  • {}: {}", name, description));
+    }
+    console().newline();
+}
+
+fn print_history(input_handler: &InputHandler) {
+    console().plain("📜 Command History:");
+    let history = input_handler.history();
+    if history.is_empty() {
+        console().plain("  (empty)");
+    } else {
+        for (i, entry) in history.iter().enumerate() {
+            console().plain(&format!("  {}: {}", i + 1, entry));
+        }
     }
     console().newline();
 }
@@ -262,31 +286,36 @@ async fn interactive_chat(
     if !permission_manager.is_enforcing() {
         console().permissions_disabled();
     }
+
+    let prompt_manager = SystemPromptManager::new()?;
+    let default_prompt = prompt_manager.get_default_prompt();
+
+    if let Some(ref prompt) = default_prompt {
+        console().plain(&format!("📝 Agent: {}", prompt.name));
+    } else {
+        console().warning("No agent loaded");
+    }
+
     console().plain("Type 'exit', 'quit', or Ctrl+C to quit.");
     console().newline();
 
-    let stdin = tokio::io::stdin();
-    let mut reader = BufReader::new(stdin);
-    let mut line = String::new();
+    let mut input_handler = InputHandler::new()?;
+    input_handler.load_history()?;
+
+    for tool_name in tool_registry.list_tools().iter().map(|(name, _)| name) {
+        input_handler.add_command(tool_name.to_string());
+    }
 
     let mut conversation = Conversation::new();
-    let prompt_manager = SystemPromptManager::new()?;
-    let system_prompt_content = prompt_manager.get_default_prompt().map(|p| p.content);
-
-    if let Some(system_content) = system_prompt_content {
-        conversation.add_system_message(system_content);
+    if let Some(prompt) = default_prompt {
+        conversation.add_system_message(prompt.content);
     }
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
 
     loop {
-        print!("🔸 ");
-        io::stdout().flush()?;
-
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => break, // EOF
-            Ok(_) => {
-                let input = line.trim();
+        match input_handler.readline("ه ") {
+            Ok(Some(input)) => {
+                let input = input.trim();
 
                 if input.is_empty() {
                     continue;
@@ -307,7 +336,17 @@ async fn interactive_chat(
                     continue;
                 }
 
-                // Expand @-file references
+                if input.starts_with("/history") {
+                    print_history(&input_handler);
+                    continue;
+                }
+
+                if input.starts_with("/clear") {
+                    input_handler.clear_history();
+                    console().success("History cleared");
+                    continue;
+                }
+
                 let expanded_input = match parser.expand_message(input).await {
                     Ok(expanded) => {
                         if expanded != input {
@@ -317,14 +356,12 @@ async fn interactive_chat(
                     }
                     Err(e) => {
                         console().warning(&format!("Error expanding file references: {}", e));
-                        input.to_string() // Use original input if expansion fails
+                        input.to_string()
                     }
                 };
 
-                // Add user message to conversation
                 conversation.add_user_message(expanded_input);
 
-                // Handle the conversation turn
                 if let Err(e) = handle_conversation_turn(
                     &backend,
                     &mut conversation,
@@ -336,12 +373,18 @@ async fn interactive_chat(
                     console().error(&format!("Error: {}", e));
                 }
             }
+            Ok(None) => {
+                console().goodbye();
+                break;
+            }
             Err(e) => {
                 console().error(&format!("Error reading input: {}", e));
                 break;
             }
         }
     }
+
+    input_handler.save_history()?;
 
     Ok(())
 }
