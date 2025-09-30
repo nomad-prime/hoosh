@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::io::{self, Write};
-use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 /// Permission level for different operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +12,17 @@ pub enum PermissionLevel {
     Ask,
     /// Deny operation
     Deny,
+}
+
+/// Scope of a permission decision
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionScope {
+    /// Permission applies to a specific file/command
+    Specific(String),
+    /// Permission applies to all operations in a directory
+    Directory(String),
+    /// Permission applies to all operations of this type
+    Global,
 }
 
 /// Types of operations that require permission
@@ -33,6 +45,47 @@ impl OperationType {
             OperationType::DeleteFile(path) => format!("delete file '{}'", path),
             OperationType::ExecuteBash(cmd) => format!("execute bash command: '{}'", cmd),
             OperationType::ListDirectory(path) => format!("list directory '{}'", path),
+        }
+    }
+
+    /// Get the base operation type (without the specific path/command)
+    pub fn operation_kind(&self) -> &'static str {
+        match self {
+            OperationType::ReadFile(_) => "read",
+            OperationType::WriteFile(_) => "write",
+            OperationType::CreateFile(_) => "create",
+            OperationType::DeleteFile(_) => "delete",
+            OperationType::ExecuteBash(_) => "bash",
+            OperationType::ListDirectory(_) => "list",
+        }
+    }
+
+    /// Get the target (path or command) of this operation
+    pub fn target(&self) -> &str {
+        match self {
+            OperationType::ReadFile(path) => path,
+            OperationType::WriteFile(path) => path,
+            OperationType::CreateFile(path) => path,
+            OperationType::DeleteFile(path) => path,
+            OperationType::ExecuteBash(cmd) => cmd,
+            OperationType::ListDirectory(path) => path,
+        }
+    }
+
+    /// Get the directory containing this operation's target (for file operations)
+    pub fn parent_directory(&self) -> Option<String> {
+        match self {
+            OperationType::ReadFile(path)
+            | OperationType::WriteFile(path)
+            | OperationType::CreateFile(path)
+            | OperationType::DeleteFile(path)
+            | OperationType::ListDirectory(path) => {
+                std::path::Path::new(path)
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .map(|s| s.to_string())
+            }
+            OperationType::ExecuteBash(_) => None,
         }
     }
 
@@ -65,9 +118,13 @@ impl OperationType {
 }
 
 /// Permission manager for handling operation permissions
+#[derive(Clone)]
 pub struct PermissionManager {
     skip_permissions: bool,
     default_permission: PermissionLevel,
+    /// Cache of permission decisions for this session
+    /// Key is a string representation of the operation
+    session_cache: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 impl PermissionManager {
@@ -75,6 +132,7 @@ impl PermissionManager {
         Self {
             skip_permissions: false,
             default_permission: PermissionLevel::Ask,
+            session_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -86,6 +144,62 @@ impl PermissionManager {
     pub fn with_default_permission(mut self, level: PermissionLevel) -> Self {
         self.default_permission = level;
         self
+    }
+
+    /// Clear the session cache
+    pub fn clear_cache(&self) {
+        if let Ok(mut cache) = self.session_cache.lock() {
+            cache.clear();
+        }
+    }
+
+    /// Get a cache key for a specific operation and scope
+    fn get_cache_key_for_scope(&self, operation: &OperationType, scope: &PermissionScope) -> String {
+        let kind = operation.operation_kind();
+        match scope {
+            PermissionScope::Specific(target) => format!("{}:specific:{}", kind, target),
+            PermissionScope::Directory(dir) => format!("{}:dir:{}", kind, dir),
+            PermissionScope::Global => format!("{}:*", kind),
+        }
+    }
+
+    /// Check if operation was previously allowed in this session
+    /// Checks in hierarchical order: specific file -> directory -> global
+    fn check_cache(&self, operation: &OperationType) -> Option<bool> {
+        let cache = self.session_cache.lock().ok()?;
+
+        let kind = operation.operation_kind();
+        let target = operation.target();
+
+        // 1. Check specific file/command permission
+        let specific_key = format!("{}:specific:{}", kind, target);
+        if let Some(&decision) = cache.get(&specific_key) {
+            return Some(decision);
+        }
+
+        // 2. Check directory permission (for file operations)
+        if let Some(dir) = operation.parent_directory() {
+            let dir_key = format!("{}:dir:{}", kind, dir);
+            if let Some(&decision) = cache.get(&dir_key) {
+                return Some(decision);
+            }
+        }
+
+        // 3. Check global permission for this operation type
+        let global_key = format!("{}:*", kind);
+        if let Some(&decision) = cache.get(&global_key) {
+            return Some(decision);
+        }
+
+        None
+    }
+
+    /// Store permission decision in cache with the specified scope
+    fn cache_decision(&self, operation: &OperationType, scope: PermissionScope, allowed: bool) {
+        let key = self.get_cache_key_for_scope(operation, &scope);
+        if let Ok(mut cache) = self.session_cache.lock() {
+            cache.insert(key, allowed);
+        }
     }
 
     /// Check if an operation is allowed
@@ -100,16 +214,29 @@ impl PermissionManager {
             return Ok(true);
         }
 
-        // Handle based on default permission level
-        match self.default_permission {
-            PermissionLevel::Allow => Ok(true),
-            PermissionLevel::Deny => Ok(false),
-            PermissionLevel::Ask => self.ask_user_permission(operation).await,
+        // Check cache first (hierarchical: specific -> directory -> global)
+        if let Some(cached_decision) = self.check_cache(operation) {
+            return Ok(cached_decision);
         }
+
+        // Handle based on default permission level
+        let (allowed, scope) = match self.default_permission {
+            PermissionLevel::Allow => (true, None),
+            PermissionLevel::Deny => (false, None),
+            PermissionLevel::Ask => self.ask_user_permission(operation).await?,
+        };
+
+        // Cache the decision if user chose to remember it
+        if let Some(scope) = scope {
+            self.cache_decision(operation, scope, allowed);
+        }
+
+        Ok(allowed)
     }
 
     /// Ask user for permission interactively
-    async fn ask_user_permission(&self, operation: &OperationType) -> Result<bool> {
+    /// Returns (allowed, optional_scope)
+    async fn ask_user_permission(&self, operation: &OperationType) -> Result<(bool, Option<PermissionScope>)> {
         let warning_emoji = if operation.is_destructive() {
             "⚠️"
         } else {
@@ -126,7 +253,28 @@ impl PermissionManager {
             println!("⚠️  WARNING: This operation may be destructive!");
         }
 
-        print!("Allow this operation? [y/N]: ");
+        println!("Allow this operation?");
+        println!("  [y] Yes, once");
+        println!("  [n] No");
+
+        // Contextual message for 'a' option based on operation type
+        match operation {
+            OperationType::ExecuteBash(_) => {
+                println!("  [a] Always for this command");
+            }
+            _ => {
+                println!("  [a] Always for this file");
+            }
+        }
+
+        // Show directory option for file operations
+        if let Some(dir) = operation.parent_directory() {
+            println!("  [d] Always for this directory ({})", dir);
+        }
+
+        println!("  [A] Always for all {} operations", operation.operation_kind());
+
+        print!("Choice [y/N/a/d/A]: ");
         io::stdout().flush().context("Failed to flush stdout")?;
 
         let mut input = String::new();
@@ -134,45 +282,37 @@ impl PermissionManager {
             .read_line(&mut input)
             .context("Failed to read user input")?;
 
-        let response = input.trim().to_lowercase();
-        Ok(matches!(response.as_str(), "y" | "yes"))
-    }
-
-    /// Request permission for file read operation
-    pub async fn request_file_read(&self, file_path: &str) -> Result<bool> {
-        let operation = OperationType::ReadFile(file_path.to_string());
-        self.check_permission(&operation).await
-    }
-
-    /// Request permission for file write operation
-    pub async fn request_file_write(&self, file_path: &str) -> Result<bool> {
-        let path = Path::new(file_path);
-
-        let operation = if path.exists() {
-            OperationType::WriteFile(file_path.to_string())
-        } else {
-            OperationType::CreateFile(file_path.to_string())
-        };
-
-        self.check_permission(&operation).await
-    }
-
-    /// Request permission for file deletion
-    pub async fn request_file_delete(&self, file_path: &str) -> Result<bool> {
-        let operation = OperationType::DeleteFile(file_path.to_string());
-        self.check_permission(&operation).await
-    }
-
-    /// Request permission for bash command execution
-    pub async fn request_bash_execution(&self, command: &str) -> Result<bool> {
-        let operation = OperationType::ExecuteBash(command.to_string());
-        self.check_permission(&operation).await
-    }
-
-    /// Request permission for directory listing
-    pub async fn request_directory_list(&self, dir_path: &str) -> Result<bool> {
-        let operation = OperationType::ListDirectory(dir_path.to_string());
-        self.check_permission(&operation).await
+        let response = input.trim();
+        match response {
+            "y" | "Y" | "yes" | "Yes" => {
+                Ok((true, None)) // Allow once, don't cache
+            }
+            "a" => {
+                let target = operation.target().to_string();
+                println!("ℹ️  Permission for '{}' will be remembered for this session.", target);
+                Ok((true, Some(PermissionScope::Specific(target))))
+            }
+            "d" | "D" => {
+                if let Some(dir) = operation.parent_directory() {
+                    println!("ℹ️  All {} operations in '{}' will be allowed for this session.",
+                             operation.operation_kind(), dir);
+                    Ok((true, Some(PermissionScope::Directory(dir))))
+                } else {
+                    println!("⚠️  Directory-based permission not available for this operation.");
+                    println!("ℹ️  Using file-specific permission instead.");
+                    let target = operation.target().to_string();
+                    Ok((true, Some(PermissionScope::Specific(target))))
+                }
+            }
+            "A" => {
+                println!("ℹ️  All {} operations will be allowed for this session.",
+                         operation.operation_kind());
+                Ok((true, Some(PermissionScope::Global)))
+            }
+            _ => {
+                Ok((false, None)) // Deny, no need to cache denials
+            }
+        }
     }
 
     /// Check if permissions are being enforced
@@ -255,5 +395,146 @@ mod tests {
             assert!(!desc.is_empty());
             assert!(desc.len() > 5); // Should have meaningful descriptions
         }
+    }
+
+    #[test]
+    fn test_permission_cache_stores_decisions() {
+        let manager = PermissionManager::new().with_skip_permissions(false);
+
+        // Manually test cache storage and retrieval
+        let operation = OperationType::WriteFile("/path/to/test.txt".to_string());
+
+        // Initially should not be cached
+        assert!(manager.check_cache(&operation).is_none());
+
+        // Store a specific file decision
+        manager.cache_decision(
+            &operation,
+            PermissionScope::Specific("/path/to/test.txt".to_string()),
+            true,
+        );
+
+        // Should now be cached
+        assert_eq!(manager.check_cache(&operation), Some(true));
+
+        // Same operation should return same cached value
+        assert_eq!(manager.check_cache(&operation), Some(true));
+
+        // Different operation should not be cached
+        let other_operation = OperationType::WriteFile("/path/to/other.txt".to_string());
+        assert!(manager.check_cache(&other_operation).is_none());
+    }
+
+    #[test]
+    fn test_permission_cache_directory_scope() {
+        let manager = PermissionManager::new();
+
+        // Cache a directory-level permission
+        let operation = OperationType::WriteFile("/path/to/dir/file1.txt".to_string());
+        manager.cache_decision(
+            &operation,
+            PermissionScope::Directory("/path/to/dir".to_string()),
+            true,
+        );
+
+        // Should match for files in the same directory
+        assert_eq!(
+            manager.check_cache(&OperationType::WriteFile("/path/to/dir/file1.txt".to_string())),
+            Some(true)
+        );
+        assert_eq!(
+            manager.check_cache(&OperationType::WriteFile("/path/to/dir/file2.txt".to_string())),
+            Some(true)
+        );
+
+        // Should NOT match for files in different directory
+        assert!(
+            manager.check_cache(&OperationType::WriteFile("/other/dir/file.txt".to_string())).is_none()
+        );
+    }
+
+    #[test]
+    fn test_permission_cache_global_scope() {
+        let manager = PermissionManager::new();
+
+        // Cache a global permission for write operations
+        let operation = OperationType::WriteFile("/path/to/file.txt".to_string());
+        manager.cache_decision(&operation, PermissionScope::Global, true);
+
+        // Should match for any write operation
+        assert_eq!(
+            manager.check_cache(&OperationType::WriteFile("/any/path/file.txt".to_string())),
+            Some(true)
+        );
+        assert_eq!(
+            manager.check_cache(&OperationType::WriteFile("/other/file.txt".to_string())),
+            Some(true)
+        );
+
+        // Should NOT match for different operation types
+        assert!(
+            manager.check_cache(&OperationType::ReadFile("/any/path/file.txt".to_string())).is_none()
+        );
+    }
+
+    #[test]
+    fn test_permission_cache_hierarchy() {
+        let manager = PermissionManager::new();
+
+        // Set up hierarchy: global < directory < specific
+        manager.cache_decision(
+            &OperationType::WriteFile("/dir/file.txt".to_string()),
+            PermissionScope::Global,
+            true, // Global: allow all writes
+        );
+        manager.cache_decision(
+            &OperationType::WriteFile("/dir/file.txt".to_string()),
+            PermissionScope::Directory("/dir".to_string()),
+            false, // Directory: deny writes in /dir
+        );
+
+        // Directory permission should override global
+        assert_eq!(
+            manager.check_cache(&OperationType::WriteFile("/dir/file.txt".to_string())),
+            Some(false)
+        );
+
+        // Now add specific permission
+        manager.cache_decision(
+            &OperationType::WriteFile("/dir/file.txt".to_string()),
+            PermissionScope::Specific("/dir/file.txt".to_string()),
+            true, // Specific: allow this one file
+        );
+
+        // Specific permission should override directory
+        assert_eq!(
+            manager.check_cache(&OperationType::WriteFile("/dir/file.txt".to_string())),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn test_permission_cache_cleared() {
+        let manager = PermissionManager::new();
+
+        // Cache some decisions at different scopes
+        manager.cache_decision(
+            &OperationType::WriteFile("/path/file.txt".to_string()),
+            PermissionScope::Specific("/path/file.txt".to_string()),
+            true,
+        );
+        manager.cache_decision(
+            &OperationType::WriteFile("/path/file.txt".to_string()),
+            PermissionScope::Global,
+            true,
+        );
+
+        assert!(manager.check_cache(&OperationType::WriteFile("/path/file.txt".to_string())).is_some());
+
+        // Clear cache
+        manager.clear_cache();
+
+        // Should no longer be cached
+        assert!(manager.check_cache(&OperationType::WriteFile("/path/file.txt".to_string())).is_none());
     }
 }

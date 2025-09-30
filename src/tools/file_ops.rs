@@ -1,3 +1,4 @@
+use crate::permissions::{OperationType, PermissionManager};
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -137,6 +138,26 @@ impl Tool for ReadFileTool {
             "required": ["path"]
         })
     }
+
+    async fn check_permission(
+        &self,
+        args: &serde_json::Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let args: ReadFileArgs = serde_json::from_value(args.clone())
+            .context("Invalid arguments for read_file tool")?;
+
+        // Normalize the path for consistent caching
+        // Use the same resolved path that will be used in execute()
+        let file_path = self.resolve_path(&args.path);
+        let normalized_path = file_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
+            .to_string();
+
+        let operation = OperationType::ReadFile(normalized_path);
+        permission_manager.check_permission(&operation).await
+    }
 }
 
 /// Tool for writing/creating files
@@ -255,6 +276,28 @@ impl Tool for WriteFileTool {
             },
             "required": ["path", "content"]
         })
+    }
+
+    async fn check_permission(
+        &self,
+        args: &serde_json::Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let args: WriteFileArgs = serde_json::from_value(args.clone())
+            .context("Invalid arguments for write_file tool")?;
+
+        // Normalize the path for consistent caching
+        let file_path = self.resolve_path(&args.path);
+        let normalized_path = file_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
+            .to_string();
+
+        // Always use WriteFile for caching consistency
+        // Whether creating or overwriting, the permission is the same: writing to a file
+        let operation = OperationType::WriteFile(normalized_path);
+
+        permission_manager.check_permission(&operation).await
     }
 }
 
@@ -425,6 +468,25 @@ impl Tool for ListDirectoryTool {
             },
             "required": []
         })
+    }
+
+    async fn check_permission(
+        &self,
+        args: &serde_json::Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let args: ListDirectoryArgs = serde_json::from_value(args.clone())
+            .context("Invalid arguments for list_directory tool")?;
+
+        // Normalize the path for consistent caching
+        let dir_path = self.resolve_path(&args.path);
+        let normalized_path = dir_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
+            .to_string();
+
+        let operation = OperationType::ListDirectory(normalized_path);
+        permission_manager.check_permission(&operation).await
     }
 }
 
