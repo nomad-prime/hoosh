@@ -52,13 +52,21 @@ impl Tool for ReadFileTool {
         let file_path = self.resolve_path(&args.path);
 
         // Security check: ensure we're not reading outside the working directory
-        if !file_path.starts_with(&self.working_directory) {
+        // Use canonicalize to resolve symlinks and prevent path traversal attacks
+        let canonical_file = file_path
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?;
+        let canonical_working = self.working_directory
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+
+        if !canonical_file.starts_with(&canonical_working) {
             anyhow::bail!("Access denied: cannot read files outside working directory");
         }
 
-        let content = fs::read_to_string(&file_path)
+        let content = fs::read_to_string(&canonical_file)
             .await
-            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
+            .with_context(|| format!("Failed to read file: {}", canonical_file.display()))?;
 
         // Handle line-based reading if specified
         if let (Some(start), Some(end)) = (args.start_line, args.end_line) {
@@ -176,9 +184,10 @@ impl Tool for WriteFileTool {
         let file_path = self.resolve_path(&args.path);
 
         // Security check: ensure we're not writing outside the working directory
-        if !file_path.starts_with(&self.working_directory) {
-            anyhow::bail!("Access denied: cannot write files outside working directory");
-        }
+        // For write operations, we need to check the parent directory since the file might not exist yet
+        let canonical_working = self.working_directory
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
 
         // Create parent directories if requested
         if args.create_dirs {
@@ -187,6 +196,24 @@ impl Tool for WriteFileTool {
                     .await
                     .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
             }
+        }
+
+        // Check if file exists to determine which path to canonicalize
+        let path_to_check = if file_path.exists() {
+            file_path.canonicalize()
+                .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?
+        } else if let Some(parent) = file_path.parent() {
+            // Check parent directory if file doesn't exist
+            let canonical_parent = parent
+                .canonicalize()
+                .with_context(|| format!("Failed to resolve parent directory: {}", parent.display()))?;
+            canonical_parent.join(file_path.file_name().unwrap())
+        } else {
+            anyhow::bail!("Invalid file path: {}", file_path.display());
+        };
+
+        if !path_to_check.starts_with(&canonical_working) {
+            anyhow::bail!("Access denied: cannot write files outside working directory");
         }
 
         fs::write(&file_path, &args.content)
@@ -288,13 +315,21 @@ impl Tool for ListDirectoryTool {
         let dir_path = self.resolve_path(&args.path);
 
         // Security check: ensure we're not accessing outside the working directory
-        if !dir_path.starts_with(&self.working_directory) {
+        // Use canonicalize to resolve symlinks and prevent path traversal attacks
+        let canonical_dir = dir_path
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve path: {}", dir_path.display()))?;
+        let canonical_working = self.working_directory
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+
+        if !canonical_dir.starts_with(&canonical_working) {
             anyhow::bail!("Access denied: cannot access directories outside working directory");
         }
 
-        let mut entries = fs::read_dir(&dir_path)
+        let mut entries = fs::read_dir(&canonical_dir)
             .await
-            .with_context(|| format!("Failed to read directory: {}", dir_path.display()))?;
+            .with_context(|| format!("Failed to read directory: {}", canonical_dir.display()))?;
 
         let mut directory_entries = Vec::new();
 
@@ -327,7 +362,7 @@ impl Tool for ListDirectoryTool {
         });
 
         // Format output
-        let mut result = format!("Contents of {}:\n", dir_path.display());
+        let mut result = format!("Contents of {}:\n", canonical_dir.display());
 
         if directory_entries.is_empty() {
             result.push_str("  (empty directory)\n");
