@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
+use crate::config::{AppConfig, PromptConfig};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -14,70 +14,18 @@ pub struct SystemPrompt {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SystemPromptsConfig {
-    pub prompts: HashMap<String, PromptMetadata>,
-    pub default_prompt: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptMetadata {
-    pub file: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
-}
-
 pub struct SystemPromptManager {
-    config: SystemPromptsConfig,
-    config_path: PathBuf,
+    config: AppConfig,
 }
 
 impl SystemPrompt {
-    pub fn from_metadata(name: String, metadata: PromptMetadata, content: String) -> Self {
+    pub fn from_config(name: String, config: PromptConfig, content: String) -> Self {
         Self {
             name,
             content,
-            file: metadata.file,
-            description: metadata.description,
-            tags: metadata.tags,
-        }
-    }
-}
-
-impl Default for SystemPromptsConfig {
-    fn default() -> Self {
-        let mut prompts = HashMap::new();
-
-        prompts.insert(
-            "assistant".to_string(),
-            PromptMetadata {
-                file: "assistant.txt".to_string(),
-                description: Some("General purpose assistant with tool usage instructions".to_string()),
-                tags: vec![],
-            }
-        );
-
-        prompts.insert(
-            "code-reviewer".to_string(),
-            PromptMetadata {
-                file: "code-reviewer.txt".to_string(),
-                description: Some("Code review focused prompt".to_string()),
-                tags: vec!["coding".to_string(), "review".to_string()],
-            }
-        );
-
-        prompts.insert(
-            "rust-expert".to_string(),
-            PromptMetadata {
-                file: "rust-expert.txt".to_string(),
-                description: Some("Rust programming expert prompt".to_string()),
-                tags: vec!["rust".to_string(), "programming".to_string()],
-            }
-        );
-
-        Self {
-            prompts,
-            default_prompt: Some("assistant".to_string()),
+            file: config.file,
+            description: config.description,
+            tags: config.tags,
         }
     }
 }
@@ -113,41 +61,21 @@ User: "Create a hello world program"
 
 Remember: Your goal is to help efficiently and then return control to the user by ending with a text-only response."#;
 
-const DEFAULT_CODE_REVIEWER_PROMPT: &str = "You are an expert code reviewer. Focus on code quality, security, performance, and best practices. Provide constructive feedback.";
-
-const DEFAULT_RUST_EXPERT_PROMPT: &str = "You are a Rust programming expert. Help with Rust code, best practices, memory safety, and performance optimization.";
-
 impl SystemPromptManager {
     pub fn new() -> Result<Self> {
-        let config_path = Self::config_path()?;
+        let config = AppConfig::load()?;
         let prompts_dir = Self::prompts_dir()?;
+        Self::initialize_default_prompts(&prompts_dir)?;
 
-        let config = if config_path.exists() {
-            Self::load_config(&config_path)?
-        } else {
-            let default_config = SystemPromptsConfig::default();
-            Self::initialize_default_prompts(&prompts_dir)?;
-            Self::save_config(&config_path, &default_config)?;
-            default_config
-        };
-
-        Ok(Self { config, config_path })
-    }
-
-    fn config_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .context("Could not find config directory")?
-            .join("hoosh");
-
-        fs::create_dir_all(&config_dir)
-            .context("Failed to create config directory")?;
-
-        Ok(config_dir.join("system_prompts.toml"))
+        Ok(Self { config })
     }
 
     fn prompts_dir() -> Result<PathBuf> {
-        let prompts_dir = dirs::config_dir()
-            .context("Could not find config directory")?
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .context("Failed to get home directory")?;
+        let prompts_dir = PathBuf::from(home)
+            .join(".config")
             .join("hoosh")
             .join("prompts");
 
@@ -164,46 +92,20 @@ impl SystemPromptManager {
                 .context("Failed to write default assistant prompt")?;
         }
 
-        let code_reviewer_path = prompts_dir.join("code-reviewer.txt");
-        if !code_reviewer_path.exists() {
-            fs::write(&code_reviewer_path, DEFAULT_CODE_REVIEWER_PROMPT)
-                .context("Failed to write default code reviewer prompt")?;
-        }
-
-        let rust_expert_path = prompts_dir.join("rust-expert.txt");
-        if !rust_expert_path.exists() {
-            fs::write(&rust_expert_path, DEFAULT_RUST_EXPERT_PROMPT)
-                .context("Failed to write default rust expert prompt")?;
-        }
-
         Ok(())
     }
 
-    fn load_config(path: &PathBuf) -> Result<SystemPromptsConfig> {
-        let content = fs::read_to_string(path)
-            .context("Failed to read system prompts config file")?;
-        toml::from_str(&content)
-            .context("Failed to parse system prompts config")
-    }
-
-    fn save_config(path: &PathBuf, config: &SystemPromptsConfig) -> Result<()> {
-        let content = toml::to_string_pretty(config)
-            .context("Failed to serialize system prompts config")?;
-        fs::write(path, content)
-            .context("Failed to write system prompts config file")
-    }
-
-    fn load_prompt_content(&self, metadata: &PromptMetadata) -> Result<String> {
+    fn load_prompt_content(&self, prompt_config: &PromptConfig) -> Result<String> {
         let prompts_dir = Self::prompts_dir()?;
-        let prompt_path = prompts_dir.join(&metadata.file);
+        let prompt_path = prompts_dir.join(&prompt_config.file);
         fs::read_to_string(&prompt_path)
-            .with_context(|| format!("Failed to read prompt file: {}", metadata.file))
+            .with_context(|| format!("Failed to read prompt file: {}", prompt_config.file))
     }
 
     pub fn get_prompt(&self, name: &str) -> Option<SystemPrompt> {
-        self.config.prompts.get(name).and_then(|metadata| {
-            self.load_prompt_content(metadata).ok().map(|content| {
-                SystemPrompt::from_metadata(name.to_string(), metadata.clone(), content)
+        self.config.prompts.get(name).and_then(|prompt_config| {
+            self.load_prompt_content(prompt_config).ok().map(|content| {
+                SystemPrompt::from_config(name.to_string(), prompt_config.clone(), content)
             })
         })
     }
@@ -215,76 +117,11 @@ impl SystemPromptManager {
 
     pub fn list_prompts(&self) -> Vec<SystemPrompt> {
         self.config.prompts.iter()
-            .filter_map(|(name, metadata)| {
-                self.load_prompt_content(metadata).ok().map(|content| {
-                    SystemPrompt::from_metadata(name.clone(), metadata.clone(), content)
+            .filter_map(|(name, prompt_config)| {
+                self.load_prompt_content(prompt_config).ok().map(|content| {
+                    SystemPrompt::from_config(name.clone(), prompt_config.clone(), content)
                 })
             })
             .collect()
-    }
-
-    pub fn add_prompt(&mut self, name: String, content: String, description: Option<String>, tags: Vec<String>) -> Result<()> {
-        let prompts_dir = Self::prompts_dir()?;
-        let filename = format!("{}.txt", name);
-        let prompt_path = prompts_dir.join(&filename);
-
-        fs::write(&prompt_path, content)
-            .context("Failed to write prompt file")?;
-
-        let metadata = PromptMetadata {
-            file: filename,
-            description,
-            tags,
-        };
-
-        self.config.prompts.insert(name, metadata);
-        self.save()
-    }
-
-    pub fn remove_prompt(&mut self, name: &str) -> Result<bool> {
-        if let Some(metadata) = self.config.prompts.remove(name) {
-            let prompts_dir = Self::prompts_dir()?;
-            let prompt_path = prompts_dir.join(&metadata.file);
-            if prompt_path.exists() {
-                fs::remove_file(&prompt_path)
-                    .context("Failed to remove prompt file")?;
-            }
-
-            if self.config.default_prompt.as_ref() == Some(&name.to_string()) {
-                self.config.default_prompt = None;
-            }
-            self.save()?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    pub fn set_default_prompt(&mut self, name: &str) -> Result<bool> {
-        if self.config.prompts.contains_key(name) {
-            self.config.default_prompt = Some(name.to_string());
-            self.save()?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    pub fn find_prompts_by_tag(&self, tag: &str) -> Vec<SystemPrompt> {
-        self.config.prompts.iter()
-            .filter_map(|(name, metadata)| {
-                if metadata.tags.contains(&tag.to_string()) {
-                    self.load_prompt_content(metadata).ok().map(|content| {
-                        SystemPrompt::from_metadata(name.clone(), metadata.clone(), content)
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    fn save(&self) -> Result<()> {
-        Self::save_config(&self.config_path, &self.config)
     }
 }
