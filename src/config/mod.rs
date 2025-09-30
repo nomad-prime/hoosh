@@ -17,55 +17,17 @@ pub struct AppConfig {
     pub backends: HashMap<String, BackendConfig>,
     #[serde(default)]
     pub verbosity: Option<String>,
-    #[serde(default)]
-    pub system_prompt: Option<String>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let default_prompt_path = Self::default_system_prompt_path()
-            .ok()
-            .and_then(|p| p.to_str().map(String::from));
-
         Self {
             default_backend: "mock".to_string(),
             backends: HashMap::new(),
             verbosity: None,
-            system_prompt: default_prompt_path,
         }
     }
 }
-
-const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a helpful AI assistant with access to tools for file operations and bash commands.
-
-# Tool Usage Guidelines
-
-## When to Use Tools
-- Use tools when you need to read, write, or analyze files
-- Use tools when you need to execute commands or check system state
-- Use tools to gather information before providing answers
-
-## When to Respond Directly
-- After gathering necessary information with tools, provide your answer in a text response
-- When answering questions that don't require file access or command execution
-- When the user's request is complete and you're ready to hand control back
-
-## Important Behavior Rules
-1. **Always finish with a text response**: After using tools, analyze the results and provide a clear text response to the user
-2. **Don't loop indefinitely**: Once you have enough information to answer the user's question, stop using tools and respond
-3. **Be concise**: Provide clear, direct answers without unnecessary tool calls
-4. **Return control**: When your task is complete, respond with text (no tool calls) so the user can provide their next instruction
-
-## Example Flow
-User: "What's in the README file?"
-1. Use read_file tool to read README.md
-2. Respond with text summarizing the contents (no more tool calls)
-
-User: "Create a hello world program"
-1. Use write_file tool to create the file
-2. Respond with text confirming completion (no more tool calls)
-
-Remember: Your goal is to help efficiently and then return control to the user by ending with a text-only response."#;
 
 impl AppConfig {
     pub fn load() -> Result<Self> {
@@ -79,43 +41,7 @@ impl AppConfig {
             config
         };
 
-        Self::initialize_default_prompt()?;
         Ok(config)
-    }
-
-    fn initialize_default_prompt() -> Result<()> {
-        let prompt_path = Self::default_system_prompt_path()?;
-        if !prompt_path.exists() {
-            fs::write(&prompt_path, DEFAULT_SYSTEM_PROMPT)
-                .context("Failed to write default system prompt")?;
-        }
-        Ok(())
-    }
-
-    fn default_system_prompt_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .context("Could not find config directory")?
-            .join("hoosh");
-
-        fs::create_dir_all(&config_dir)
-            .context("Failed to create config directory")?;
-
-        Ok(config_dir.join("system_prompt.txt"))
-    }
-
-    pub fn load_system_prompt(&self) -> Result<Option<String>> {
-        if let Some(ref path) = self.system_prompt {
-            let path_buf = PathBuf::from(path);
-            if path_buf.exists() {
-                let content = fs::read_to_string(&path_buf)
-                    .with_context(|| format!("Failed to read system prompt from: {}", path))?;
-                Ok(Some(content))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
     }
 
     pub fn save(&self) -> Result<()> {
