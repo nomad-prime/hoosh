@@ -3,7 +3,6 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::{Path, PathBuf};
 
-/// Represents a file reference found in a message
 #[derive(Debug, Clone)]
 pub struct FileReference {
     pub original_text: String,
@@ -11,7 +10,6 @@ pub struct FileReference {
     pub line_range: Option<(usize, usize)>,
 }
 
-/// Parser for handling @-file syntax in messages
 pub struct MessageParser {
     working_directory: PathBuf,
     read_file_tool: ReadFileTool,
@@ -33,7 +31,6 @@ impl MessageParser {
         }
     }
 
-    /// Parse a message and extract file references
     pub fn find_file_references(&self, message: &str) -> Result<Vec<FileReference>> {
         // Regex to match @filename patterns with optional line ranges
         // Supports: @file.txt, @src/main.rs, @file.txt:10-20, @file.txt:15
@@ -76,7 +73,6 @@ impl MessageParser {
         Ok(references)
     }
 
-    /// Parse line range specifications like "10", "10-20"
     fn parse_line_range(line_spec: &str) -> Result<Option<(usize, usize)>> {
         if line_spec.is_empty() {
             return Ok(None);
@@ -111,7 +107,6 @@ impl MessageParser {
         }
     }
 
-    /// Read the content of a file reference
     pub async fn read_file_reference(&self, file_ref: &FileReference) -> Result<String> {
         let mut args = serde_json::json!({
             "path": file_ref.file_path
@@ -125,7 +120,6 @@ impl MessageParser {
         self.read_file_tool.execute(&args).await
     }
 
-    /// Expand a message by replacing @-file references with actual file contents
     pub async fn expand_message(&self, message: &str) -> Result<String> {
         let file_references = self.find_file_references(message)?;
 
@@ -172,7 +166,6 @@ impl MessageParser {
         Ok(expanded_message)
     }
 
-    /// Check if a file path exists and is accessible
     pub fn validate_file_path(&self, file_path: &str) -> Result<PathBuf> {
         let path = Path::new(file_path);
         let full_path = if path.is_absolute() {
@@ -193,7 +186,6 @@ impl MessageParser {
         Ok(full_path)
     }
 
-    /// Get a summary of file references in a message
     pub fn get_file_summary(&self, message: &str) -> Result<String> {
         let file_references = self.find_file_references(message)?;
 

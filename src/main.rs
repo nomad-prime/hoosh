@@ -10,6 +10,7 @@ use hoosh::{
     conversation::Conversation,
     parser::MessageParser,
     permissions::PermissionManager,
+    system_prompts::SystemPromptManager,
     tool_executor::ToolExecutor,
     tools::ToolRegistry,
 };
@@ -67,7 +68,8 @@ async fn handle_chat(
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    let system_prompt = config.load_system_prompt()?;
+    let prompt_manager = SystemPromptManager::new()?;
+    let system_prompt = prompt_manager.get_default_prompt().map(|p| p.content);
 
     if let Some(msg) = message {
         let expanded_message = match parser.expand_message(&msg).await {
@@ -253,7 +255,7 @@ async fn interactive_chat(
     parser: MessageParser,
     permission_manager: PermissionManager,
     tool_registry: ToolRegistry,
-    config: &AppConfig,
+    _config: &AppConfig,
 ) -> Result<()> {
     console().welcome(backend.backend_name());
     console().file_system_enabled();
@@ -268,7 +270,8 @@ async fn interactive_chat(
     let mut line = String::new();
 
     let mut conversation = Conversation::new();
-    let system_prompt_content = config.load_system_prompt()?;
+    let prompt_manager = SystemPromptManager::new()?;
+    let system_prompt_content = prompt_manager.get_default_prompt().map(|p| p.content);
 
     if let Some(system_content) = system_prompt_content {
         conversation.add_system_message(system_content);
@@ -351,9 +354,6 @@ fn handle_config(action: ConfigAction) -> Result<()> {
             if let Some(ref verbosity) = config.verbosity {
                 console().plain(&format!("verbosity = \"{}\"", verbosity));
             }
-            if let Some(ref system_prompt) = config.system_prompt {
-                console().plain(&format!("system_prompt = \"{}\"", system_prompt));
-            }
 
             for (backend_name, backend_config) in &config.backends {
                 console().newline();
@@ -393,10 +393,6 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                         return Ok(());
                     }
                 }
-            } else if key == "system_prompt" {
-                config.system_prompt = Some(value);
-                config.save()?;
-                console().success("System prompt path updated successfully");
             } else if let Some((backend_name, setting_key)) = key.split_once('_') {
                 if matches!(backend_name, "together")
                     && matches!(setting_key, "ai_api_key" | "ai_model" | "ai_base_url")
