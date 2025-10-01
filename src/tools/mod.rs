@@ -20,6 +20,20 @@ pub trait Tool: Send + Sync {
     /// Get the parameter schema for this tool (JSON Schema format)
     fn parameter_schema(&self) -> Value;
 
+    /// Create a summary of the tool execution result for display
+    /// This allows each tool to format its own output summary
+    fn result_summary(&self, result: &str) -> String {
+        // Default implementation: show first line or generic message
+        let preview = result.lines().next().unwrap_or("");
+        if preview.len() > 60 {
+            format!("{}...", &preview[..60])
+        } else if !preview.is_empty() {
+            preview.to_string()
+        } else {
+            "Completed successfully".to_string()
+        }
+    }
+
     /// Check if this tool execution is permitted
     /// Each tool knows how to request its own permissions
     /// Default implementation allows all operations (for safe/readonly tools)

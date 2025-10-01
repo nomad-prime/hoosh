@@ -1,8 +1,9 @@
 use anyhow::Result;
+use serde_json::Value;
 
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::console::console;
-use crate::conversations::Conversation;
+use crate::conversations::{Conversation, ToolCall};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -77,21 +78,24 @@ impl<'a> ConversationHandler<'a> {
         &self,
         conversation: &mut Conversation,
         response: LlmResponse,
-        step: usize,
+        _step: usize,
     ) -> Result<TurnStatus> {
         let tool_calls = response.tool_calls.clone().unwrap();
 
+        conversation.add_assistant_message(response.content.clone(), Some(tool_calls.clone()));
+
         if let Some(ref content) = response.content {
-            console().verbose(&format!("\x1b[1;36mه\x1b[0m {}", content));
+            console().assistant_thought(content);
         }
 
-        conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
-
-        self.display_tool_execution_message(step);
+        // Display tool calls and execute them one by one to maintain proper spacing
+        for tool_call in tool_calls.iter() {
+            self.display_tool_call(tool_call);
+        }
 
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
-        self.log_tool_results(&tool_results);
+        self.display_tool_results(&tool_results);
 
         for tool_result in tool_results {
             conversation.add_tool_result(tool_result);
@@ -100,33 +104,52 @@ impl<'a> ConversationHandler<'a> {
         Ok(TurnStatus::Continue)
     }
 
-    fn display_tool_execution_message(&self, step: usize) {
-        if step == 0 {
-            console().executing_tools();
+    fn display_tool_call(&self, tool_call: &ToolCall) {
+        let args_summary = self.format_tool_args(&tool_call.function.arguments);
+        console().tool_call(&tool_call.function.name, &args_summary);
+    }
+
+    fn format_tool_args(&self, args_json: &str) -> String {
+        if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(args_json) {
+            let parts: Vec<String> = map
+                .iter()
+                .map(|(k, v)| {
+                    let val_str = match v {
+                        Value::String(s) => format!("\"{}\"", s),
+                        Value::Number(n) => n.to_string(),
+                        Value::Bool(b) => b.to_string(),
+                        _ => v.to_string(),
+                    };
+                    format!("{}: {}", k, val_str)
+                })
+                .collect();
+            format!("{})", parts.join(", "))
         } else {
-            console().executing_more_tools();
+            ")".to_string()
         }
     }
 
-    fn log_tool_results(&self, tool_results: &[crate::conversations::ToolResult]) {
+    fn display_tool_results(&self, tool_results: &[crate::conversations::ToolResult]) {
         for tool_result in tool_results {
             if let Ok(ref result) = tool_result.result {
-                console().verbose(&format!(
-                    "Tool '{}' result: {}",
-                    tool_result.tool_name,
-                    if result.len() > 200 {
-                        format!("{}...", &result[..200])
-                    } else {
-                        result.clone()
-                    }
-                ));
+                // Get the tool from registry to use its summary method
+                if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
+                    let summary = tool.result_summary(result);
+                    console().tool_result_summary(&summary);
+                } else {
+                    // Fallback if tool not found
+                    console().tool_result_summary("Completed successfully");
+                }
+            } else if let Err(ref error) = tool_result.result {
+                console().tool_result_summary(&format!("Error: {}", error));
             }
         }
+        console().newline();
     }
 
+
     fn display_final_response(&self, content: &str) {
-        console().plain(&format!("{}", content));
-        console().newline();
+        console().plain(content);
     }
 }
 

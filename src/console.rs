@@ -1,5 +1,6 @@
 use std::fmt;
 use std::sync::{Arc, OnceLock};
+use colored::Colorize;
 
 /// Verbosity levels for console output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -12,6 +13,29 @@ pub enum VerbosityLevel {
     Verbose = 2,
     /// Debug output with detailed information
     Debug = 3,
+}
+
+/// Message types for different console outputs
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageType {
+    /// User input
+    UserInput,
+    /// Assistant thought/commentary
+    AssistantThought,
+    /// Tool execution indicator
+    ToolExecution,
+    /// Tool result
+    ToolResult,
+    /// Final response from assistant
+    FinalResponse,
+    /// Thinking indicator
+    Thinking,
+    /// Error message
+    Error,
+    /// Warning message
+    Warning,
+    /// Success message
+    Success,
 }
 
 impl fmt::Display for VerbosityLevel {
@@ -85,7 +109,105 @@ impl Console {
 
     pub fn thinking(&self) {
         if self.should_show(VerbosityLevel::Normal) {
-            println!("🤖 Thinking...");
+            println!("{}", "🔄 Thinking...".dimmed());
+        }
+    }
+
+    pub fn message(&self, msg_type: MessageType, content: &str) {
+        if !self.should_show(VerbosityLevel::Normal) {
+            return;
+        }
+
+        match msg_type {
+            MessageType::Thinking => println!("{}", "🔄 Thinking...".dimmed()),
+            MessageType::ToolExecution => println!("{}", "↘ Executing tools...".dimmed()),
+            MessageType::AssistantThought => {
+                if !content.is_empty() {
+                    println!("{} {}", "•".dimmed(), content);
+                }
+            }
+            MessageType::ToolResult => {
+                if !content.is_empty() {
+                    println!("{}", content);
+                }
+            }
+            MessageType::FinalResponse => {
+                if !content.is_empty() {
+                    println!("{}", content);
+                }
+            }
+            MessageType::Error => println!("❌ {}", content),
+            MessageType::Warning => println!("⚠️  {}", content),
+            MessageType::Success => println!("✅ {}", content),
+            MessageType::UserInput => println!("> {}", content),
+        }
+    }
+
+    pub fn tool_call(&self, tool_name: &str, args_summary: &str) {
+        if !self.should_show(VerbosityLevel::Normal) {
+            return;
+        }
+        println!("{} {}{}{}",
+            "⏺".dimmed(),
+            tool_name.green(),
+            "(".dimmed(),
+            format!("{}", args_summary).dimmed()
+        );
+    }
+
+    pub fn tool_result_summary(&self, summary: &str) {
+        if !self.should_show(VerbosityLevel::Normal) {
+            return;
+        }
+        println!("  {} {}",
+            "⎿".dimmed(),
+            summary.dimmed()
+        );
+    }
+
+    pub fn tool_result(&self, tool_name: &str, result: &str, max_length: usize) {
+        if !self.should_show(VerbosityLevel::Normal) {
+            return;
+        }
+
+        let truncated = if result.len() > max_length {
+            let mut s = result.chars().take(max_length).collect::<String>();
+            s.push_str("...");
+            s
+        } else {
+            result.to_string()
+        };
+
+        println!("{} {} {}",
+            "Tool".dimmed(),
+            format!("'{}'", tool_name).cyan(),
+            "result:".dimmed()
+        );
+
+        for (i, line) in truncated.lines().enumerate() {
+            if i >= 15 {
+                println!("  {}", "...".dimmed());
+                break;
+            }
+            println!("  {}", line);
+        }
+    }
+
+    pub fn executing_tools_arrow(&self) {
+        if self.should_show(VerbosityLevel::Normal) {
+            println!("{}", "↘ Executing tools...".dimmed());
+        }
+    }
+
+    pub fn executing_more_tools_arrow(&self) {
+        if self.should_show(VerbosityLevel::Normal) {
+            println!("{}", "↘ Executing more tools...".dimmed());
+        }
+    }
+
+    pub fn assistant_thought(&self, content: &str) {
+        if self.should_show(VerbosityLevel::Normal) && !content.is_empty() {
+            println!("{} {}", "•".dimmed(), content);
         }
     }
 
@@ -145,7 +267,7 @@ impl Console {
 
     pub fn permissions_disabled(&self) {
         if self.should_show(VerbosityLevel::Normal) {
-            println!("⚠️  Permission checks disabled (--skip-permissions)");
+            println!("⚠️ Permission checks disabled (--skip-permissions)");
         }
     }
 
