@@ -7,7 +7,15 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-/// Tool for reading file contents
+fn resolve_path(file_path: &str, working_directory: &Path) -> PathBuf {
+    let path = Path::new(file_path);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        working_directory.join(path)
+    }
+}
+
 pub struct ReadFileTool {
     working_directory: PathBuf,
 }
@@ -22,15 +30,6 @@ impl ReadFileTool {
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
             working_directory: working_dir,
-        }
-    }
-
-    fn resolve_path(&self, file_path: &str) -> PathBuf {
-        let path = Path::new(file_path);
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            self.working_directory.join(path)
         }
     }
 }
@@ -50,7 +49,7 @@ impl Tool for ReadFileTool {
         let args: ReadFileArgs =
             serde_json::from_value(args.clone()).context("Invalid arguments for read_file tool")?;
 
-        let file_path = self.resolve_path(&args.path);
+        let file_path = resolve_path(&args.path, &self.working_directory);
 
         // Security check: ensure we're not reading outside the working directory
         // Use canonicalize to resolve symlinks and prevent path traversal attacks
@@ -139,6 +138,11 @@ impl Tool for ReadFileTool {
         })
     }
 
+    fn result_summary(&self, result: &str) -> String {
+        let lines = result.lines().count();
+        format!("Read {} lines (ctrl+o to expand)", lines)
+    }
+
     async fn check_permission(
         &self,
         args: &serde_json::Value,
@@ -149,7 +153,7 @@ impl Tool for ReadFileTool {
 
         // Normalize the path for consistent caching
         // Use the same resolved path that will be used in execute()
-        let file_path = self.resolve_path(&args.path);
+        let file_path = resolve_path(&args.path, &self.working_directory);
         let normalized_path = file_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
@@ -160,7 +164,6 @@ impl Tool for ReadFileTool {
     }
 }
 
-/// Tool for writing/creating files
 pub struct WriteFileTool {
     working_directory: PathBuf,
 }
@@ -175,15 +178,6 @@ impl WriteFileTool {
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
             working_directory: working_dir,
-        }
-    }
-
-    fn resolve_path(&self, file_path: &str) -> PathBuf {
-        let path = Path::new(file_path);
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            self.working_directory.join(path)
         }
     }
 }
@@ -202,7 +196,7 @@ impl Tool for WriteFileTool {
         let args: WriteFileArgs = serde_json::from_value(args.clone())
             .context("Invalid arguments for write_file tool")?;
 
-        let file_path = self.resolve_path(&args.path);
+        let file_path = resolve_path(&args.path, &self.working_directory);
 
         // Security check: ensure we're not writing outside the working directory
         // For write operations, we need to check the parent directory since the file might not exist yet
@@ -278,6 +272,16 @@ impl Tool for WriteFileTool {
         })
     }
 
+    fn result_summary(&self, result: &str) -> String {
+        // Extract byte count from result like "Successfully wrote 123 bytes to ..."
+        if let Some(bytes_str) = result.split("wrote ").nth(1) {
+            if let Some(bytes) = bytes_str.split(" bytes").next() {
+                return format!("Wrote {} bytes", bytes);
+            }
+        }
+        "File written successfully".to_string()
+    }
+
     async fn check_permission(
         &self,
         args: &serde_json::Value,
@@ -287,7 +291,7 @@ impl Tool for WriteFileTool {
             .context("Invalid arguments for write_file tool")?;
 
         // Normalize the path for consistent caching
-        let file_path = self.resolve_path(&args.path);
+        let file_path = resolve_path(&args.path, &self.working_directory);
         let normalized_path = file_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
@@ -301,7 +305,6 @@ impl Tool for WriteFileTool {
     }
 }
 
-/// Tool for listing directory contents
 pub struct ListDirectoryTool {
     working_directory: PathBuf,
 }
@@ -470,9 +473,22 @@ impl Tool for ListDirectoryTool {
         })
     }
 
+    fn result_summary(&self, result: &str) -> String {
+        let file_count = result.matches("📄").count();
+        let dir_count = result.matches("📁").count();
+
+        if file_count > 0 || dir_count > 0 {
+            format!("Found {} files, {} directories (ctrl+o to expand)", file_count, dir_count)
+        } else if result.contains("empty directory") {
+            "Empty directory".to_string()
+        } else {
+            "Listed directory contents (ctrl+o to expand)".to_string()
+        }
+    }
+
     async fn check_permission(
         &self,
-        args: &serde_json::Value,
+        args: &Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
         let args: ListDirectoryArgs = serde_json::from_value(args.clone())

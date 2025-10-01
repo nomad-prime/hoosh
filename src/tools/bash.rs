@@ -247,6 +247,28 @@ impl Tool for BashTool {
         })
     }
 
+    fn result_summary(&self, result: &str) -> String {
+        // Check if command completed successfully
+        if result.contains("Exit code: 0") {
+            // Try to extract meaningful output
+            if let Some(stdout) = result.split("STDOUT:\n").nth(1) {
+                let output_line = stdout.lines().next().unwrap_or("");
+                if !output_line.is_empty() && !output_line.starts_with("Exit code:") {
+                    if output_line.len() > 50 {
+                        return format!("{}...", &output_line[..50]);
+                    }
+                    return output_line.to_string();
+                }
+            }
+            "Command completed successfully".to_string()
+        } else if result.contains("Command failed") {
+            "Command failed with non-zero exit code".to_string()
+        } else {
+            let lines = result.lines().count();
+            format!("Command completed ({} lines output)", lines)
+        }
+    }
+
     async fn check_permission(
         &self,
         args: &serde_json::Value,

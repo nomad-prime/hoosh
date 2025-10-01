@@ -95,7 +95,7 @@ async fn handle_chat(
         handle_conversation_turn(&backend, &mut conversation, &tool_registry, &tool_executor)
             .await?;
     } else {
-        interactive_chat(backend, parser, permission_manager, tool_registry, config).await?;
+        interactive_chat(backend, parser, permission_manager, tool_registry).await?;
     }
 
     Ok(())
@@ -207,7 +207,6 @@ async fn interactive_chat(
     parser: MessageParser,
     permission_manager: PermissionManager,
     tool_registry: ToolRegistry,
-    _config: &AppConfig,
 ) -> Result<()> {
     console().welcome(backend.backend_name());
     console().file_system_enabled();

@@ -237,14 +237,15 @@ impl PermissionManager {
     /// Ask user for permission interactively
     /// Returns (allowed, optional_scope)
     async fn ask_user_permission(&self, operation: &OperationType) -> Result<(bool, Option<PermissionScope>)> {
+        println!(); // Add newline for spacing before permission prompt
+
         let warning_emoji = if operation.is_destructive() {
             "⚠️"
         } else {
             "🔒"
         };
 
-        println!(
-            "{} Permission required to {}",
+        println!("{} Permission required to {}",
             warning_emoji,
             operation.description()
         );
