@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde_json;
 
-use crate::conversation::{ToolCall, ToolResult};
+use crate::conversations::{ToolCall, ToolResult};
 use crate::permissions::PermissionManager;
 use crate::tools::{BashTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool};
 
@@ -114,7 +114,7 @@ impl ToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversation::{ToolCall, ToolFunction};
+    use crate::conversations::{ToolCall, ToolFunction};
     use serde_json::json;
     use tempfile::tempdir;
 

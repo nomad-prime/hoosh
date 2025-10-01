@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use futures_util::stream;
 use super::{LlmBackend, LlmResponse, StreamResponse};
-use crate::conversation::Conversation;
+use crate::conversations::Conversation;
 use crate::tools::ToolRegistry;
 
 pub struct MockBackend;

@@ -3,12 +3,12 @@ use async_trait::async_trait;
 use futures_util::Stream;
 use std::pin::Pin;
 
-use crate::conversation::{Conversation, ToolCall};
+use crate::conversations::{Conversation, ToolCall};
 use crate::tools::ToolRegistry;
 
 pub type StreamResponse = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
