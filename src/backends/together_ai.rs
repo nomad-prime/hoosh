@@ -4,7 +4,7 @@ use futures_util::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use super::{LlmBackend, LlmResponse, StreamResponse};
-use crate::conversation::{Conversation, ConversationMessage, ToolCall};
+use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]

@@ -8,7 +8,7 @@ use hoosh::{
     cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
     console::{console, init_console},
-    conversation::Conversation,
+    conversations::{Conversation, ConversationHandler},
     input::InputHandler,
     parser::MessageParser,
     permissions::PermissionManager,
@@ -198,79 +198,8 @@ async fn handle_conversation_turn(
     tool_registry: &ToolRegistry,
     tool_executor: &ToolExecutor,
 ) -> Result<()> {
-    const MAX_STEPS: usize = 30;
-
-    console().thinking();
-
-    for step in 0..MAX_STEPS {
-        let response = backend
-            .send_message_with_tools(conversation, tool_registry)
-            .await?;
-
-        if let Some(tool_calls) = response.tool_calls {
-            if !tool_calls.is_empty() {
-                // Show assistant thinking content if present
-                if let Some(ref content) = response.content {
-                    console().verbose(&format!("\x1b[1;36mه\x1b[0m {}", content));
-                }
-
-                conversation.add_assistant_message(response.content, Some(tool_calls.clone()));
-
-                // Show appropriate tool execution message
-                if step == 0 {
-                    console().executing_tools();
-                } else {
-                    console().executing_more_tools();
-                }
-
-                // Execute all tool calls
-                let tool_results = tool_executor.execute_tool_calls(&tool_calls).await;
-
-                // Log and add tool results to conversation
-                for tool_result in tool_results {
-                    if let Ok(ref result) = tool_result.result {
-                        console().verbose(&format!(
-                            "Tool '{}' result: {}",
-                            tool_result.tool_name,
-                            if result.len() > 200 {
-                                format!("{}...", &result[..200])
-                            } else {
-                                result.clone()
-                            }
-                        ));
-                    }
-                    conversation.add_tool_result(tool_result);
-                }
-
-                // Continue to next iteration to process tool results
-                continue;
-            } else if let Some(content) = response.content {
-                // No tool calls, just content - we're done
-                console().plain(&format!("{}", content));
-                console().newline();
-                conversation.add_assistant_message(Some(content), None);
-                return Ok(());
-            } else {
-                // No tool calls and no content
-                console().warning("No response received.");
-                return Ok(());
-            }
-        } else if let Some(content) = response.content {
-            // No tool calls, just content - we're done
-            console().plain(&format!("{}", content));
-            console().newline();
-            conversation.add_assistant_message(Some(content), None);
-            return Ok(());
-        } else {
-            // No response at all
-            console().warning("No response received.");
-            return Ok(());
-        }
-    }
-
-    // If we've reached here, we've hit MAX_STEPS
-    console().max_steps_reached(MAX_STEPS);
-    Ok(())
+    let handler = ConversationHandler::new(backend, tool_registry, tool_executor);
+    handler.handle_turn(conversation).await
 }
 
 async fn interactive_chat(
