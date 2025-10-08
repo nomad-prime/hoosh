@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
+use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::console::console;
@@ -7,11 +8,23 @@ use crate::conversations::{Conversation, ToolCall};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
+#[derive(Debug, Clone)]
+pub enum ConversationEvent {
+    Thinking,
+    AssistantThought(String),
+    ToolCalls(Vec<ToolCall>),
+    ToolResult { tool_name: String, summary: String },
+    FinalResponse(String),
+    Error(String),
+    MaxStepsReached(usize),
+}
+
 pub struct ConversationHandler<'a> {
     backend: &'a Box<dyn LlmBackend>,
     tool_registry: &'a ToolRegistry,
     tool_executor: &'a ToolExecutor,
     max_steps: usize,
+    event_sender: Option<mpsc::UnboundedSender<ConversationEvent>>,
 }
 
 impl<'a> ConversationHandler<'a> {
@@ -25,6 +38,7 @@ impl<'a> ConversationHandler<'a> {
             tool_registry,
             tool_executor,
             max_steps: 30,
+            event_sender: None,
         }
     }
 
@@ -33,7 +47,19 @@ impl<'a> ConversationHandler<'a> {
         self
     }
 
+    pub fn with_event_sender(mut self, sender: mpsc::UnboundedSender<ConversationEvent>) -> Self {
+        self.event_sender = Some(sender);
+        self
+    }
+
+    fn send_event(&self, event: ConversationEvent) {
+        if let Some(sender) = &self.event_sender {
+            let _ = sender.send(event);
+        }
+    }
+
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
+        self.send_event(ConversationEvent::Thinking);
         console().thinking();
 
         for step in 0..self.max_steps {
@@ -48,6 +74,7 @@ impl<'a> ConversationHandler<'a> {
             }
         }
 
+        self.send_event(ConversationEvent::MaxStepsReached(self.max_steps));
         console().max_steps_reached(self.max_steps);
         Ok(())
     }
@@ -65,11 +92,13 @@ impl<'a> ConversationHandler<'a> {
         }
 
         if let Some(content) = response.content {
+            self.send_event(ConversationEvent::FinalResponse(content.clone()));
             self.display_final_response(&content);
             conversation.add_assistant_message(Some(content), None);
             return Ok(TurnStatus::Complete);
         }
 
+        self.send_event(ConversationEvent::Error("No response received".to_string()));
         console().warning("No response received.");
         Ok(TurnStatus::Complete)
     }
@@ -85,8 +114,11 @@ impl<'a> ConversationHandler<'a> {
         conversation.add_assistant_message(response.content.clone(), Some(tool_calls.clone()));
 
         if let Some(ref content) = response.content {
+            self.send_event(ConversationEvent::AssistantThought(content.clone()));
             console().assistant_thought(content);
         }
+
+        self.send_event(ConversationEvent::ToolCalls(tool_calls.clone()));
 
         // Display tool calls and execute them one by one to maintain proper spacing
         for tool_call in tool_calls.iter() {
@@ -131,18 +163,25 @@ impl<'a> ConversationHandler<'a> {
 
     fn display_tool_results(&self, tool_results: &[crate::conversations::ToolResult]) {
         for tool_result in tool_results {
-            if let Ok(ref result) = tool_result.result {
+            let summary = if let Ok(ref result) = tool_result.result {
                 // Get the tool from registry to use its summary method
                 if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
-                    let summary = tool.result_summary(result);
-                    console().tool_result_summary(&summary);
+                    tool.result_summary(result)
                 } else {
                     // Fallback if tool not found
-                    console().tool_result_summary("Completed successfully");
+                    "Completed successfully".to_string()
                 }
             } else if let Err(ref error) = tool_result.result {
-                console().tool_result_summary(&format!("Error: {}", error));
-            }
+                format!("Error: {}", error)
+            } else {
+                continue;
+            };
+
+            self.send_event(ConversationEvent::ToolResult {
+                tool_name: tool_result.tool_name.clone(),
+                summary: summary.clone(),
+            });
+            console().tool_result_summary(&summary);
         }
         console().newline();
     }
