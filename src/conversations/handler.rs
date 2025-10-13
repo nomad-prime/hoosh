@@ -3,6 +3,7 @@ use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::conversations::Conversation;
+use crate::permissions::{OperationType, PermissionScope};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -16,6 +17,17 @@ pub enum ConversationEvent {
     FinalResponse(String),
     Error(String),
     MaxStepsReached(usize),
+    PermissionRequest {
+        operation: OperationType,
+        request_id: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct PermissionResponse {
+    pub request_id: String,
+    pub allowed: bool,
+    pub scope: Option<PermissionScope>,
 }
 
 pub struct ConversationHandler<'a> {
