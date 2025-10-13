@@ -1,11 +1,17 @@
+use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
 use super::events::{AgentEvent, AgentState};
 
+pub enum MessageLine {
+    Plain(String),
+    Styled(Line<'static>),
+}
+
 pub struct AppState {
     pub input: TextArea<'static>,
-    pub messages: VecDeque<String>,
+    pub messages: VecDeque<MessageLine>,
     pub agent_state: AgentState,
     pub should_quit: bool,
     pub max_messages: usize,
@@ -32,7 +38,16 @@ impl AppState {
     }
 
     pub fn add_message(&mut self, message: String) {
-        self.messages.push_back(message);
+        self.messages.push_back(MessageLine::Plain(message));
+        if self.messages.len() > self.max_messages {
+            self.messages.pop_front();
+        }
+        // Auto-scroll to bottom when new message arrives
+        self.scroll_to_bottom();
+    }
+
+    pub fn add_styled_line(&mut self, line: Line<'static>) {
+        self.messages.push_back(MessageLine::Styled(line));
         if self.messages.len() > self.max_messages {
             self.messages.pop_front();
         }
@@ -43,7 +58,10 @@ impl AppState {
     pub fn total_lines(&self) -> u16 {
         self.messages
             .iter()
-            .map(|msg| msg.lines().count() as u16)
+            .map(|msg| match msg {
+                MessageLine::Plain(s) => s.lines().count() as u16,
+                MessageLine::Styled(_) => 1,
+            })
             .sum()
     }
 

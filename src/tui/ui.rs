@@ -15,6 +15,8 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
 }
 
 fn render_messages(frame: &mut Frame, area: Rect, app: &mut AppState) {
+    use super::app::MessageLine;
+
     // Update viewport height for scroll calculations
     app.viewport_height = area.height;
 
@@ -28,11 +30,12 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut AppState) {
     let lines: Vec<Line> = app
         .messages
         .iter()
-        .flat_map(|message| {
-            message
+        .flat_map(|message| match message {
+            MessageLine::Plain(text) => text
                 .lines()
                 .map(|line| Line::from(Span::raw(line.to_string())))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
+            MessageLine::Styled(line) => vec![line.clone()],
         })
         .collect();
 
