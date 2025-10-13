@@ -3,16 +3,13 @@ use clap::Parser;
 #[cfg(feature = "together-ai")]
 use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
 use hoosh::{
-    agents::AgentManager,
     backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
     console::{console, init_console},
-    conversations::{Conversation, ConversationHandler},
     parser::MessageParser,
     permissions::PermissionManager,
     tool_executor::ToolExecutor,
-    tools::ToolRegistry,
 };
 use std::path::PathBuf;
 
@@ -28,16 +25,12 @@ async fn main() -> Result<()> {
     init_console(effective_verbosity);
 
     match cli.command {
-        Commands::Chat {
-            backend,
-            add_dir,
-            skip_permissions,
-            message,
-        } => {
-            handle_chat(backend, add_dir, skip_permissions, message, &config).await?;
-        }
-        Commands::Config { action } => {
+        Some(Commands::Config { action }) => {
             handle_config(action)?;
+        }
+        None => {
+            // Default to chat mode
+            handle_chat(cli.backend, cli.add_dir, cli.skip_permissions, &config).await?;
         }
     }
 
@@ -48,7 +41,6 @@ async fn handle_chat(
     backend_name: Option<String>,
     add_dirs: Vec<String>,
     skip_permissions: bool,
-    message: Option<String>,
     config: &AppConfig,
 ) -> Result<()> {
     let backend_name = backend_name.unwrap_or(config.default_backend.clone());
@@ -66,41 +58,10 @@ async fn handle_chat(
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    let agent_manager = AgentManager::new()?;
-    let default_agent = agent_manager.get_default_agent();
-
-    if let Some(msg) = message {
-        let expanded_message = match parser.expand_message(&msg).await {
-            Ok(expanded) => {
-                if expanded != msg {
-                    console().verbose("Expanded file references in message...");
-                }
-                expanded
-            }
-            Err(e) => {
-                console().warning(&format!("Error expanding file references: {}", e));
-                msg // Use original message if expansion fails
-            }
-        };
-
-        let mut conversation = Conversation::new();
-        if let Some(agent) = default_agent {
-            conversation.add_system_message(agent.content);
-        }
-        conversation.add_user_message(expanded_message);
-
-        let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
-
-        handle_conversation_turn(&backend, &mut conversation, &tool_registry, &tool_executor)
-            .await?;
-    } else {
-        hoosh::tui::run(backend, parser, permission_manager, tool_registry).await?;
-    }
+    hoosh::tui::run(backend, parser, permission_manager, tool_registry).await?;
 
     Ok(())
 }
-
-
 fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
     match backend_name {
         "mock" => {
@@ -141,17 +102,6 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
             );
         }
     }
-}
-
-/// Handle a single conversation turn with tool support
-async fn handle_conversation_turn(
-    backend: &Box<dyn LlmBackend>,
-    conversation: &mut Conversation,
-    tool_registry: &ToolRegistry,
-    tool_executor: &ToolExecutor,
-) -> Result<()> {
-    let handler = ConversationHandler::new(backend, tool_registry, tool_executor);
-    handler.handle_turn(conversation).await
 }
 
 fn handle_config(action: ConfigAction) -> Result<()> {

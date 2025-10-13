@@ -12,21 +12,24 @@ pub struct Cli {
     #[arg(short = 'q', long = "quiet", conflicts_with = "verbose")]
     pub quiet: bool,
 
+    /// Backend to use for chat
+    #[arg(short, long)]
+    pub backend: Option<String>,
+
+    /// Add directories to the context
+    #[arg(long)]
+    pub add_dir: Vec<String>,
+
+    /// Skip permission checks
+    #[arg(long)]
+    pub skip_permissions: bool,
+
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Chat {
-        #[arg(short, long)]
-        backend: Option<String>,
-        #[arg(long)]
-        add_dir: Vec<String>,
-        #[arg(long)]
-        skip_permissions: bool,
-        message: Option<String>,
-    },
     Config {
         #[command(subcommand)]
         action: ConfigAction,
