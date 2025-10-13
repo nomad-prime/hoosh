@@ -1,5 +1,6 @@
 mod app;
 mod events;
+mod header;
 mod terminal;
 mod ui;
 
@@ -30,25 +31,21 @@ pub async fn run(
     let mut terminal = init_terminal()?;
     let mut app = AppState::new();
 
-    app.add_message(format!(
-        "🚀 Welcome to hoosh! Using backend: {}",
-        backend.backend_name()
-    ));
+    let agent_manager = AgentManager::new()?;
+    let default_agent = agent_manager.get_default_agent();
+
+    // Add ASCII art header with backend and agent info
+    let agent_name = default_agent.as_ref().map(|a| a.name.as_str());
+    for line in header::create_header_block(backend.backend_name(), agent_name) {
+        app.add_styled_line(line);
+    }
+
     app.add_message(
         "📁 File system integration enabled - use @filename to reference files".to_string(),
     );
 
     if !permission_manager.is_enforcing() {
         app.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
-    }
-
-    let agent_manager = AgentManager::new()?;
-    let default_agent = agent_manager.get_default_agent();
-
-    if let Some(ref agent) = default_agent {
-        app.add_message(format!("📝 Agent: {}", agent.name));
-    } else {
-        app.add_message("⚠️ No agent loaded".to_string());
     }
 
     app.add_message("Type your message and press Enter to send.".to_string());
