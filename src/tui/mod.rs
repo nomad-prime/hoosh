@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::conversations::{Conversation, ConversationEvent, ConversationHandler, PermissionResponse};
+use crate::conversations::{AgentEvent, Conversation, ConversationHandler, PermissionResponse};
 use crate::parser::MessageParser;
 use crate::permissions::{PermissionManager, PermissionScope};
 use crate::tool_executor::ToolExecutor;
@@ -21,7 +21,6 @@ use crate::tools::ToolRegistry;
 
 use app::AppState;
 use completion::FileCompleter;
-use events::AgentEvent;
 use terminal::{init_terminal, restore_terminal};
 
 pub async fn run(
@@ -107,8 +106,8 @@ async fn run_event_loop(
     tool_registry: ToolRegistry,
     tool_executor: ToolExecutor,
     conversation: Arc<tokio::sync::Mutex<Conversation>>,
-    event_rx: &mut mpsc::UnboundedReceiver<ConversationEvent>,
-    event_tx: mpsc::UnboundedSender<ConversationEvent>,
+    event_rx: &mut mpsc::UnboundedReceiver<AgentEvent>,
+    event_tx: mpsc::UnboundedSender<AgentEvent>,
     permission_response_tx: mpsc::UnboundedSender<PermissionResponse>,
 ) -> Result<()> {
     let backend = Arc::new(backend);
@@ -124,32 +123,11 @@ async fn run_event_loop(
         // Check for agent events
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                ConversationEvent::Thinking => {
-                    app.handle_agent_event(AgentEvent::Thinking);
-                }
-                ConversationEvent::AssistantThought(content) => {
-                    app.handle_agent_event(AgentEvent::AssistantThought(content));
-                }
-                ConversationEvent::ToolCalls(calls) => {
-                    app.handle_agent_event(AgentEvent::ToolCalls(calls));
-                }
-                ConversationEvent::ToolResult { tool_name, summary } => {
-                    app.handle_agent_event(AgentEvent::ToolResult { tool_name, summary });
-                }
-                ConversationEvent::ToolExecutionComplete => {
-                    app.handle_agent_event(AgentEvent::ToolExecutionComplete);
-                }
-                ConversationEvent::FinalResponse(content) => {
-                    app.handle_agent_event(AgentEvent::FinalResponse(content));
-                }
-                ConversationEvent::Error(error) => {
-                    app.handle_agent_event(AgentEvent::Error(error));
-                }
-                ConversationEvent::MaxStepsReached(max_steps) => {
-                    app.handle_agent_event(AgentEvent::MaxStepsReached(max_steps));
-                }
-                ConversationEvent::PermissionRequest { operation, request_id } => {
+                AgentEvent::PermissionRequest { operation, request_id } => {
                     app.show_permission_dialog(operation, request_id);
+                }
+                other_event => {
+                    app.handle_agent_event(other_event);
                 }
             }
         }

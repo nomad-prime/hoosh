@@ -128,7 +128,7 @@ pub struct PermissionManager {
     /// Key is a string representation of the operation
     session_cache: Arc<Mutex<HashMap<String, bool>>>,
     /// Event sender for sending permission requests to UI
-    event_sender: Option<mpsc::UnboundedSender<crate::conversations::ConversationEvent>>,
+    event_sender: Option<mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     /// Response receiver for receiving permission responses from UI
     response_receiver: Option<Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>>,
     /// Request ID counter for generating unique permission request IDs
@@ -159,7 +159,7 @@ impl PermissionManager {
 
     pub fn with_event_sender(
         mut self,
-        sender: mpsc::UnboundedSender<crate::conversations::ConversationEvent>,
+        sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
     ) -> Self {
         self.event_sender = Some(sender);
         self
@@ -277,14 +277,14 @@ impl PermissionManager {
     async fn ask_user_permission_via_tui(
         &self,
         operation: &OperationType,
-        sender: &mpsc::UnboundedSender<crate::conversations::ConversationEvent>,
+        sender: &mpsc::UnboundedSender<crate::conversations::AgentEvent>,
         receiver: &Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
     ) -> Result<(bool, Option<PermissionScope>)> {
         // Generate unique request ID
         let request_id = self.request_counter.fetch_add(1, Ordering::SeqCst).to_string();
 
         // Send permission request event
-        let event = crate::conversations::ConversationEvent::PermissionRequest {
+        let event = crate::conversations::AgentEvent::PermissionRequest {
             operation: operation.clone(),
             request_id: request_id.clone(),
         };
