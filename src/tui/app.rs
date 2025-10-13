@@ -73,25 +73,29 @@ impl AppState {
             }
             AgentEvent::AssistantThought(content) => {
                 if !content.is_empty() {
-                    self.add_message(format!(" • {}", content));
+                    self.add_message(format!("• {}", content));
                 }
             }
             AgentEvent::ToolCalls(tool_call_displays) => {
                 self.agent_state = AgentState::ExecutingTools;
                 for display_name in tool_call_displays {
-                    self.add_message(format!(" ● {}", display_name));
+                    self.add_message(format!("● {}", display_name));
                 }
             }
             AgentEvent::ToolResult { summary, .. } => {
-                self.add_message(format!("   ⎿ {}", summary));
-                self.add_message(String::new());
+                self.add_message(format!(" ⎿ {}", summary));
             }
             AgentEvent::ToolExecutionComplete => {
                 self.add_message("\n".to_string());
             }
             AgentEvent::FinalResponse(content) => {
                 self.agent_state = AgentState::Idle;
-                self.add_message(content);
+                let indented_content = content
+                    .lines()
+                    .map(|line| format!("  {}", line))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.add_message(indented_content);
                 self.add_message("\n".to_string());
             }
             AgentEvent::Error(error) => {
