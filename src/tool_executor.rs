@@ -34,6 +34,7 @@ impl ToolExecutor {
                 return ToolResult::error(
                     tool_call_id,
                     tool_name.clone(),
+                    tool_name.clone(),
                     anyhow::anyhow!("Unknown tool: {}", tool_name),
                 );
             }
@@ -46,20 +47,24 @@ impl ToolExecutor {
                 return ToolResult::error(
                     tool_call_id,
                     tool_name.clone(),
+                    tool_name.clone(),
                     anyhow::anyhow!("Invalid tool arguments: {}", e),
                 );
             }
         };
 
+        // Get the display name from the tool
+        let display_name = tool.format_call_display(&args);
+
         // Check permissions using the tool's own permission check
         if let Err(e) = self.check_tool_permissions(tool, &args).await {
-            return ToolResult::error(tool_call_id, tool_name.clone(), e);
+            return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
         }
 
         // Execute the tool
         match tool.execute(&args).await {
-            Ok(output) => ToolResult::success(tool_call_id, tool_name.clone(), output),
-            Err(e) => ToolResult::error(tool_call_id, tool_name.clone(), e),
+            Ok(output) => ToolResult::success(tool_call_id, tool_name.clone(), display_name, output),
+            Err(e) => ToolResult::error(tool_call_id, tool_name.clone(), display_name, e),
         }
     }
 

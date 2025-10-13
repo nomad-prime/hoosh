@@ -20,6 +20,13 @@ pub trait Tool: Send + Sync {
     /// Get the parameter schema for this tool (JSON Schema format)
     fn parameter_schema(&self) -> Value;
 
+    /// Format the tool call for display (e.g., "Read(src/main.rs)")
+    /// This is shown when the tool is invoked
+    fn format_call_display(&self, _args: &Value) -> String {
+        // Default implementation: just return tool name
+        self.tool_name().to_string()
+    }
+
     /// Create a summary of the tool execution result for display
     /// This allows each tool to format its own output summary
     fn result_summary(&self, result: &str) -> String {

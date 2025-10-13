@@ -1,10 +1,8 @@
 use anyhow::Result;
-use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
-use crate::console::console;
-use crate::conversations::{Conversation, ToolCall};
+use crate::conversations::Conversation;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -12,8 +10,9 @@ use crate::tools::ToolRegistry;
 pub enum ConversationEvent {
     Thinking,
     AssistantThought(String),
-    ToolCalls(Vec<ToolCall>),
+    ToolCalls(Vec<String>), // Display names for each tool call
     ToolResult { tool_name: String, summary: String },
+    ToolExecutionComplete,
     FinalResponse(String),
     Error(String),
     MaxStepsReached(usize),
@@ -60,7 +59,6 @@ impl<'a> ConversationHandler<'a> {
 
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(ConversationEvent::Thinking);
-        console().thinking();
 
         for step in 0..self.max_steps {
             let response = self
@@ -75,7 +73,6 @@ impl<'a> ConversationHandler<'a> {
         }
 
         self.send_event(ConversationEvent::MaxStepsReached(self.max_steps));
-        console().max_steps_reached(self.max_steps);
         Ok(())
     }
 
@@ -93,13 +90,11 @@ impl<'a> ConversationHandler<'a> {
 
         if let Some(content) = response.content {
             self.send_event(ConversationEvent::FinalResponse(content.clone()));
-            self.display_final_response(&content);
             conversation.add_assistant_message(Some(content), None);
             return Ok(TurnStatus::Complete);
         }
 
         self.send_event(ConversationEvent::Error("No response received".to_string()));
-        console().warning("No response received.");
         Ok(TurnStatus::Complete)
     }
 
@@ -115,80 +110,56 @@ impl<'a> ConversationHandler<'a> {
 
         if let Some(ref content) = response.content {
             self.send_event(ConversationEvent::AssistantThought(content.clone()));
-            console().assistant_thought(content);
         }
 
-        self.send_event(ConversationEvent::ToolCalls(tool_calls.clone()));
+        // Format tool call display names
+        let tool_call_displays: Vec<String> = tool_calls
+            .iter()
+            .map(|tc| {
+                if let Some(tool) = self.tool_registry.get_tool(&tc.function.name) {
+                    if let Ok(args) = serde_json::from_str(&tc.function.arguments) {
+                        tool.format_call_display(&args)
+                    } else {
+                        tc.function.name.clone()
+                    }
+                } else {
+                    tc.function.name.clone()
+                }
+            })
+            .collect();
 
-        // Display tool calls and execute them one by one to maintain proper spacing
-        for tool_call in tool_calls.iter() {
-            self.display_tool_call(tool_call);
-        }
+        self.send_event(ConversationEvent::ToolCalls(tool_call_displays));
 
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
-        self.display_tool_results(&tool_results);
+        for tool_result in &tool_results {
+            // Get the tool to access its result_summary method
+            let summary = if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
+                match &tool_result.result {
+                    Ok(output) => tool.result_summary(output),
+                    Err(e) => format!("Error: {}", e),
+                }
+            } else {
+                // Fallback if tool not found
+                match &tool_result.result {
+                    Ok(_) => "Completed".to_string(),
+                    Err(e) => format!("Error: {}", e),
+                }
+            };
+
+            self.send_event(ConversationEvent::ToolResult {
+                tool_name: tool_result.display_name.clone(),
+                summary,
+            });
+        }
 
         for tool_result in tool_results {
             conversation.add_tool_result(tool_result);
         }
 
+        self.send_event(ConversationEvent::ToolExecutionComplete);
+
         Ok(TurnStatus::Continue)
-    }
-
-    fn display_tool_call(&self, tool_call: &ToolCall) {
-        let args_summary = self.format_tool_args(&tool_call.function.arguments);
-        console().tool_call(&tool_call.function.name, &args_summary);
-    }
-
-    fn format_tool_args(&self, args_json: &str) -> String {
-        if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(args_json) {
-            let parts: Vec<String> = map
-                .iter()
-                .map(|(k, v)| {
-                    let val_str = match v {
-                        Value::String(s) => format!("\"{}\"", s),
-                        Value::Number(n) => n.to_string(),
-                        Value::Bool(b) => b.to_string(),
-                        _ => v.to_string(),
-                    };
-                    format!("{}: {}", k, val_str)
-                })
-                .collect();
-            format!("{})", parts.join(", "))
-        } else {
-            ")".to_string()
-        }
-    }
-
-    fn display_tool_results(&self, tool_results: &[crate::conversations::ToolResult]) {
-        for tool_result in tool_results {
-            let summary = if let Ok(ref result) = tool_result.result {
-                // Get the tool from registry to use its summary method
-                if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
-                    tool.result_summary(result)
-                } else {
-                    // Fallback if tool not found
-                    "Completed successfully".to_string()
-                }
-            } else if let Err(ref error) = tool_result.result {
-                format!("Error: {}", error)
-            } else {
-                continue;
-            };
-
-            self.send_event(ConversationEvent::ToolResult {
-                tool_name: tool_result.tool_name.clone(),
-                summary: summary.clone(),
-            });
-            console().tool_result_summary(&summary);
-        }
-        console().newline();
-    }
-
-
-    fn display_final_response(&self, content: &str) {
-        console().plain(content);
     }
 }
 
@@ -257,9 +228,10 @@ mod tests {
     async fn test_conversation_handler_simple_response() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Box<dyn LlmBackend> = Box::new(MockBackend::new(vec![
-            LlmResponse::content_only("Hello, how can I help?".to_string()),
-        ]));
+        let mock_backend: Box<dyn LlmBackend> =
+            Box::new(MockBackend::new(vec![LlmResponse::content_only(
+                "Hello, how can I help?".to_string(),
+            )]));
 
         let tool_registry = ToolRegistry::new();
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
@@ -297,9 +269,8 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         std::fs::write(&test_file, "test content").unwrap();
 
-        let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(
-            temp_dir.path().to_path_buf(),
-        );
+        let tool_registry =
+            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
         let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
 
