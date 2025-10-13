@@ -1,4 +1,5 @@
 use super::app::AppState;
+use crate::permissions::OperationType;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -6,17 +7,18 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
-use crate::permissions::OperationType;
 
 pub fn render(frame: &mut Frame, app: &mut AppState) {
     let vertical = Layout::vertical([
         Constraint::Min(1),
-        Constraint::Length(3),
-        Constraint::Length(3),
+        Constraint::Length(1), // Status line
+        Constraint::Length(3), // Input area
+        Constraint::Length(3), // Bottom padding
     ]);
-    let [messages_area, input_area, _bottom_padding] = vertical.areas(frame.area());
+    let [messages_area, status_area, input_area, _bottom_padding] = vertical.areas(frame.area());
 
     render_messages(frame, messages_area, app);
+    render_status(frame, status_area, app);
     render_input(frame, input_area, app);
 
     if app.is_completing() {
@@ -28,11 +30,40 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
     }
 }
 
+fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
+    use super::events::AgentState;
+
+    let status_text = match app.agent_state {
+        AgentState::Idle => String::new(),
+        AgentState::Thinking => {
+            let spinner =
+                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][app.animation_frame % 10];
+            format!(" {} Processing", spinner)
+        }
+        AgentState::ExecutingTools => {
+            let spinner =
+                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][app.animation_frame % 10];
+            format!(" {} Executing tools", spinner)
+        }
+    };
+
+    if !status_text.is_empty() {
+        let status_line = Line::from(vec![Span::styled(
+            status_text,
+            Style::default().fg(Color::Rgb(142, 240, 204)),
+        )]);
+
+        let paragraph = Paragraph::new(status_line);
+        frame.render_widget(paragraph, area);
+    }
+}
+
 fn render_messages(frame: &mut Frame, area: Rect, app: &mut AppState) {
     use super::app::MessageLine;
 
-    // Update viewport height for scroll calculations
+    // Update viewport dimensions for scroll calculations
     app.viewport_height = area.height;
+    app.viewport_width = area.width;
 
     // On first render, scroll to bottom after viewport height is set
     if !app.initial_scroll_done {
@@ -55,7 +86,8 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut AppState) {
 
     let paragraph = Paragraph::new(Text::from(lines))
         .block(Block::new())
-        .scroll((app.scroll_offset, 0));
+        .scroll((app.scroll_offset, 0))
+        .wrap(Wrap { trim: false });
 
     frame.render_widget(paragraph, area);
 }
@@ -142,19 +174,23 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
         let mut lines = vec![];
 
         // Title
-        let warning_emoji = if operation.is_destructive() { "⚠️ " } else { "🔒 " };
+        let warning_emoji = if operation.is_destructive() {
+            "⚠️ "
+        } else {
+            "🔒 "
+        };
         let title_style = if operation.is_destructive() {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         };
 
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{}Permission Required", warning_emoji),
-                title_style,
-            ),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            format!("{}Permission Required", warning_emoji),
+            title_style,
+        )]));
         lines.push(Line::from(""));
 
         // Operation description
@@ -166,19 +202,18 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
 
         // Destructive warning
         if operation.is_destructive() {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    "⚠️  WARNING: This operation may be destructive!",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                "⚠️  WARNING: This operation may be destructive!",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )]));
             lines.push(Line::from(""));
         }
 
         // Options
-        lines.push(Line::from(
-            Span::styled("Options:", Style::default().add_modifier(Modifier::BOLD))
-        ));
+        lines.push(Line::from(Span::styled(
+            "Options:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
         lines.push(Line::from(""));
 
         // Render each option with selection highlight
@@ -197,9 +232,10 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
                 PermissionOption::AlwaysForDirectory(dir) => {
                     ("d", format!("Always for this directory ({})", dir))
                 }
-                PermissionOption::AlwaysForType => {
-                    ("A", format!("Always for all {} operations", operation.operation_kind()))
-                }
+                PermissionOption::AlwaysForType => (
+                    "A",
+                    format!("Always for all {} operations", operation.operation_kind()),
+                ),
             };
 
             let prefix = if is_selected { "> " } else { "  " };
@@ -218,14 +254,17 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
         }
 
         lines.push(Line::from(""));
-        lines.push(Line::from(
-            Span::styled("Use ↑/↓ to navigate, Enter or key letter to choose, Esc to cancel", Style::default().fg(Color::Cyan))
-        ));
+        lines.push(Line::from(Span::styled(
+            "Use ↑/↓ to navigate, Enter or key letter to choose, Esc to cancel",
+            Style::default().fg(Color::Cyan),
+        )));
 
         // Calculate dialog dimensions
-        let max_width = lines.iter().map(|l| {
-            l.spans.iter().map(|s| s.content.len()).sum::<usize>()
-        }).max().unwrap_or(50) as u16;
+        let max_width = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.len()).sum::<usize>())
+            .max()
+            .unwrap_or(50) as u16;
 
         let dialog_width = (max_width + 4).min(frame.area().width - 4);
         let dialog_height = (lines.len() as u16 + 2).min(frame.area().height - 4);

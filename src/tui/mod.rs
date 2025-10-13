@@ -161,6 +161,9 @@ async fn run_event_loop(
             }
         }
 
+        // Tick animation frame
+        app.tick_animation();
+
         // Poll for keyboard and mouse events with timeout
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
