@@ -2,11 +2,53 @@ use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
+use super::completion::Completer;
 use super::events::{AgentEvent, AgentState};
 
 pub enum MessageLine {
     Plain(String),
     Styled(Line<'static>),
+}
+
+pub struct CompletionState {
+    pub candidates: Vec<String>,
+    pub selected_index: usize,
+    #[allow(dead_code)]
+    pub trigger_position: usize,
+    pub query: String,
+    pub completer_index: usize,
+}
+
+impl CompletionState {
+    pub fn new(trigger_position: usize, completer_index: usize) -> Self {
+        Self {
+            candidates: Vec::new(),
+            selected_index: 0,
+            trigger_position,
+            query: String::new(),
+            completer_index,
+        }
+    }
+
+    pub fn selected_item(&self) -> Option<&str> {
+        self.candidates.get(self.selected_index).map(|s| s.as_str())
+    }
+
+    pub fn select_next(&mut self) {
+        if !self.candidates.is_empty() {
+            self.selected_index = (self.selected_index + 1) % self.candidates.len();
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        if !self.candidates.is_empty() {
+            if self.selected_index == 0 {
+                self.selected_index = self.candidates.len() - 1;
+            } else {
+                self.selected_index -= 1;
+            }
+        }
+    }
 }
 
 pub struct AppState {
@@ -18,6 +60,8 @@ pub struct AppState {
     pub scroll_offset: u16,
     pub viewport_height: u16,
     pub initial_scroll_done: bool,
+    pub completion_state: Option<CompletionState>,
+    pub completers: Vec<Box<dyn Completer>>,
 }
 
 impl AppState {
@@ -34,6 +78,66 @@ impl AppState {
             scroll_offset: 0,
             viewport_height: 0,
             initial_scroll_done: false,
+            completion_state: None,
+            completers: Vec::new(),
+        }
+    }
+
+    pub fn register_completer(&mut self, completer: Box<dyn Completer>) {
+        self.completers.push(completer);
+    }
+
+    pub fn find_completer_for_key(&self, key: char) -> Option<usize> {
+        self.completers
+            .iter()
+            .position(|c| c.trigger_key() == key)
+    }
+
+    pub fn is_completing(&self) -> bool {
+        self.completion_state.is_some()
+    }
+
+    pub fn start_completion(&mut self, trigger_position: usize, completer_index: usize) {
+        self.completion_state = Some(CompletionState::new(trigger_position, completer_index));
+    }
+
+    pub fn cancel_completion(&mut self) {
+        self.completion_state = None;
+    }
+
+    pub fn update_completion_query(&mut self, query: String) {
+        if let Some(state) = &mut self.completion_state {
+            state.query = query;
+            state.selected_index = 0;
+        }
+    }
+
+    pub fn set_completion_candidates(&mut self, candidates: Vec<String>) {
+        if let Some(state) = &mut self.completion_state {
+            state.candidates = candidates;
+            state.selected_index = 0;
+        }
+    }
+
+    pub fn select_next_completion(&mut self) {
+        if let Some(state) = &mut self.completion_state {
+            state.select_next();
+        }
+    }
+
+    pub fn select_prev_completion(&mut self) {
+        if let Some(state) = &mut self.completion_state {
+            state.select_prev();
+        }
+    }
+
+    pub fn apply_completion(&mut self) -> Option<String> {
+        if let Some(state) = &self.completion_state {
+            let selected = state.selected_item()?.to_string();
+            self.completion_state = None;
+            Some(selected)
+        } else {
+            None
         }
     }
 
