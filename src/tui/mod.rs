@@ -4,7 +4,7 @@ mod terminal;
 mod ui;
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEventKind};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -30,8 +30,13 @@ pub async fn run(
     let mut terminal = init_terminal()?;
     let mut app = AppState::new();
 
-    app.add_message(format!("🚀 Welcome to hoosh! Using backend: {}", backend.backend_name()));
-    app.add_message("📁 File system integration enabled - use @filename to reference files".to_string());
+    app.add_message(format!(
+        "🚀 Welcome to hoosh! Using backend: {}",
+        backend.backend_name()
+    ));
+    app.add_message(
+        "📁 File system integration enabled - use @filename to reference files".to_string(),
+    );
 
     if !permission_manager.is_enforcing() {
         app.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
@@ -46,7 +51,10 @@ pub async fn run(
         app.add_message("⚠️ No agent loaded".to_string());
     }
 
-    app.add_message("Type your message and press Enter to send. Ctrl+C to quit.".to_string());
+    app.add_message("Type your message and press Enter to send.".to_string());
+    app.add_message(
+        "Keybindings: Ctrl+C (quit) | Ctrl+↑/↓ (scroll) | PageUp/Down (fast scroll)".to_string(),
+    );
     app.add_message(String::new());
 
     let conversation = Arc::new(tokio::sync::Mutex::new({
@@ -106,18 +114,13 @@ async fn run_event_loop(
                 ConversationEvent::AssistantThought(content) => {
                     AgentEvent::AssistantThought(content)
                 }
-                ConversationEvent::ToolCalls(calls) => {
-                    AgentEvent::ToolCalls(calls)
-                }
+                ConversationEvent::ToolCalls(calls) => AgentEvent::ToolCalls(calls),
                 ConversationEvent::ToolResult { tool_name, summary } => {
                     AgentEvent::ToolResult { tool_name, summary }
                 }
-                ConversationEvent::FinalResponse(content) => {
-                    AgentEvent::FinalResponse(content)
-                }
-                ConversationEvent::Error(error) => {
-                    AgentEvent::Error(error)
-                }
+                ConversationEvent::ToolExecutionComplete => AgentEvent::ToolExecutionComplete,
+                ConversationEvent::FinalResponse(content) => AgentEvent::FinalResponse(content),
+                ConversationEvent::Error(error) => AgentEvent::Error(error),
                 ConversationEvent::MaxStepsReached(max_steps) => {
                     AgentEvent::MaxStepsReached(max_steps)
                 }
@@ -132,17 +135,34 @@ async fn run_event_loop(
             }
         }
 
-        // Poll for keyboard events with timeout
+        // Poll for keyboard and mouse events with timeout
         if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
+            match event::read()? {
+                Event::Key(key) => match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.should_quit = true;
+                    }
+                    KeyCode::PageUp => {
+                        for _ in 0..10 {
+                            app.scroll_up();
+                        }
+                    }
+                    KeyCode::PageDown => {
+                        for _ in 0..10 {
+                            app.scroll_down();
+                        }
+                    }
+                    KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.scroll_up();
+                    }
+                    KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.scroll_down();
                     }
                     KeyCode::Enter => {
                         let input_text = app.get_input_text();
                         if !input_text.trim().is_empty() && agent_task.is_none() {
                             app.add_message(format!("> {}", input_text));
+                            app.add_message("\n".to_string());
                             app.clear_input();
 
                             let parser = Arc::clone(&parser);
@@ -153,7 +173,8 @@ async fn run_event_loop(
                             let event_tx_clone = event_tx.clone();
 
                             agent_task = Some(tokio::spawn(async move {
-                                let expanded_input = match parser.expand_message(&input_text).await {
+                                let expanded_input = match parser.expand_message(&input_text).await
+                                {
                                     Ok(expanded) => expanded,
                                     Err(_) => input_text,
                                 };
@@ -180,7 +201,17 @@ async fn run_event_loop(
                     _ => {
                         app.input.input(key);
                     }
-                }
+                },
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        app.scroll_down();
+                    }
+                    MouseEventKind::ScrollDown => {
+                        app.scroll_up();
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
 

@@ -247,6 +247,20 @@ impl Tool for BashTool {
         })
     }
 
+    fn format_call_display(&self, args: &Value) -> String {
+        if let Ok(parsed_args) = serde_json::from_value::<BashArgs>(args.clone()) {
+            // Show a preview of the command (truncate if too long)
+            let cmd = &parsed_args.command;
+            if cmd.len() > 50 {
+                format!("Bash({}...)", &cmd[..50])
+            } else {
+                format!("Bash({})", cmd)
+            }
+        } else {
+            "Bash(?)".to_string()
+        }
+    }
+
     fn result_summary(&self, result: &str) -> String {
         // Check if command completed successfully
         if result.contains("Exit code: 0") {

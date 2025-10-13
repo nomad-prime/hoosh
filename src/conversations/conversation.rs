@@ -30,22 +30,25 @@ pub struct ToolFunction {
 pub struct ToolResult {
     pub tool_call_id: String,
     pub tool_name: String,
+    pub display_name: String,
     pub result: Result<String>,
 }
 
 impl ToolResult {
-    pub fn success(tool_call_id: String, tool_name: String, output: String) -> Self {
+    pub fn success(tool_call_id: String, tool_name: String, display_name: String, output: String) -> Self {
         Self {
             tool_call_id,
             tool_name,
+            display_name,
             result: Ok(output),
         }
     }
 
-    pub fn error(tool_call_id: String, tool_name: String, error: anyhow::Error) -> Self {
+    pub fn error(tool_call_id: String, tool_name: String, display_name: String, error: anyhow::Error) -> Self {
         Self {
             tool_call_id,
             tool_name,
+            display_name,
             result: Err(error),
         }
     }
@@ -217,6 +220,7 @@ mod tests {
         let tool_result = ToolResult::success(
             "call_123".to_string(),
             "read_file".to_string(),
+            "Read(test.txt)".to_string(),
             "File contents here".to_string(),
         );
         conversation.add_tool_result(tool_result);
@@ -233,6 +237,7 @@ mod tests {
         let tool_result = ToolResult::error(
             "call_123".to_string(),
             "read_file".to_string(),
+            "Read(test.txt)".to_string(),
             error,
         );
 
