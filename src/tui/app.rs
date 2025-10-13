@@ -11,6 +11,7 @@ pub struct AppState {
     pub max_messages: usize,
     pub scroll_offset: u16,
     pub viewport_height: u16,
+    pub initial_scroll_done: bool,
 }
 
 impl AppState {
@@ -26,6 +27,7 @@ impl AppState {
             max_messages: 1000,
             scroll_offset: 0,
             viewport_height: 0,
+            initial_scroll_done: false,
         }
     }
 
@@ -71,17 +73,17 @@ impl AppState {
             }
             AgentEvent::AssistantThought(content) => {
                 if !content.is_empty() {
-                    self.add_message(format!("• {}", content));
+                    self.add_message(format!(" • {}", content));
                 }
             }
             AgentEvent::ToolCalls(tool_call_displays) => {
                 self.agent_state = AgentState::ExecutingTools;
                 for display_name in tool_call_displays {
-                    self.add_message(format!("● {}", display_name));
+                    self.add_message(format!(" ● {}", display_name));
                 }
             }
             AgentEvent::ToolResult { summary, .. } => {
-                self.add_message(format!("  ⎿ {}", summary));
+                self.add_message(format!("   ⎿ {}", summary));
                 self.add_message(String::new());
             }
             AgentEvent::ToolExecutionComplete => {
