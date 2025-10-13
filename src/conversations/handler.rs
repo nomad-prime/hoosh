@@ -3,19 +3,31 @@ use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::conversations::Conversation;
+use crate::permissions::{OperationType, PermissionScope};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
-pub enum ConversationEvent {
+pub enum AgentEvent {
     Thinking,
     AssistantThought(String),
     ToolCalls(Vec<String>), // Display names for each tool call
-    ToolResult { tool_name: String, summary: String },
+    ToolResult { #[allow(dead_code)] tool_name: String, summary: String },
     ToolExecutionComplete,
     FinalResponse(String),
     Error(String),
     MaxStepsReached(usize),
+    PermissionRequest {
+        operation: OperationType,
+        request_id: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct PermissionResponse {
+    pub request_id: String,
+    pub allowed: bool,
+    pub scope: Option<PermissionScope>,
 }
 
 pub struct ConversationHandler<'a> {
@@ -23,7 +35,7 @@ pub struct ConversationHandler<'a> {
     tool_registry: &'a ToolRegistry,
     tool_executor: &'a ToolExecutor,
     max_steps: usize,
-    event_sender: Option<mpsc::UnboundedSender<ConversationEvent>>,
+    event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
 }
 
 impl<'a> ConversationHandler<'a> {
@@ -46,19 +58,19 @@ impl<'a> ConversationHandler<'a> {
         self
     }
 
-    pub fn with_event_sender(mut self, sender: mpsc::UnboundedSender<ConversationEvent>) -> Self {
+    pub fn with_event_sender(mut self, sender: mpsc::UnboundedSender<AgentEvent>) -> Self {
         self.event_sender = Some(sender);
         self
     }
 
-    fn send_event(&self, event: ConversationEvent) {
+    fn send_event(&self, event: AgentEvent) {
         if let Some(sender) = &self.event_sender {
             let _ = sender.send(event);
         }
     }
 
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
-        self.send_event(ConversationEvent::Thinking);
+        self.send_event(AgentEvent::Thinking);
 
         for step in 0..self.max_steps {
             let response = self
@@ -72,7 +84,7 @@ impl<'a> ConversationHandler<'a> {
             }
         }
 
-        self.send_event(ConversationEvent::MaxStepsReached(self.max_steps));
+        self.send_event(AgentEvent::MaxStepsReached(self.max_steps));
         Ok(())
     }
 
@@ -89,12 +101,12 @@ impl<'a> ConversationHandler<'a> {
         }
 
         if let Some(content) = response.content {
-            self.send_event(ConversationEvent::FinalResponse(content.clone()));
+            self.send_event(AgentEvent::FinalResponse(content.clone()));
             conversation.add_assistant_message(Some(content), None);
             return Ok(TurnStatus::Complete);
         }
 
-        self.send_event(ConversationEvent::Error("No response received".to_string()));
+        self.send_event(AgentEvent::Error("No response received".to_string()));
         Ok(TurnStatus::Complete)
     }
 
@@ -109,7 +121,7 @@ impl<'a> ConversationHandler<'a> {
         conversation.add_assistant_message(response.content.clone(), Some(tool_calls.clone()));
 
         if let Some(ref content) = response.content {
-            self.send_event(ConversationEvent::AssistantThought(content.clone()));
+            self.send_event(AgentEvent::AssistantThought(content.clone()));
         }
 
         // Format tool call display names
@@ -128,7 +140,7 @@ impl<'a> ConversationHandler<'a> {
             })
             .collect();
 
-        self.send_event(ConversationEvent::ToolCalls(tool_call_displays));
+        self.send_event(AgentEvent::ToolCalls(tool_call_displays));
 
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
@@ -147,7 +159,7 @@ impl<'a> ConversationHandler<'a> {
                 }
             };
 
-            self.send_event(ConversationEvent::ToolResult {
+            self.send_event(AgentEvent::ToolResult {
                 tool_name: tool_result.display_name.clone(),
                 summary,
             });
@@ -157,7 +169,7 @@ impl<'a> ConversationHandler<'a> {
             conversation.add_tool_result(tool_result);
         }
 
-        self.send_event(ConversationEvent::ToolExecutionComplete);
+        self.send_event(AgentEvent::ToolExecutionComplete);
 
         Ok(TurnStatus::Continue)
     }

@@ -15,7 +15,7 @@ pub use backends::{LlmBackend, LlmResponse, StreamResponse};
 pub use backends::{TogetherAiBackend, TogetherAiConfig};
 pub use config::{AppConfig, AgentConfig, BackendConfig};
 pub use console::{Console, VerbosityLevel, console, init_console};
-pub use conversations::{Conversation, ConversationEvent, ConversationHandler, ConversationMessage, ToolCall, ToolExecutionContext, ToolFunction, ToolResult};
+pub use conversations::{AgentEvent, Conversation, ConversationHandler, ConversationMessage, ToolCall, ToolExecutionContext, ToolFunction, ToolResult};
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;
 pub use tool_executor::ToolExecutor;

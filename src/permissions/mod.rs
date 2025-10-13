@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
 
 /// Permission level for different operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +127,12 @@ pub struct PermissionManager {
     /// Cache of permission decisions for this session
     /// Key is a string representation of the operation
     session_cache: Arc<Mutex<HashMap<String, bool>>>,
+    /// Event sender for sending permission requests to UI
+    event_sender: Option<mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+    /// Response receiver for receiving permission responses from UI
+    response_receiver: Option<Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>>,
+    /// Request ID counter for generating unique permission request IDs
+    request_counter: Arc<AtomicU64>,
 }
 
 impl PermissionManager {
@@ -133,6 +141,9 @@ impl PermissionManager {
             skip_permissions: false,
             default_permission: PermissionLevel::Ask,
             session_cache: Arc::new(Mutex::new(HashMap::new())),
+            event_sender: None,
+            response_receiver: None,
+            request_counter: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -143,6 +154,22 @@ impl PermissionManager {
 
     pub fn with_default_permission(mut self, level: PermissionLevel) -> Self {
         self.default_permission = level;
+        self
+    }
+
+    pub fn with_event_sender(
+        mut self,
+        sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
+    ) -> Self {
+        self.event_sender = Some(sender);
+        self
+    }
+
+    pub fn with_response_receiver(
+        mut self,
+        receiver: mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>,
+    ) -> Self {
+        self.response_receiver = Some(Arc::new(Mutex::new(receiver)));
         self
     }
 
@@ -237,6 +264,60 @@ impl PermissionManager {
     /// Ask user for permission interactively
     /// Returns (allowed, optional_scope)
     async fn ask_user_permission(&self, operation: &OperationType) -> Result<(bool, Option<PermissionScope>)> {
+        // If we have an event sender, use the TUI system
+        if let (Some(sender), Some(receiver)) = (&self.event_sender, &self.response_receiver) {
+            return self.ask_user_permission_via_tui(operation, sender, receiver).await;
+        }
+
+        // Otherwise, fall back to CLI/println approach
+        self.ask_user_permission_via_cli(operation).await
+    }
+
+    /// Ask user for permission via TUI event system
+    async fn ask_user_permission_via_tui(
+        &self,
+        operation: &OperationType,
+        sender: &mpsc::UnboundedSender<crate::conversations::AgentEvent>,
+        receiver: &Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
+    ) -> Result<(bool, Option<PermissionScope>)> {
+        // Generate unique request ID
+        let request_id = self.request_counter.fetch_add(1, Ordering::SeqCst).to_string();
+
+        // Send permission request event
+        let event = crate::conversations::AgentEvent::PermissionRequest {
+            operation: operation.clone(),
+            request_id: request_id.clone(),
+        };
+        sender.send(event).context("Failed to send permission request event")?;
+
+        // Wait for response
+        // Need to avoid holding lock across await by using a loop with try_recv
+        let receiver_clone = Arc::clone(receiver);
+        let response = loop {
+            // Try to receive in a block that drops the lock immediately
+            let maybe_response = {
+                let mut rx = receiver_clone.lock().unwrap();
+                rx.try_recv().ok()
+            };
+
+            if let Some(response) = maybe_response {
+                break response;
+            }
+
+            // Small sleep to avoid busy-waiting
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        };
+
+        // Verify request ID matches
+        if response.request_id != request_id {
+            anyhow::bail!("Permission response ID mismatch");
+        }
+
+        Ok((response.allowed, response.scope))
+    }
+
+    /// Ask user for permission via CLI (fallback for non-TUI mode)
+    async fn ask_user_permission_via_cli(&self, operation: &OperationType) -> Result<(bool, Option<PermissionScope>)> {
         println!(); // Add newline for spacing before permission prompt
 
         let warning_emoji = if operation.is_destructive() {

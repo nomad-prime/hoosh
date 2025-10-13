@@ -1,9 +1,12 @@
+use ratatui::style::Style;
 use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
 use super::completion::Completer;
-use super::events::{AgentEvent, AgentState};
+use super::events::AgentState;
+use crate::conversations::AgentEvent;
+use crate::permissions::OperationType;
 
 pub enum MessageLine {
     Plain(String),
@@ -17,6 +20,22 @@ pub struct CompletionState {
     pub trigger_position: usize,
     pub query: String,
     pub completer_index: usize,
+}
+
+pub struct PermissionDialogState {
+    pub operation: OperationType,
+    pub request_id: String,
+    pub selected_index: usize,
+    pub options: Vec<PermissionOption>,
+}
+
+#[derive(Clone)]
+pub enum PermissionOption {
+    YesOnce,
+    No,
+    AlwaysForFile,
+    AlwaysForDirectory(String),
+    AlwaysForType,
 }
 
 impl CompletionState {
@@ -59,15 +78,19 @@ pub struct AppState {
     pub max_messages: usize,
     pub scroll_offset: u16,
     pub viewport_height: u16,
+    pub viewport_width: u16,
     pub initial_scroll_done: bool,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
+    pub permission_dialog_state: Option<PermissionDialogState>,
+    pub animation_frame: usize,
 }
 
 impl AppState {
     pub fn new() -> Self {
         let mut input = TextArea::default();
         input.set_placeholder_text("Type your message here...");
+        input.set_cursor_line_style(Style::default());
 
         Self {
             input,
@@ -77,10 +100,17 @@ impl AppState {
             max_messages: 1000,
             scroll_offset: 0,
             viewport_height: 0,
+            viewport_width: 0,
             initial_scroll_done: false,
             completion_state: None,
             completers: Vec::new(),
+            permission_dialog_state: None,
+            animation_frame: 0,
         }
+    }
+
+    pub fn tick_animation(&mut self) {
+        self.animation_frame = self.animation_frame.wrapping_add(1);
     }
 
     pub fn register_completer(&mut self, completer: Box<dyn Completer>) {
@@ -88,13 +118,62 @@ impl AppState {
     }
 
     pub fn find_completer_for_key(&self, key: char) -> Option<usize> {
-        self.completers
-            .iter()
-            .position(|c| c.trigger_key() == key)
+        self.completers.iter().position(|c| c.trigger_key() == key)
     }
 
     pub fn is_completing(&self) -> bool {
         self.completion_state.is_some()
+    }
+
+    pub fn is_showing_permission_dialog(&self) -> bool {
+        self.permission_dialog_state.is_some()
+    }
+
+    pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
+        // Build the list of options based on the operation type
+        let mut options = vec![
+            PermissionOption::YesOnce,
+            PermissionOption::No,
+            PermissionOption::AlwaysForFile,
+        ];
+
+        // Add directory option if applicable
+        if let Some(dir) = operation.parent_directory() {
+            options.push(PermissionOption::AlwaysForDirectory(dir));
+        }
+
+        options.push(PermissionOption::AlwaysForType);
+
+        self.permission_dialog_state = Some(PermissionDialogState {
+            operation,
+            request_id,
+            selected_index: 0,
+            options,
+        });
+    }
+
+    pub fn select_next_permission_option(&mut self) {
+        if let Some(dialog) = &mut self.permission_dialog_state {
+            if !dialog.options.is_empty() {
+                dialog.selected_index = (dialog.selected_index + 1) % dialog.options.len();
+            }
+        }
+    }
+
+    pub fn select_prev_permission_option(&mut self) {
+        if let Some(dialog) = &mut self.permission_dialog_state {
+            if !dialog.options.is_empty() {
+                if dialog.selected_index == 0 {
+                    dialog.selected_index = dialog.options.len() - 1;
+                } else {
+                    dialog.selected_index -= 1;
+                }
+            }
+        }
+    }
+
+    pub fn hide_permission_dialog(&mut self) {
+        self.permission_dialog_state = None;
     }
 
     pub fn start_completion(&mut self, trigger_position: usize, completer_index: usize) {
@@ -160,11 +239,37 @@ impl AppState {
     }
 
     pub fn total_lines(&self) -> u16 {
+        if self.viewport_width == 0 {
+            return 0;
+        }
+
         self.messages
             .iter()
             .map(|msg| match msg {
-                MessageLine::Plain(s) => s.lines().count() as u16,
-                MessageLine::Styled(_) => 1,
+                MessageLine::Plain(s) => {
+                    s.lines()
+                        .map(|line| {
+                            // Calculate how many display lines this text line will take when wrapped
+                            let line_len = line.len() as u16;
+                            if line_len == 0 {
+                                1 // Empty lines still take up one line
+                            } else {
+                                // Number of wrapped lines = ceil(line_len / viewport_width)
+                                (line_len + self.viewport_width - 1) / self.viewport_width
+                            }
+                        })
+                        .sum::<u16>()
+                }
+                MessageLine::Styled(line) => {
+                    // Calculate the total length of all spans in the styled line
+                    let line_len: usize = line.spans.iter().map(|s| s.content.len()).sum();
+                    let line_len = line_len as u16;
+                    if line_len == 0 {
+                        1
+                    } else {
+                        (line_len + self.viewport_width - 1) / self.viewport_width
+                    }
+                }
             })
             .sum()
     }
@@ -190,8 +295,6 @@ impl AppState {
         match event {
             AgentEvent::Thinking => {
                 self.agent_state = AgentState::Thinking;
-                self.add_message("🔄 Thinking...".to_string());
-                self.add_message("\n".to_string());
             }
             AgentEvent::AssistantThought(content) => {
                 if !content.is_empty() {
@@ -231,6 +334,10 @@ impl AppState {
                     max_steps
                 ));
             }
+            AgentEvent::PermissionRequest { .. } => {
+                // Permission requests are handled separately in the TUI event loop
+                // This variant should not reach here, but we include it for exhaustiveness
+            }
         }
     }
 
@@ -241,6 +348,8 @@ impl AppState {
     pub fn clear_input(&mut self) {
         self.input = TextArea::default();
         self.input.set_placeholder_text("Type your message here...");
+        // Remove the underline from the cursor line
+        self.input.set_cursor_line_style(Style::default());
     }
 }
 
