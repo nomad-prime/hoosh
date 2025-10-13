@@ -3,7 +3,7 @@ use serde_json;
 
 use crate::conversations::{ToolCall, ToolResult};
 use crate::permissions::PermissionManager;
-use crate::tools::{BashTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool};
+use crate::tools::{BashTool, EditFileTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool};
 
 /// Handles execution of tool calls
 pub struct ToolExecutor {
@@ -106,6 +106,9 @@ impl ToolExecutor {
             ))
             .with_tool(std::sync::Arc::new(
                 WriteFileTool::with_working_directory(working_dir.clone()),
+            ))
+            .with_tool(std::sync::Arc::new(
+                EditFileTool::with_working_directory(working_dir.clone()),
             ))
             .with_tool(std::sync::Arc::new(
                 ListDirectoryTool::with_working_directory(working_dir.clone()),
