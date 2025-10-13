@@ -138,9 +138,17 @@ impl Tool for ReadFileTool {
         })
     }
 
+    fn format_call_display(&self, args: &Value) -> String {
+        if let Ok(parsed_args) = serde_json::from_value::<ReadFileArgs>(args.clone()) {
+            format!("Read({})", parsed_args.path)
+        } else {
+            "Read(?)".to_string()
+        }
+    }
+
     fn result_summary(&self, result: &str) -> String {
         let lines = result.lines().count();
-        format!("Read {} lines (ctrl+o to expand)", lines)
+        format!("Read {} lines", lines)
     }
 
     async fn check_permission(
@@ -270,6 +278,14 @@ impl Tool for WriteFileTool {
             },
             "required": ["path", "content"]
         })
+    }
+
+    fn format_call_display(&self, args: &Value) -> String {
+        if let Ok(parsed_args) = serde_json::from_value::<WriteFileArgs>(args.clone()) {
+            format!("Write({})", parsed_args.path)
+        } else {
+            "Write(?)".to_string()
+        }
     }
 
     fn result_summary(&self, result: &str) -> String {
@@ -473,16 +489,28 @@ impl Tool for ListDirectoryTool {
         })
     }
 
+    fn format_call_display(&self, args: &Value) -> String {
+        if let Ok(parsed_args) = serde_json::from_value::<ListDirectoryArgs>(args.clone()) {
+            if parsed_args.path.is_empty() || parsed_args.path == "." {
+                "List(.)".to_string()
+            } else {
+                format!("List({})", parsed_args.path)
+            }
+        } else {
+            "List(?)".to_string()
+        }
+    }
+
     fn result_summary(&self, result: &str) -> String {
         let file_count = result.matches("📄").count();
         let dir_count = result.matches("📁").count();
 
         if file_count > 0 || dir_count > 0 {
-            format!("Found {} files, {} directories (ctrl+o to expand)", file_count, dir_count)
+            format!("Found {} files, {} directories", file_count, dir_count)
         } else if result.contains("empty directory") {
             "Empty directory".to_string()
         } else {
-            "Listed directory contents (ctrl+o to expand)".to_string()
+            "Listed directory contents".to_string()
         }
     }
 

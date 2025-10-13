@@ -9,7 +9,6 @@ use hoosh::{
     config::AppConfig,
     console::{console, init_console},
     conversations::{Conversation, ConversationHandler},
-    input::InputHandler,
     parser::MessageParser,
     permissions::PermissionManager,
     tool_executor::ToolExecutor,
@@ -95,59 +94,12 @@ async fn handle_chat(
         handle_conversation_turn(&backend, &mut conversation, &tool_registry, &tool_executor)
             .await?;
     } else {
-        interactive_chat(backend, parser, permission_manager, tool_registry).await?;
+        hoosh::tui::run(backend, parser, permission_manager, tool_registry).await?;
     }
 
     Ok(())
 }
 
-fn print_help(tool_registry: &ToolRegistry) {
-    console().help_header();
-    console().plain("  @filename       - Reference a file (e.g., @src/main.rs)");
-    console().plain("  @filename:10-20 - Reference specific lines of a file");
-    console().plain("  /help           - Show this help");
-    console().plain("  /tools          - List available tools");
-    console().plain("  /history        - Show command history");
-    console().plain("  /clear          - Clear command history");
-    console().plain("  exit, quit, q   - Exit the chat");
-    console().newline();
-    console().plain("Keybindings:");
-    console().plain("  Up/Down         - Navigate command history");
-    console().plain("  Tab             - Autocomplete files and commands");
-    console().plain("  Ctrl+A          - Move to beginning of line");
-    console().plain("  Ctrl+E          - Move to end of line");
-    console().plain("  Ctrl+W          - Delete word backwards");
-    console().plain("  Ctrl+K          - Kill to end of line");
-    console().plain("  Ctrl+U          - Kill to beginning of line");
-    console().plain("  Ctrl+C/D        - Exit");
-    console().newline();
-    console().plain(&format!("🔧 Available tools: {}", tool_registry.list_tools().len()));
-    for (name, description) in tool_registry.list_tools() {
-        console().plain(&format!("  • {}: {}", name, description));
-    }
-    console().newline();
-}
-
-fn print_history(input_handler: &InputHandler) {
-    console().plain("📜 Command History:");
-    let history = input_handler.history();
-    if history.is_empty() {
-        console().plain("  (empty)");
-    } else {
-        for (i, entry) in history.iter().enumerate() {
-            console().plain(&format!("  {}: {}", i + 1, entry));
-        }
-    }
-    console().newline();
-}
-
-fn print_available_tools(tool_registry: &ToolRegistry) {
-    console().tools_header();
-    for (name, description) in tool_registry.list_tools() {
-        console().plain(&format!("  • {}: {}", name, description));
-    }
-    console().newline();
-}
 
 fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
     match backend_name {
@@ -200,120 +152,6 @@ async fn handle_conversation_turn(
 ) -> Result<()> {
     let handler = ConversationHandler::new(backend, tool_registry, tool_executor);
     handler.handle_turn(conversation).await
-}
-
-async fn interactive_chat(
-    backend: Box<dyn LlmBackend>,
-    parser: MessageParser,
-    permission_manager: PermissionManager,
-    tool_registry: ToolRegistry,
-) -> Result<()> {
-    console().welcome(backend.backend_name());
-    console().file_system_enabled();
-    if !permission_manager.is_enforcing() {
-        console().permissions_disabled();
-    }
-
-    let agent_manager = AgentManager::new()?;
-    let default_agent = agent_manager.get_default_agent();
-
-    if let Some(ref agent) = default_agent {
-        console().plain(&format!("📝 Agent: {}", agent.name));
-    } else {
-        console().warning("No agent loaded");
-    }
-
-    console().plain("Type 'exit', 'quit', or Ctrl+C to quit.");
-    console().newline();
-
-    let mut input_handler = InputHandler::new()?;
-    input_handler.load_history()?;
-
-    for tool_name in tool_registry.list_tools().iter().map(|(name, _)| name) {
-        input_handler.add_command(tool_name.to_string());
-    }
-
-    let mut conversation = Conversation::new();
-    if let Some(agent) = default_agent {
-        conversation.add_system_message(agent.content);
-    }
-    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
-
-    loop {
-        match input_handler.readline("> ") {
-            Ok(Some(input)) => {
-                let input = input.trim();
-
-                if input.is_empty() {
-                    continue;
-                }
-
-                if matches!(input, "exit" | "quit" | "q") {
-                    console().goodbye();
-                    break;
-                }
-
-                if input.starts_with("/help") {
-                    print_help(&tool_registry);
-                    continue;
-                }
-
-                if input.starts_with("/tools") {
-                    print_available_tools(&tool_registry);
-                    continue;
-                }
-
-                if input.starts_with("/history") {
-                    print_history(&input_handler);
-                    continue;
-                }
-
-                if input.starts_with("/clear") {
-                    input_handler.clear_history();
-                    console().success("History cleared");
-                    continue;
-                }
-
-                let expanded_input = match parser.expand_message(input).await {
-                    Ok(expanded) => {
-                        if expanded != input {
-                            console().file_references_found();
-                        }
-                        expanded
-                    }
-                    Err(e) => {
-                        console().warning(&format!("Error expanding file references: {}", e));
-                        input.to_string()
-                    }
-                };
-
-                conversation.add_user_message(expanded_input);
-
-                if let Err(e) = handle_conversation_turn(
-                    &backend,
-                    &mut conversation,
-                    &tool_registry,
-                    &tool_executor,
-                )
-                .await
-                {
-                    console().error(&format!("Error: {}", e));
-                }
-            }
-            Ok(None) => {
-                console().goodbye();
-                break;
-            }
-            Err(e) => {
-                console().error(&format!("Error reading input: {}", e));
-                break;
-            }
-        }
-    }
-
-    input_handler.save_history()?;
-
-    Ok(())
 }
 
 fn handle_config(action: ConfigAction) -> Result<()> {
