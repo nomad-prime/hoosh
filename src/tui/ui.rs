@@ -18,6 +18,12 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut AppState) {
     // Update viewport height for scroll calculations
     app.viewport_height = area.height;
 
+    // On first render, scroll to bottom after viewport height is set
+    if !app.initial_scroll_done {
+        app.scroll_to_bottom();
+        app.initial_scroll_done = true;
+    }
+
     // Create lines from all messages
     let lines: Vec<Line> = app
         .messages
