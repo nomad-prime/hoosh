@@ -4,7 +4,8 @@ use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
 use super::completion::Completer;
-use super::events::{AgentEvent, AgentState};
+use super::events::AgentState;
+use crate::conversations::AgentEvent;
 use crate::permissions::OperationType;
 
 pub enum MessageLine {
@@ -332,6 +333,10 @@ impl AppState {
                     "⚠️ Maximum conversation steps ({}) reached, stopping.",
                     max_steps
                 ));
+            }
+            AgentEvent::PermissionRequest { .. } => {
+                // Permission requests are handled separately in the TUI event loop
+                // This variant should not reach here, but we include it for exhaustiveness
             }
         }
     }
