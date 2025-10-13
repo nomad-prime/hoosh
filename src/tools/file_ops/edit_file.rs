@@ -1,0 +1,332 @@
+use crate::permissions::{OperationType, PermissionManager};
+use crate::tools::Tool;
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::path::PathBuf;
+use tokio::fs;
+
+use super::common::resolve_path;
+
+pub struct EditFileTool {
+    working_directory: PathBuf,
+}
+
+impl EditFileTool {
+    pub fn new() -> Self {
+        Self {
+            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        }
+    }
+
+    pub fn with_working_directory(working_dir: PathBuf) -> Self {
+        Self {
+            working_directory: working_dir,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EditFileArgs {
+    path: String,
+    old_string: String,
+    new_string: String,
+    #[serde(default)]
+    replace_all: bool,
+}
+
+#[async_trait]
+impl Tool for EditFileTool {
+    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+        let args: EditFileArgs = serde_json::from_value(args.clone())
+            .context("Invalid arguments for edit_file tool")?;
+
+        // Validate that old_string and new_string are different
+        if args.old_string == args.new_string {
+            anyhow::bail!("old_string and new_string must be different");
+        }
+
+        let file_path = resolve_path(&args.path, &self.working_directory);
+
+        // Security check: ensure we're not editing outside the working directory
+        let canonical_file = file_path
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?;
+        let canonical_working = self.working_directory
+            .canonicalize()
+            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+
+        if !canonical_file.starts_with(&canonical_working) {
+            anyhow::bail!("Access denied: cannot edit files outside working directory");
+        }
+
+        // Read the file
+        let content = fs::read_to_string(&canonical_file)
+            .await
+            .with_context(|| format!("Failed to read file: {}", canonical_file.display()))?;
+
+        // Perform the replacement
+        let new_content = if args.replace_all {
+            // Replace all occurrences
+            let count = content.matches(&args.old_string).count();
+            if count == 0 {
+                anyhow::bail!(
+                    "String not found in file: '{}'",
+                    if args.old_string.len() > 50 {
+                        format!("{}...", &args.old_string[..50])
+                    } else {
+                        args.old_string.clone()
+                    }
+                );
+            }
+            let result = content.replace(&args.old_string, &args.new_string);
+            (result, count)
+        } else {
+            // Replace only if unique
+            let matches: Vec<_> = content.match_indices(&args.old_string).collect();
+            match matches.len() {
+                0 => anyhow::bail!(
+                    "String not found in file: '{}'",
+                    if args.old_string.len() > 50 {
+                        format!("{}...", &args.old_string[..50])
+                    } else {
+                        args.old_string.clone()
+                    }
+                ),
+                1 => {
+                    let result = content.replacen(&args.old_string, &args.new_string, 1);
+                    (result, 1)
+                }
+                n => anyhow::bail!(
+                    "String appears {} times in file. Use replace_all=true to replace all occurrences, or provide more context to make the match unique.",
+                    n
+                ),
+            }
+        };
+
+        // Write the modified content back
+        fs::write(&canonical_file, &new_content.0)
+            .await
+            .with_context(|| format!("Failed to write file: {}", canonical_file.display()))?;
+
+        Ok(format!(
+            "Successfully edited {} (replaced {} occurrence{})",
+            canonical_file.display(),
+            new_content.1,
+            if new_content.1 == 1 { "" } else { "s" }
+        ))
+    }
+
+    fn tool_name(&self) -> &'static str {
+        "edit_file"
+    }
+
+    fn description(&self) -> &'static str {
+        "Edit a file by replacing exact string matches. Use this for surgical edits to existing files."
+    }
+
+    fn parameter_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The path to the file to edit (relative to working directory)"
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "The exact string to find and replace (must be unique unless replace_all=true)"
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "The replacement string (must be different from old_string)"
+                },
+                "replace_all": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "If true, replace all occurrences. If false (default), the string must be unique in the file."
+                }
+            },
+            "required": ["path", "old_string", "new_string"]
+        })
+    }
+
+    fn format_call_display(&self, args: &Value) -> String {
+        if let Ok(parsed_args) = serde_json::from_value::<EditFileArgs>(args.clone()) {
+            format!("Edit({})", parsed_args.path)
+        } else {
+            "Edit(?)".to_string()
+        }
+    }
+
+    fn result_summary(&self, result: &str) -> String {
+        // Extract occurrence count from result like "Successfully edited ... (replaced N occurrence(s))"
+        if let Some(replaced_part) = result.split("replaced ").nth(1) {
+            if let Some(count_str) = replaced_part.split(" occurrence").next() {
+                return format!("Replaced {} occurrence{}", count_str,
+                    if count_str == "1" { "" } else { "s" });
+            }
+        }
+        "File edited successfully".to_string()
+    }
+
+    async fn check_permission(
+        &self,
+        args: &serde_json::Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let args: EditFileArgs = serde_json::from_value(args.clone())
+            .context("Invalid arguments for edit_file tool")?;
+
+        // Normalize the path for consistent caching
+        let file_path = resolve_path(&args.path, &self.working_directory);
+        let normalized_path = file_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
+            .to_string();
+
+        // Editing is essentially writing to a file
+        let operation = OperationType::WriteFile(normalized_path);
+        permission_manager.check_permission(&operation).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_edit_file_tool_basic() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = "Hello, World!\nThis is a test.";
+
+        fs::write(&test_file, content).await.unwrap();
+
+        let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "World",
+            "new_string": "Rust"
+        });
+
+        let result = tool.execute(&args).await.unwrap();
+        assert!(result.contains("Successfully edited"));
+        assert!(result.contains("replaced 1 occurrence"));
+
+        let modified_content = fs::read_to_string(&test_file).await.unwrap();
+        assert_eq!(modified_content, "Hello, Rust!\nThis is a test.");
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_tool_replace_all() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = "foo bar foo baz foo";
+
+        fs::write(&test_file, content).await.unwrap();
+
+        let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "foo",
+            "new_string": "qux",
+            "replace_all": true
+        });
+
+        let result = tool.execute(&args).await.unwrap();
+        assert!(result.contains("Successfully edited"));
+        assert!(result.contains("replaced 3 occurrences"));
+
+        let modified_content = fs::read_to_string(&test_file).await.unwrap();
+        assert_eq!(modified_content, "qux bar qux baz qux");
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_tool_not_unique() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = "foo bar foo baz";
+
+        fs::write(&test_file, content).await.unwrap();
+
+        let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "foo",
+            "new_string": "qux"
+        });
+
+        let result = tool.execute(&args).await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("appears 2 times"));
+        assert!(error.to_string().contains("replace_all=true"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_tool_string_not_found() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = "Hello, World!";
+
+        fs::write(&test_file, content).await.unwrap();
+
+        let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "Goodbye",
+            "new_string": "Hello"
+        });
+
+        let result = tool.execute(&args).await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("String not found"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_tool_same_strings() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = "Hello, World!";
+
+        fs::write(&test_file, content).await.unwrap();
+
+        let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "World",
+            "new_string": "World"
+        });
+
+        let result = tool.execute(&args).await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("must be different"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_tool_multiline() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        let content = "fn main() {\n    println!(\"Hello\");\n}";
+
+        fs::write(&test_file, content).await.unwrap();
+
+        let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "fn main() {\n    println!(\"Hello\");\n}",
+            "new_string": "fn main() {\n    println!(\"Goodbye\");\n}"
+        });
+
+        let result = tool.execute(&args).await.unwrap();
+        assert!(result.contains("Successfully edited"));
+
+        let modified_content = fs::read_to_string(&test_file).await.unwrap();
+        assert_eq!(modified_content, "fn main() {\n    println!(\"Goodbye\");\n}");
+    }
+}

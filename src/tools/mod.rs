@@ -70,7 +70,7 @@ pub mod bash;
 pub mod file_ops;
 
 pub use bash::BashTool;
-pub use file_ops::{ListDirectoryTool, ReadFileTool, WriteFileTool};
+pub use file_ops::{EditFileTool, ListDirectoryTool, ReadFileTool, WriteFileTool};
 
 /// Tool registry for managing available tools
 #[derive(Clone)]
@@ -123,6 +123,7 @@ impl Default for ToolRegistry {
         Self::new()
             .with_tool(Arc::new(ReadFileTool::new()))
             .with_tool(Arc::new(WriteFileTool::new()))
+            .with_tool(Arc::new(EditFileTool::new()))
             .with_tool(Arc::new(ListDirectoryTool::new()))
             .with_tool(Arc::new(BashTool::new()))
     }
