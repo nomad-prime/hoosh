@@ -4,6 +4,7 @@ use tui_textarea::TextArea;
 
 use super::completion::Completer;
 use super::events::{AgentEvent, AgentState};
+use crate::permissions::OperationType;
 
 pub enum MessageLine {
     Plain(String),
@@ -17,6 +18,22 @@ pub struct CompletionState {
     pub trigger_position: usize,
     pub query: String,
     pub completer_index: usize,
+}
+
+pub struct PermissionDialogState {
+    pub operation: OperationType,
+    pub request_id: String,
+    pub selected_index: usize,
+    pub options: Vec<PermissionOption>,
+}
+
+#[derive(Clone)]
+pub enum PermissionOption {
+    YesOnce,
+    No,
+    AlwaysForFile,
+    AlwaysForDirectory(String),
+    AlwaysForType,
 }
 
 impl CompletionState {
@@ -62,6 +79,7 @@ pub struct AppState {
     pub initial_scroll_done: bool,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
+    pub permission_dialog_state: Option<PermissionDialogState>,
 }
 
 impl AppState {
@@ -80,6 +98,7 @@ impl AppState {
             initial_scroll_done: false,
             completion_state: None,
             completers: Vec::new(),
+            permission_dialog_state: None,
         }
     }
 
@@ -95,6 +114,57 @@ impl AppState {
 
     pub fn is_completing(&self) -> bool {
         self.completion_state.is_some()
+    }
+
+    pub fn is_showing_permission_dialog(&self) -> bool {
+        self.permission_dialog_state.is_some()
+    }
+
+    pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
+        // Build the list of options based on the operation type
+        let mut options = vec![
+            PermissionOption::YesOnce,
+            PermissionOption::No,
+            PermissionOption::AlwaysForFile,
+        ];
+
+        // Add directory option if applicable
+        if let Some(dir) = operation.parent_directory() {
+            options.push(PermissionOption::AlwaysForDirectory(dir));
+        }
+
+        options.push(PermissionOption::AlwaysForType);
+
+        self.permission_dialog_state = Some(PermissionDialogState {
+            operation,
+            request_id,
+            selected_index: 0,
+            options,
+        });
+    }
+
+    pub fn select_next_permission_option(&mut self) {
+        if let Some(dialog) = &mut self.permission_dialog_state {
+            if !dialog.options.is_empty() {
+                dialog.selected_index = (dialog.selected_index + 1) % dialog.options.len();
+            }
+        }
+    }
+
+    pub fn select_prev_permission_option(&mut self) {
+        if let Some(dialog) = &mut self.permission_dialog_state {
+            if !dialog.options.is_empty() {
+                if dialog.selected_index == 0 {
+                    dialog.selected_index = dialog.options.len() - 1;
+                } else {
+                    dialog.selected_index -= 1;
+                }
+            }
+        }
+    }
+
+    pub fn hide_permission_dialog(&mut self) {
+        self.permission_dialog_state = None;
     }
 
     pub fn start_completion(&mut self, trigger_position: usize, completer_index: usize) {

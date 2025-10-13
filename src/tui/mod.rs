@@ -13,9 +13,9 @@ use tokio::sync::mpsc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::conversations::{Conversation, ConversationEvent, ConversationHandler};
+use crate::conversations::{Conversation, ConversationEvent, ConversationHandler, PermissionResponse};
 use crate::parser::MessageParser;
-use crate::permissions::PermissionManager;
+use crate::permissions::{PermissionManager, PermissionScope};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -68,9 +68,18 @@ pub async fn run(
         conv
     }));
 
-    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
-
+    // Create event channels
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+    // Create permission response channel
+    let (permission_response_tx, permission_response_rx) = mpsc::unbounded_channel();
+
+    // Configure permission manager with event channels
+    let permission_manager = permission_manager
+        .with_event_sender(event_tx.clone())
+        .with_response_receiver(permission_response_rx);
+
+    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
 
     let result = run_event_loop(
         &mut terminal,
@@ -82,6 +91,7 @@ pub async fn run(
         conversation,
         &mut event_rx,
         event_tx,
+        permission_response_tx,
     )
     .await;
 
@@ -99,6 +109,7 @@ async fn run_event_loop(
     conversation: Arc<tokio::sync::Mutex<Conversation>>,
     event_rx: &mut mpsc::UnboundedReceiver<ConversationEvent>,
     event_tx: mpsc::UnboundedSender<ConversationEvent>,
+    permission_response_tx: mpsc::UnboundedSender<PermissionResponse>,
 ) -> Result<()> {
     let backend = Arc::new(backend);
     let parser = Arc::new(parser);
@@ -112,23 +123,35 @@ async fn run_event_loop(
 
         // Check for agent events
         while let Ok(event) = event_rx.try_recv() {
-            let agent_event = match event {
-                ConversationEvent::Thinking => AgentEvent::Thinking,
+            match event {
+                ConversationEvent::Thinking => {
+                    app.handle_agent_event(AgentEvent::Thinking);
+                }
                 ConversationEvent::AssistantThought(content) => {
-                    AgentEvent::AssistantThought(content)
+                    app.handle_agent_event(AgentEvent::AssistantThought(content));
                 }
-                ConversationEvent::ToolCalls(calls) => AgentEvent::ToolCalls(calls),
+                ConversationEvent::ToolCalls(calls) => {
+                    app.handle_agent_event(AgentEvent::ToolCalls(calls));
+                }
                 ConversationEvent::ToolResult { tool_name, summary } => {
-                    AgentEvent::ToolResult { tool_name, summary }
+                    app.handle_agent_event(AgentEvent::ToolResult { tool_name, summary });
                 }
-                ConversationEvent::ToolExecutionComplete => AgentEvent::ToolExecutionComplete,
-                ConversationEvent::FinalResponse(content) => AgentEvent::FinalResponse(content),
-                ConversationEvent::Error(error) => AgentEvent::Error(error),
+                ConversationEvent::ToolExecutionComplete => {
+                    app.handle_agent_event(AgentEvent::ToolExecutionComplete);
+                }
+                ConversationEvent::FinalResponse(content) => {
+                    app.handle_agent_event(AgentEvent::FinalResponse(content));
+                }
+                ConversationEvent::Error(error) => {
+                    app.handle_agent_event(AgentEvent::Error(error));
+                }
                 ConversationEvent::MaxStepsReached(max_steps) => {
-                    AgentEvent::MaxStepsReached(max_steps)
+                    app.handle_agent_event(AgentEvent::MaxStepsReached(max_steps));
                 }
-            };
-            app.handle_agent_event(agent_event);
+                ConversationEvent::PermissionRequest { operation, request_id } => {
+                    app.show_permission_dialog(operation, request_id);
+                }
+            }
         }
 
         // Check if agent task is done
@@ -142,6 +165,79 @@ async fn run_event_loop(
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
                 Event::Key(key) => {
+                    // Handle permission dialog keys first
+                    if app.is_showing_permission_dialog() {
+                        if let Some(dialog_state) = &app.permission_dialog_state {
+                            let operation = dialog_state.operation.clone();
+                            let request_id = dialog_state.request_id.clone();
+                            let selected_option = dialog_state.options.get(dialog_state.selected_index).cloned();
+
+                            let response = match key.code {
+                                KeyCode::Up => {
+                                    app.select_prev_permission_option();
+                                    None
+                                }
+                                KeyCode::Down => {
+                                    app.select_next_permission_option();
+                                    None
+                                }
+                                KeyCode::Enter => {
+                                    // Use the currently selected option
+                                    selected_option.as_ref().and_then(|opt| {
+                                        match opt {
+                                            app::PermissionOption::YesOnce => Some((true, None)),
+                                            app::PermissionOption::No => Some((false, None)),
+                                            app::PermissionOption::AlwaysForFile => {
+                                                let target = operation.target().to_string();
+                                                Some((true, Some(PermissionScope::Specific(target))))
+                                            }
+                                            app::PermissionOption::AlwaysForDirectory(dir) => {
+                                                Some((true, Some(PermissionScope::Directory(dir.clone()))))
+                                            }
+                                            app::PermissionOption::AlwaysForType => {
+                                                Some((true, Some(PermissionScope::Global)))
+                                            }
+                                        }
+                                    })
+                                }
+                                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                    Some((true, None))
+                                }
+                                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                                    Some((false, None))
+                                }
+                                KeyCode::Char('a') => {
+                                    let target = operation.target().to_string();
+                                    Some((true, Some(PermissionScope::Specific(target))))
+                                }
+                                KeyCode::Char('d') | KeyCode::Char('D') => {
+                                    if let Some(dir) = operation.parent_directory() {
+                                        Some((true, Some(PermissionScope::Directory(dir))))
+                                    } else {
+                                        let target = operation.target().to_string();
+                                        Some((true, Some(PermissionScope::Specific(target))))
+                                    }
+                                }
+                                KeyCode::Char('A') => {
+                                    Some((true, Some(PermissionScope::Global)))
+                                }
+                                _ => None,
+                            };
+
+                            if let Some((allowed, scope)) = response {
+                                // Send permission response
+                                let perm_response = PermissionResponse {
+                                    request_id,
+                                    allowed,
+                                    scope,
+                                };
+                                let _ = permission_response_tx.send(perm_response);
+                                app.hide_permission_dialog();
+                            }
+                        }
+                        continue;
+                    }
+
                     // Handle completion-specific keys first
                     if app.is_completing() {
                         match key.code {
