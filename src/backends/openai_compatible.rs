@@ -7,32 +7,37 @@ use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
-pub struct TogetherAiConfig {
+pub struct OpenAICompatibleConfig {
+    pub name: String,
     pub api_key: String,
     pub model: String,
     pub base_url: String,
+    pub temperature: Option<f32>,
 }
 
-impl Default for TogetherAiConfig {
+impl Default for OpenAICompatibleConfig {
     fn default() -> Self {
         Self {
+            name: "openai".to_string(),
             api_key: String::new(),
-            model: "meta-llama/Llama-2-7b-chat-hf".to_string(),
-            base_url: "https://api.together.xyz/v1".to_string(),
+            model: "gpt-4".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            temperature: None,
         }
     }
 }
 
-pub struct TogetherAiBackend {
+pub struct OpenAICompatibleBackend {
     client: reqwest::Client,
-    config: TogetherAiConfig,
+    config: OpenAICompatibleConfig,
 }
 
 #[derive(Debug, Serialize)]
 struct ChatCompletionRequest {
     model: String,
     messages: Vec<ConversationMessage>,
-    max_tokens: Option<u32>,
+    max_completion_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<Value>>,
@@ -58,8 +63,8 @@ struct ResponseMessage {
     tool_calls: Option<Vec<ToolCall>>,
 }
 
-impl TogetherAiBackend {
-    pub fn new(config: TogetherAiConfig) -> Result<Self> {
+impl OpenAICompatibleBackend {
+    pub fn new(config: OpenAICompatibleConfig) -> Result<Self> {
         let client = reqwest::Client::new();
         Ok(Self { client, config })
     }
@@ -74,8 +79,8 @@ impl TogetherAiBackend {
                 tool_call_id: None,
                 name: None,
             }],
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
+            max_completion_tokens: 4096,
+            temperature: self.config.temperature,
             tools: None,
             tool_choice: None,
         }
@@ -92,8 +97,8 @@ impl TogetherAiBackend {
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: conversation.get_messages_for_api().clone(),
-            max_tokens: Some(4096),
-            temperature: Some(0.7),
+            max_completion_tokens: 4096,
+            temperature: self.config.temperature,
             tools: if has_tools {
                 Some(tool_schemas)
             } else {
@@ -109,10 +114,11 @@ impl TogetherAiBackend {
 }
 
 #[async_trait]
-impl LlmBackend for TogetherAiBackend {
+impl LlmBackend for OpenAICompatibleBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
         if self.config.api_key.is_empty() {
-            anyhow::bail!("Together AI API key not configured. Set it with: hoosh config set together_ai_api_key <your_key>");
+            anyhow::bail!("{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                self.config.name, self.config.name);
         }
 
         let request = self.create_request(message);
@@ -124,18 +130,18 @@ impl LlmBackend for TogetherAiBackend {
             .json(&request)
             .send()
             .await
-            .context("Failed to send request to Together AI")?;
+            .context(format!("Failed to send request to {}", self.config.name))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Together AI API error {}: {}", status, error_text);
+            anyhow::bail!("{} API error {}: {}", self.config.name, status, error_text);
         }
 
         let response_data: ChatCompletionResponse = response
             .json()
             .await
-            .context("Failed to parse response from Together AI")?;
+            .context(format!("Failed to parse response from {}", self.config.name))?;
 
         response_data
             .choices
@@ -143,7 +149,7 @@ impl LlmBackend for TogetherAiBackend {
             .and_then(|choice| choice.message.as_ref())
             .and_then(|message| message.content.as_ref())
             .map(|content| content.clone())
-            .ok_or_else(|| anyhow::anyhow!("No response from Together AI"))
+            .ok_or_else(|| anyhow::anyhow!("No response from {}", self.config.name))
     }
 
     async fn send_message_with_tools(
@@ -152,7 +158,8 @@ impl LlmBackend for TogetherAiBackend {
         tools: &ToolRegistry,
     ) -> Result<LlmResponse> {
         if self.config.api_key.is_empty() {
-            anyhow::bail!("Together AI API key not configured. Set it with: hoosh config set together_ai_api_key <your_key>");
+            anyhow::bail!("{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                self.config.name, self.config.name);
         }
 
         let request = self.create_request_with_tools(conversation, tools);
@@ -165,18 +172,18 @@ impl LlmBackend for TogetherAiBackend {
             .json(&request)
             .send()
             .await
-            .context("Failed to send request to Together AI")?;
+            .context(format!("Failed to send request to {}", self.config.name))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Together AI API error {}: {}", status, error_text);
+            anyhow::bail!("{} API error {}: {}", self.config.name, status, error_text);
         }
 
         let response_data: ChatCompletionResponse = response
             .json()
             .await
-            .context("Failed to parse response from Together AI")?;
+            .context(format!("Failed to parse response from {}", self.config.name))?;
 
         if let Some(choice) = response_data.choices.first() {
             if let Some(message) = &choice.message {
@@ -193,10 +200,10 @@ impl LlmBackend for TogetherAiBackend {
             }
         }
 
-        anyhow::bail!("No valid response from Together AI")
+        anyhow::bail!("No valid response from {}", self.config.name)
     }
 
     fn backend_name(&self) -> &str {
-        "together_ai"
+        &self.config.name
     }
 }

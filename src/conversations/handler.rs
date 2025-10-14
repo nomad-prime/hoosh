@@ -208,10 +208,6 @@ mod tests {
             unimplemented!()
         }
 
-        async fn stream_message(&self, _message: &str) -> Result<crate::backends::StreamResponse> {
-            unimplemented!()
-        }
-
         async fn send_message_with_tools(
             &self,
             _conversation: &Conversation,
@@ -221,14 +217,6 @@ mod tests {
             let response = self.responses.get(*index).cloned();
             *index += 1;
             response.ok_or_else(|| anyhow::anyhow!("No more responses"))
-        }
-
-        async fn stream_message_with_tools(
-            &self,
-            _conversation: &Conversation,
-            _tools: &ToolRegistry,
-        ) -> Result<crate::backends::StreamResponse> {
-            unimplemented!()
         }
 
         fn backend_name(&self) -> &'static str {
