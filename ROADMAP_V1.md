@@ -307,3 +307,19 @@ struct MultiFileOp {
     files: Vec<PathBuf>) -> Result<String>
 }
 ```
+
+### 6. Add screenshot tool for visual tasks 🔧 LOW PRIORITY
+
+**Current State:** No screenshot capability
+**What's Missing:**
+
+- Integrate a screenshot capturing tool (e.g., `scrot` for Linux, `screencapture` for macOS)
+- Tool to capture and save screenshots to a specified directory
+- Option to annotate screenshots with text or arrows
+- Configurable screenshot format (PNG, JPEG)
+- Ability to capture specific windows or regions of the screen
+- Option to include screenshots in conversation history
+- Command to trigger screenshot capture (e.g., `/screenshot`)
+  **Why it matters:** Some coding tasks involve visual elements (e.g., UI design, bug reproduction). Screenshots allow
+  the AI to
+- access visual context and provide better assistance.
