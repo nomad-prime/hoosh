@@ -63,7 +63,20 @@ fn render_input(frame: &mut Frame, area: Rect, app: &mut AppState) {
 
     let inner_area = input_block.inner(area);
     frame.render_widget(input_block, area);
-    frame.render_widget(input_widget, inner_area);
+
+    // Split the inner area to add prompt
+    let horizontal = Layout::horizontal([
+        Constraint::Length(2),  // Prompt area ("> ")
+        Constraint::Min(1),     // Text input area
+    ]);
+    let [prompt_area, text_area] = horizontal.areas(inner_area);
+
+    // Render the prompt
+    let prompt = Paragraph::new("> ");
+    frame.render_widget(prompt, prompt_area);
+
+    // Render the input
+    frame.render_widget(input_widget, text_area);
 }
 
 fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) {
