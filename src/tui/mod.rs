@@ -6,7 +6,7 @@ mod terminal;
 mod ui;
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -119,15 +119,44 @@ async fn run_event_loop(
     let mut agent_task: Option<tokio::task::JoinHandle<()>> = None;
 
     loop {
+        // Insert pending messages above viewport using insert_before
+        if app.has_pending_messages() {
+            use app::MessageLine;
+            use ratatui::text::{Line, Text};
+            use ratatui::widgets::{Paragraph, Widget};
+
+            for msg in app.drain_pending_messages() {
+                match msg {
+                    MessageLine::Plain(text) => {
+                        // Split multi-line text into individual lines
+                        let lines: Vec<Line> = if text.is_empty() {
+                            vec![Line::from("")]
+                        } else {
+                            text.lines()
+                                .map(|line| Line::from(line.to_string()))
+                                .collect()
+                        };
+
+                        let line_count = lines.len() as u16;
+                        terminal.insert_before(line_count, |buf| {
+                            Paragraph::new(Text::from(lines)).render(buf.area, buf);
+                        })?;
+                    }
+                    MessageLine::Styled(styled_line) => {
+                        terminal.insert_before(1, |buf| {
+                            Paragraph::new(styled_line).render(buf.area, buf);
+                        })?;
+                    }
+                }
+            }
+        }
+
         terminal.draw(|f| ui::render(f, app))?;
 
         // Check for agent events
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                AgentEvent::PermissionRequest {
-                    operation,
-                    request_id,
-                } => {
+                AgentEvent::PermissionRequest { operation, request_id } => {
                     app.show_permission_dialog(operation, request_id);
                 }
                 other_event => {
@@ -155,10 +184,7 @@ async fn run_event_loop(
                         if let Some(dialog_state) = &app.permission_dialog_state {
                             let operation = dialog_state.operation.clone();
                             let request_id = dialog_state.request_id.clone();
-                            let selected_option = dialog_state
-                                .options
-                                .get(dialog_state.selected_index)
-                                .cloned();
+                            let selected_option = dialog_state.options.get(dialog_state.selected_index).cloned();
 
                             let response = match key.code {
                                 KeyCode::Up => {
@@ -171,19 +197,20 @@ async fn run_event_loop(
                                 }
                                 KeyCode::Enter => {
                                     // Use the currently selected option
-                                    selected_option.as_ref().and_then(|opt| match opt {
-                                        app::PermissionOption::YesOnce => Some((true, None)),
-                                        app::PermissionOption::No => Some((false, None)),
-                                        app::PermissionOption::AlwaysForFile => {
-                                            let target = operation.target().to_string();
-                                            Some((true, Some(PermissionScope::Specific(target))))
-                                        }
-                                        app::PermissionOption::AlwaysForDirectory(dir) => Some((
-                                            true,
-                                            Some(PermissionScope::Directory(dir.clone())),
-                                        )),
-                                        app::PermissionOption::AlwaysForType => {
-                                            Some((true, Some(PermissionScope::Global)))
+                                    selected_option.as_ref().and_then(|opt| {
+                                        match opt {
+                                            app::PermissionOption::YesOnce => Some((true, None)),
+                                            app::PermissionOption::No => Some((false, None)),
+                                            app::PermissionOption::AlwaysForFile => {
+                                                let target = operation.target().to_string();
+                                                Some((true, Some(PermissionScope::Specific(target))))
+                                            }
+                                            app::PermissionOption::AlwaysForDirectory(dir) => {
+                                                Some((true, Some(PermissionScope::Directory(dir.clone()))))
+                                            }
+                                            app::PermissionOption::AlwaysForType => {
+                                                Some((true, Some(PermissionScope::Global)))
+                                            }
                                         }
                                     })
                                 }
@@ -310,22 +337,6 @@ async fn run_event_loop(
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.should_quit = true;
                         }
-                        KeyCode::PageUp => {
-                            for _ in 0..10 {
-                                app.scroll_up();
-                            }
-                        }
-                        KeyCode::PageDown => {
-                            for _ in 0..10 {
-                                app.scroll_down();
-                            }
-                        }
-                        KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.scroll_up();
-                        }
-                        KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.scroll_down();
-                        }
                         KeyCode::Enter => {
                             let input_text = app.get_input_text();
                             if !input_text.trim().is_empty() && agent_task.is_none() {
@@ -358,12 +369,10 @@ async fn run_event_loop(
                                         &tool_registry,
                                         &tool_executor,
                                     )
-                                    .with_event_sender(event_tx_clone.clone());
+                                    .with_event_sender(event_tx_clone);
 
                                     if let Err(e) = handler.handle_turn(&mut conv).await {
-                                        // Send error message through event system so it appears in the UI
-                                        let _ =
-                                            event_tx_clone.send(AgentEvent::Error(e.to_string()));
+                                        eprintln!("Error handling turn: {}", e);
                                     }
                                 }));
                             }
@@ -390,15 +399,6 @@ async fn run_event_loop(
                         }
                     }
                 }
-                Event::Mouse(mouse) => match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        app.scroll_down();
-                    }
-                    MouseEventKind::ScrollDown => {
-                        app.scroll_up();
-                    }
-                    _ => {}
-                },
                 _ => {}
             }
         }

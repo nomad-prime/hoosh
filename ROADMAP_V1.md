@@ -1,51 +1,30 @@
 # Hoosh v1.0 Roadmap
 
----
+### 0. Web Search Tool 🔧 HIGH PRIORITY
 
-## Critical Missing Features for Self-Coding v1.0
-
-### 1. Multi-Backend Support ⚠️ HIGH PRIORITY
-
-**Current State:** Only Together AI is implemented
-
+**Current State:** No web search capability
 **What's Missing:**
 
-- **Anthropic (Claude) backend** - Essential for self-improvement since Claude excels at coding
-- **OpenAI backend** - For GPT-4 support
-- **Local model support** - Ollama, llama.cpp for offline operation
+- Integrate a web search API (e.g., Bing Search API, Google Custom Search)
+- Tool to fetch and summarize search results
+- Rate limiting and caching of search results
+- Handle ambiguous queries
+- Support for multiple search engines
+- Configurable search depth (number of results to fetch)
+- Ability to cite sources in responses
+- Option to disable web search for privacy
+- Search query refinement based on conversation context
+- Summarization of long articles
+- Extract key points from search results
+- Filter results by date or relevance
+- Handle pagination for search results
+- Support for different content types (news, images, videos)
+- Allow user to specify preferred search engine in config
 
-**Technical Requirements:**
+**Why it matters:** Many coding tasks require up-to-date information. Web search allows the AI to access current
+documentation, libraries, and best practices.
 
-- Implement `src/backends/anthropic.rs` following the `LlmBackend` trait
-- Add streaming support for token-by-token responses
-- Support Claude's tool use format (similar to OpenAI)
-- Configuration via `~/.config/hoosh/config.toml`
-
----
-
-### 2. Search/Grep Tools ⚠️ HIGH PRIORITY
-
-**Current State:** Not implemented
-
-**What's Missing:**
-
-- `grep_tool` - Search for patterns in files (supports regex)
-- `find_tool` - Find files by name/pattern
-- `search_and_replace_tool` - Bulk replacements across files
-
-**Why it matters:** For self-coding, the AI needs to search through its own codebase to understand existing patterns,
-find similar implementations, and locate where changes need to be made.
-
-**Technical Requirements:**
-
-```rust
-// Tool signatures
-grep_tool(pattern: String, path: Option<String>, regex: bool) -> Vec<SearchResult>
-find_tool(name_pattern: String, path: Option<String>) -> Vec<PathBuf>
-search_and_replace_tool(search: String, replace: String, files: Vec<String>) -> ReplaceResult
-```
-
-### 3. Conversation Persistence 🔧 MEDIUM PRIORITY
+### 1. Conversation Persistence 🔧 MEDIUM PRIORITY
 
 **Current State:** Conversations are lost on exit
 
@@ -82,7 +61,7 @@ struct ConversationStore {
 
 ---
 
-### 4. Enhanced Error Recovery 🔧 MEDIUM PRIORITY
+### 2. Enhanced Error Recovery 🔧 MEDIUM PRIORITY
 
 **Current State:** Basic error handling
 
@@ -112,7 +91,7 @@ struct ErrorHandler {
 
 ---
 
-### 5. Multi-Agent System with ACE Orchestration 🔧 HIGH PRIORITY
+### 3. Multi-Agent System with ACE Orchestration 🔧 HIGH PRIORITY
 
 **Current State:** Basic agent system exists in config (`default_agent`, agents defined in
 `~/.config/hoosh/config.toml`)
@@ -264,7 +243,7 @@ tags = ["meta", "coordination"]
   ```
 - **Playbook stats:** Show playbook size, version, and sections in status bar
 
-### 6. Safety Guardrails for Self-Modification ⚠️ CRITICAL
+### 4. Safety Guardrails for Self-Modification ⚠️ CRITICAL
 
 **Current State:** Basic permission system exists
 
@@ -304,7 +283,7 @@ struct SafetyGuard {
 
 ---
 
-### 7. Multi-file Operations 🔧 MEDIUM PRIORITY
+### 5. Multi-file Operations 🔧 MEDIUM PRIORITY
 
 **Current State:** Tools work on single files
 

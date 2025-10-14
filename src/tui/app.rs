@@ -8,6 +8,7 @@ use super::events::AgentState;
 use crate::conversations::AgentEvent;
 use crate::permissions::OperationType;
 
+#[derive(Clone)]
 pub enum MessageLine {
     Plain(String),
     Styled(Line<'static>),
@@ -72,14 +73,11 @@ impl CompletionState {
 
 pub struct AppState {
     pub input: TextArea<'static>,
-    pub messages: VecDeque<MessageLine>,
+    pub messages: VecDeque<MessageLine>, // Keep for reference, but won't render
+    pub pending_messages: VecDeque<MessageLine>, // Messages to insert with insert_before
     pub agent_state: AgentState,
     pub should_quit: bool,
     pub max_messages: usize,
-    pub scroll_offset: u16,
-    pub viewport_height: u16,
-    pub viewport_width: u16,
-    pub initial_scroll_done: bool,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
     pub permission_dialog_state: Option<PermissionDialogState>,
@@ -95,13 +93,10 @@ impl AppState {
         Self {
             input,
             messages: VecDeque::new(),
+            pending_messages: VecDeque::new(),
             agent_state: AgentState::Idle,
             should_quit: false,
             max_messages: 1000,
-            scroll_offset: 0,
-            viewport_height: 0,
-            viewport_width: 0,
-            initial_scroll_done: false,
             completion_state: None,
             completers: Vec::new(),
             permission_dialog_state: None,
@@ -221,74 +216,33 @@ impl AppState {
     }
 
     pub fn add_message(&mut self, message: String) {
-        self.messages.push_back(MessageLine::Plain(message));
+        let msg_line = MessageLine::Plain(message);
+        // Add to messages for history
+        self.messages.push_back(msg_line.clone());
         if self.messages.len() > self.max_messages {
             self.messages.pop_front();
         }
-        // Auto-scroll to bottom when new message arrives
-        self.scroll_to_bottom();
+        // Queue for insertion above viewport
+        self.pending_messages.push_back(msg_line);
     }
 
     pub fn add_styled_line(&mut self, line: Line<'static>) {
-        self.messages.push_back(MessageLine::Styled(line));
+        let msg_line = MessageLine::Styled(line);
+        // Add to messages for history
+        self.messages.push_back(msg_line.clone());
         if self.messages.len() > self.max_messages {
             self.messages.pop_front();
         }
-        // Auto-scroll to bottom when new message arrives
-        self.scroll_to_bottom();
+        // Queue for insertion above viewport
+        self.pending_messages.push_back(msg_line);
     }
 
-    pub fn total_lines(&self) -> u16 {
-        if self.viewport_width == 0 {
-            return 0;
-        }
-
-        self.messages
-            .iter()
-            .map(|msg| match msg {
-                MessageLine::Plain(s) => {
-                    s.lines()
-                        .map(|line| {
-                            // Calculate how many display lines this text line will take when wrapped
-                            let line_len = line.len() as u16;
-                            if line_len == 0 {
-                                1 // Empty lines still take up one line
-                            } else {
-                                // Number of wrapped lines = ceil(line_len / viewport_width)
-                                (line_len + self.viewport_width - 1) / self.viewport_width
-                            }
-                        })
-                        .sum::<u16>()
-                }
-                MessageLine::Styled(line) => {
-                    // Calculate the total length of all spans in the styled line
-                    let line_len: usize = line.spans.iter().map(|s| s.content.len()).sum();
-                    let line_len = line_len as u16;
-                    if line_len == 0 {
-                        1
-                    } else {
-                        (line_len + self.viewport_width - 1) / self.viewport_width
-                    }
-                }
-            })
-            .sum()
+    pub fn has_pending_messages(&self) -> bool {
+        !self.pending_messages.is_empty()
     }
 
-    pub fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_add(1);
-    }
-
-    pub fn scroll_down(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
-    }
-
-    pub fn max_scroll_offset(&self) -> u16 {
-        let total_lines = self.total_lines();
-        total_lines.saturating_sub(self.viewport_height)
-    }
-
-    pub fn scroll_to_bottom(&mut self) {
-        self.scroll_offset = self.max_scroll_offset();
+    pub fn drain_pending_messages(&mut self) -> Vec<MessageLine> {
+        self.pending_messages.drain(..).collect()
     }
 
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
