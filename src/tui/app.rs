@@ -1,4 +1,4 @@
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
@@ -87,7 +87,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let mut input = TextArea::default();
-        input.set_placeholder_text("Type your message here...");
+        input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         input.set_cursor_line_style(Style::default());
 
         Self {
@@ -301,7 +301,7 @@ impl AppState {
 
     pub fn clear_input(&mut self) {
         self.input = TextArea::default();
-        self.input.set_placeholder_text("Type your message here...");
+        self.input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         // Remove the underline from the cursor line
         self.input.set_cursor_line_style(Style::default());
     }
