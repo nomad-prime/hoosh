@@ -57,6 +57,7 @@ pub async fn run(
     app.add_message(
         "Keybindings: Ctrl+C (quit) | Ctrl+↑/↓ (scroll) | PageUp/Down (fast scroll)".to_string(),
     );
+    app.add_message("\n".to_string());
     app.add_message(String::new());
 
     let conversation = Arc::new(tokio::sync::Mutex::new({
@@ -123,7 +124,10 @@ async fn run_event_loop(
         // Check for agent events
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                AgentEvent::PermissionRequest { operation, request_id } => {
+                AgentEvent::PermissionRequest {
+                    operation,
+                    request_id,
+                } => {
                     app.show_permission_dialog(operation, request_id);
                 }
                 other_event => {
@@ -151,7 +155,10 @@ async fn run_event_loop(
                         if let Some(dialog_state) = &app.permission_dialog_state {
                             let operation = dialog_state.operation.clone();
                             let request_id = dialog_state.request_id.clone();
-                            let selected_option = dialog_state.options.get(dialog_state.selected_index).cloned();
+                            let selected_option = dialog_state
+                                .options
+                                .get(dialog_state.selected_index)
+                                .cloned();
 
                             let response = match key.code {
                                 KeyCode::Up => {
@@ -164,26 +171,23 @@ async fn run_event_loop(
                                 }
                                 KeyCode::Enter => {
                                     // Use the currently selected option
-                                    selected_option.as_ref().and_then(|opt| {
-                                        match opt {
-                                            app::PermissionOption::YesOnce => Some((true, None)),
-                                            app::PermissionOption::No => Some((false, None)),
-                                            app::PermissionOption::AlwaysForFile => {
-                                                let target = operation.target().to_string();
-                                                Some((true, Some(PermissionScope::Specific(target))))
-                                            }
-                                            app::PermissionOption::AlwaysForDirectory(dir) => {
-                                                Some((true, Some(PermissionScope::Directory(dir.clone()))))
-                                            }
-                                            app::PermissionOption::AlwaysForType => {
-                                                Some((true, Some(PermissionScope::Global)))
-                                            }
+                                    selected_option.as_ref().and_then(|opt| match opt {
+                                        app::PermissionOption::YesOnce => Some((true, None)),
+                                        app::PermissionOption::No => Some((false, None)),
+                                        app::PermissionOption::AlwaysForFile => {
+                                            let target = operation.target().to_string();
+                                            Some((true, Some(PermissionScope::Specific(target))))
+                                        }
+                                        app::PermissionOption::AlwaysForDirectory(dir) => Some((
+                                            true,
+                                            Some(PermissionScope::Directory(dir.clone())),
+                                        )),
+                                        app::PermissionOption::AlwaysForType => {
+                                            Some((true, Some(PermissionScope::Global)))
                                         }
                                     })
                                 }
-                                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                                    Some((true, None))
-                                }
+                                KeyCode::Char('y') | KeyCode::Char('Y') => Some((true, None)),
                                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                                     Some((false, None))
                                 }
@@ -199,9 +203,7 @@ async fn run_event_loop(
                                         Some((true, Some(PermissionScope::Specific(target))))
                                     }
                                 }
-                                KeyCode::Char('A') => {
-                                    Some((true, Some(PermissionScope::Global)))
-                                }
+                                KeyCode::Char('A') => Some((true, Some(PermissionScope::Global))),
                                 _ => None,
                             };
 
@@ -235,7 +237,8 @@ async fn run_event_loop(
                                     // Replace the query text with the selected completion
                                     let input_text = app.get_input_text();
                                     if let Some(at_pos) = input_text.rfind('@') {
-                                        let new_text = format!("{}{}", &input_text[..=at_pos], selected);
+                                        let new_text =
+                                            format!("{}{}", &input_text[..=at_pos], selected);
                                         app.clear_input();
                                         for line in new_text.lines() {
                                             app.input.insert_str(line);
@@ -257,12 +260,15 @@ async fn run_event_loop(
                                 let input_text = app.get_input_text();
                                 if let Some(at_pos) = input_text.rfind('@') {
                                     let query = input_text[at_pos + 1..].to_string();
-                                    let completer_idx = app.completion_state.as_ref().map(|s| s.completer_index);
+                                    let completer_idx =
+                                        app.completion_state.as_ref().map(|s| s.completer_index);
 
                                     if let Some(idx) = completer_idx {
                                         app.update_completion_query(query.clone());
                                         if let Some(completer) = app.completers.get(idx) {
-                                            if let Ok(candidates) = completer.get_completions(&query).await {
+                                            if let Ok(candidates) =
+                                                completer.get_completions(&query).await
+                                            {
                                                 app.set_completion_candidates(candidates);
                                             }
                                         }
@@ -277,12 +283,15 @@ async fn run_event_loop(
                                 let input_text = app.get_input_text();
                                 if let Some(at_pos) = input_text.rfind('@') {
                                     let query = input_text[at_pos + 1..].to_string();
-                                    let completer_idx = app.completion_state.as_ref().map(|s| s.completer_index);
+                                    let completer_idx =
+                                        app.completion_state.as_ref().map(|s| s.completer_index);
 
                                     if let Some(idx) = completer_idx {
                                         app.update_completion_query(query.clone());
                                         if let Some(completer) = app.completers.get(idx) {
-                                            if let Ok(candidates) = completer.get_completions(&query).await {
+                                            if let Ok(candidates) =
+                                                completer.get_completions(&query).await
+                                            {
                                                 app.set_completion_candidates(candidates);
                                             }
                                         }
@@ -332,11 +341,11 @@ async fn run_event_loop(
                                 let event_tx_clone = event_tx.clone();
 
                                 agent_task = Some(tokio::spawn(async move {
-                                    let expanded_input = match parser.expand_message(&input_text).await
-                                    {
-                                        Ok(expanded) => expanded,
-                                        Err(_) => input_text,
-                                    };
+                                    let expanded_input =
+                                        match parser.expand_message(&input_text).await {
+                                            Ok(expanded) => expanded,
+                                            Err(_) => input_text,
+                                        };
 
                                     {
                                         let mut conv = conversation.lock().await;
@@ -349,10 +358,12 @@ async fn run_event_loop(
                                         &tool_registry,
                                         &tool_executor,
                                     )
-                                    .with_event_sender(event_tx_clone);
+                                    .with_event_sender(event_tx_clone.clone());
 
                                     if let Err(e) = handler.handle_turn(&mut conv).await {
-                                        eprintln!("Error handling turn: {}", e);
+                                        // Send error message through event system so it appears in the UI
+                                        let _ =
+                                            event_tx_clone.send(AgentEvent::Error(e.to_string()));
                                     }
                                 }));
                             }
@@ -378,7 +389,7 @@ async fn run_event_loop(
                             app.input.input(key);
                         }
                     }
-                },
+                }
                 Event::Mouse(mouse) => match mouse.kind {
                     MouseEventKind::ScrollUp => {
                         app.scroll_down();
