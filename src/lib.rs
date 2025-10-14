@@ -10,9 +10,13 @@ pub mod tool_executor;
 pub mod tools;
 pub mod tui;
 
-pub use backends::{LlmBackend, LlmResponse, StreamResponse};
+pub use backends::{LlmBackend, LlmResponse};
+#[cfg(feature = "openai-compatible")]
+pub use backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use backends::{TogetherAiBackend, TogetherAiConfig};
+#[cfg(feature = "anthropic")]
+pub use backends::{AnthropicBackend, AnthropicConfig};
 pub use config::{AppConfig, AgentConfig, BackendConfig};
 pub use console::{Console, VerbosityLevel, console, init_console};
 pub use conversations::{AgentEvent, Conversation, ConversationHandler, ConversationMessage, ToolCall, ToolExecutionContext, ToolFunction, ToolResult};

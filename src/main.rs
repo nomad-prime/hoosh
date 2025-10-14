@@ -1,7 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
+#[cfg(feature = "openai-compatible")]
+use hoosh::backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
+#[cfg(feature = "anthropic")]
+use hoosh::backends::{AnthropicBackend, AnthropicConfig};
 use hoosh::{
     backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
@@ -65,7 +69,7 @@ async fn handle_chat(
 fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
     match backend_name {
         "mock" => {
-            let _ = config; // Suppress unused warning when together-ai feature is disabled
+            let _ = config; // Suppress unused warning when features are disabled
             Ok(Box::new(MockBackend::new()))
         }
         #[cfg(feature = "together-ai")]
@@ -89,16 +93,75 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
 
             Ok(Box::new(TogetherAiBackend::new(together_config)?))
         }
+        #[cfg(feature = "anthropic")]
+        "anthropic" => {
+            let backend_config = config.get_backend_config("anthropic");
+            let api_key = backend_config
+                .and_then(|c| c.api_key.clone())
+                .unwrap_or_default();
+            let model = backend_config
+                .and_then(|c| c.model.clone())
+                .unwrap_or_else(|| "claude-sonnet-4.5".to_string());
+            let base_url = backend_config
+                .and_then(|c| c.base_url.clone())
+                .unwrap_or_else(|| "https://api.anthropic.com/v1".to_string());
+
+            let anthropic_config = AnthropicConfig {
+                api_key,
+                model,
+                base_url,
+            };
+
+            Ok(Box::new(AnthropicBackend::new(anthropic_config)?))
+        }
+        #[cfg(feature = "openai-compatible")]
+        // Truly OpenAI-compatible providers (use max_completion_tokens): openai, groq, ollama
+        name if matches!(name, "openai" | "ollama" | "groq") => {
+            let backend_config = config.get_backend_config(name);
+
+            // Get provider-specific defaults
+            let (default_model, default_base_url) = match name {
+                "openai" => ("gpt-4", "https://api.openai.com/v1"),
+                "ollama" => ("llama3", "http://localhost:11434/v1"),
+                "groq" => ("mixtral-8x7b-32768", "https://api.groq.com/openai/v1"),
+                _ => ("", ""),
+            };
+
+            let api_key = backend_config
+                .and_then(|c| c.api_key.clone())
+                .unwrap_or_else(|| if name == "ollama" { "ollama".to_string() } else { String::new() });
+            let model = backend_config
+                .and_then(|c| c.model.clone())
+                .unwrap_or_else(|| default_model.to_string());
+            let base_url = backend_config
+                .and_then(|c| c.base_url.clone())
+                .unwrap_or_else(|| default_base_url.to_string());
+            let temperature = backend_config
+                .and_then(|c| c.temperature);
+
+            let openai_config = OpenAICompatibleConfig {
+                name: name.to_string(),
+                api_key,
+                model,
+                base_url,
+                temperature,
+            };
+
+            Ok(Box::new(OpenAICompatibleBackend::new(openai_config)?))
+        }
         _ => {
+            let mut available = vec!["mock"];
             #[cfg(feature = "together-ai")]
-            let available = "mock, together_ai";
-            #[cfg(not(feature = "together-ai"))]
-            let available =
-                "mock (together_ai requires Rust 1.82+ - enable with --features together-ai)";
+            available.push("together_ai");
+            #[cfg(feature = "openai-compatible")]
+            available.extend_from_slice(&["openai", "ollama", "groq"]);
+            #[cfg(feature = "anthropic")]
+            available.push("anthropic");
+
             anyhow::bail!(
                 "Unknown backend: {}. Available backends: {}",
                 backend_name,
-                available
+                available.join(", ")
             );
         }
     }
@@ -134,6 +197,9 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                 if let Some(ref base_url) = backend_config.base_url {
                     console().plain(&format!("base_url = \"{}\"", base_url));
                 }
+                if let Some(temperature) = backend_config.temperature {
+                    console().plain(&format!("temperature = {}", temperature));
+                }
             }
         }
         ConfigAction::Set { key, value } => {
@@ -155,24 +221,31 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                         return Ok(());
                     }
                 }
-            } else if let Some((backend_name, setting_key)) = key.split_once('_') {
-                if matches!(backend_name, "together")
-                    && matches!(setting_key, "ai_api_key" | "ai_model" | "ai_base_url")
-                {
-                    // Handle together_ai_* keys by splitting further
-                    if setting_key.starts_with("ai_") {
-                        let actual_key = &setting_key[3..]; // Remove "ai_" prefix
-                        config.update_backend_setting("together_ai", actual_key, value)?;
-                        config.save()?;
-                        console().success("Backend configuration updated successfully");
-                    } else {
-                        console().error(&format!("Unknown config key: {}. Available keys: default_backend, verbosity, together_ai_api_key, together_ai_model, together_ai_base_url", key));
-                    }
-                } else {
-                    console().error(&format!("Unknown config key: {}. Available keys: default_backend, verbosity, together_ai_api_key, together_ai_model, together_ai_base_url", key));
-                }
             } else {
-                console().error(&format!("Unknown config key: {}. Available keys: default_backend, verbosity, together_ai_api_key, together_ai_model, together_ai_base_url", key));
+                // Handle backend config keys: <backend>_api_key, <backend>_model, <backend>_base_url, <backend>_temperature
+                // Try to match known patterns
+                let (backend_name, actual_key) = if key.ends_with("_api_key") {
+                    (&key[..key.len() - 8], "api_key")
+                } else if key.ends_with("_base_url") {
+                    (&key[..key.len() - 9], "base_url")
+                } else if key.ends_with("_model") {
+                    (&key[..key.len() - 6], "model")
+                } else if key.ends_with("_temperature") {
+                    (&key[..key.len() - 12], "temperature")
+                } else {
+                    ("", "")
+                };
+
+                if !backend_name.is_empty() && !actual_key.is_empty() {
+                    config.update_backend_setting(backend_name, actual_key, value)?;
+                    config.save()?;
+                    console().success("Backend configuration updated successfully");
+                } else {
+                    console().error(&format!(
+                        "Unknown config key: {}. Use format: <backend>_<setting> where backend is one of [openai, together_ai, ollama, groq, anthropic] and setting is one of [api_key, model, base_url, temperature]",
+                        key
+                    ));
+                }
             }
         }
     }

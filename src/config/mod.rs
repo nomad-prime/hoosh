@@ -8,6 +8,7 @@ pub struct BackendConfig {
     pub api_key: Option<String>,
     pub model: Option<String>,
     pub base_url: Option<String>,
+    pub temperature: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -99,12 +100,18 @@ impl AppConfig {
                 api_key: None,
                 model: None,
                 base_url: None,
+                temperature: None,
             });
 
         match key {
             "api_key" => config.api_key = Some(value),
             "model" => config.model = Some(value),
             "base_url" => config.base_url = Some(value),
+            "temperature" => {
+                let temp: f32 = value.parse()
+                    .context("Temperature must be a valid number")?;
+                config.temperature = Some(temp);
+            }
             _ => anyhow::bail!("Unknown backend config key: {}", key),
         }
 
