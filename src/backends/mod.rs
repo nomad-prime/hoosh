@@ -1,12 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use futures_util::Stream;
-use std::pin::Pin;
 
 use crate::conversations::{Conversation, ToolCall};
 use crate::tools::ToolRegistry;
-
-pub type StreamResponse = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
@@ -34,27 +30,27 @@ impl LlmResponse {
 pub trait LlmBackend: Send + Sync {
     async fn send_message(&self, message: &str) -> Result<String>;
 
-    async fn stream_message(&self, message: &str) -> Result<StreamResponse>;
-
     async fn send_message_with_tools(
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
     ) -> Result<LlmResponse>;
 
-    async fn stream_message_with_tools(
-        &self,
-        conversation: &Conversation,
-        tools: &ToolRegistry,
-    ) -> Result<StreamResponse>;
-
-    fn backend_name(&self) -> &'static str;
+    fn backend_name(&self) -> &str;
 }
 
 pub mod mock;
+#[cfg(feature = "openai-compatible")]
+pub mod openai_compatible;
 #[cfg(feature = "together-ai")]
 pub mod together_ai;
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
 
 pub use mock::MockBackend;
+#[cfg(feature = "openai-compatible")]
+pub use openai_compatible::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use together_ai::{TogetherAiBackend, TogetherAiConfig};
+#[cfg(feature = "anthropic")]
+pub use anthropic::{AnthropicBackend, AnthropicConfig};
