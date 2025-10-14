@@ -199,4 +199,8 @@ impl LlmBackend for TogetherAiBackend {
     fn backend_name(&self) -> &str {
         "together_ai"
     }
+
+    fn model_name(&self) -> &str {
+        &self.config.model
+    }
 }

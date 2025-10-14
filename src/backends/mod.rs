@@ -37,6 +37,7 @@ pub trait LlmBackend: Send + Sync {
     ) -> Result<LlmResponse>;
 
     fn backend_name(&self) -> &str;
+    fn model_name(&self) -> &str;
 }
 
 pub mod mock;
