@@ -38,4 +38,8 @@ impl LlmBackend for MockBackend {
     fn backend_name(&self) -> &str {
         "mock"
     }
+
+    fn model_name(&self) -> &str {
+        "mock-model"
+    }
 }

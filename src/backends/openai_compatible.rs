@@ -206,4 +206,8 @@ impl LlmBackend for OpenAICompatibleBackend {
     fn backend_name(&self) -> &str {
         &self.config.name
     }
+
+    fn model_name(&self) -> &str {
+        &self.config.model
+    }
 }

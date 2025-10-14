@@ -33,7 +33,8 @@ pub async fn run(
     let mut app = AppState::new();
 
     let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let file_completer = FileCompleter::new(working_dir);
+    let working_dir_display = working_dir.to_str().unwrap_or(".").to_string();
+    let file_completer = FileCompleter::new(working_dir.clone());
     app.register_completer(Box::new(file_completer));
 
     let agent_manager = AgentManager::new()?;
@@ -41,24 +42,20 @@ pub async fn run(
 
     // Add ASCII art header with backend and agent info
     let agent_name = default_agent.as_ref().map(|a| a.name.as_str());
-    for line in header::create_header_block(backend.backend_name(), agent_name) {
+    for line in header::create_header_block(
+        backend.backend_name(),
+        backend.model_name(),
+        &working_dir_display,
+        agent_name,
+    ) {
         app.add_styled_line(line);
     }
-
-    app.add_message(
-        "📁 File system integration enabled - use @filename to reference files".to_string(),
-    );
 
     if !permission_manager.is_enforcing() {
         app.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
     }
 
-    app.add_message("Type your message and press Enter to send.".to_string());
-    app.add_message(
-        "Keybindings: Ctrl+C (quit) | Ctrl+↑/↓ (scroll) | PageUp/Down (fast scroll)".to_string(),
-    );
     app.add_message("\n".to_string());
-    app.add_message(String::new());
 
     let conversation = Arc::new(tokio::sync::Mutex::new({
         let mut conv = Conversation::new();
@@ -156,7 +153,10 @@ async fn run_event_loop(
         // Check for agent events
         while let Ok(event) = event_rx.try_recv() {
             match event {
-                AgentEvent::PermissionRequest { operation, request_id } => {
+                AgentEvent::PermissionRequest {
+                    operation,
+                    request_id,
+                } => {
                     app.show_permission_dialog(operation, request_id);
                 }
                 other_event => {
@@ -184,7 +184,10 @@ async fn run_event_loop(
                         if let Some(dialog_state) = &app.permission_dialog_state {
                             let operation = dialog_state.operation.clone();
                             let request_id = dialog_state.request_id.clone();
-                            let selected_option = dialog_state.options.get(dialog_state.selected_index).cloned();
+                            let selected_option = dialog_state
+                                .options
+                                .get(dialog_state.selected_index)
+                                .cloned();
 
                             let response = match key.code {
                                 KeyCode::Up => {
@@ -197,20 +200,19 @@ async fn run_event_loop(
                                 }
                                 KeyCode::Enter => {
                                     // Use the currently selected option
-                                    selected_option.as_ref().and_then(|opt| {
-                                        match opt {
-                                            app::PermissionOption::YesOnce => Some((true, None)),
-                                            app::PermissionOption::No => Some((false, None)),
-                                            app::PermissionOption::AlwaysForFile => {
-                                                let target = operation.target().to_string();
-                                                Some((true, Some(PermissionScope::Specific(target))))
-                                            }
-                                            app::PermissionOption::AlwaysForDirectory(dir) => {
-                                                Some((true, Some(PermissionScope::Directory(dir.clone()))))
-                                            }
-                                            app::PermissionOption::AlwaysForType => {
-                                                Some((true, Some(PermissionScope::Global)))
-                                            }
+                                    selected_option.as_ref().and_then(|opt| match opt {
+                                        app::PermissionOption::YesOnce => Some((true, None)),
+                                        app::PermissionOption::No => Some((false, None)),
+                                        app::PermissionOption::AlwaysForFile => {
+                                            let target = operation.target().to_string();
+                                            Some((true, Some(PermissionScope::Specific(target))))
+                                        }
+                                        app::PermissionOption::AlwaysForDirectory(dir) => Some((
+                                            true,
+                                            Some(PermissionScope::Directory(dir.clone())),
+                                        )),
+                                        app::PermissionOption::AlwaysForType => {
+                                            Some((true, Some(PermissionScope::Global)))
                                         }
                                     })
                                 }

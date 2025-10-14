@@ -334,4 +334,8 @@ impl LlmBackend for AnthropicBackend {
     fn backend_name(&self) -> &str {
         "anthropic"
     }
+
+    fn model_name(&self) -> &str {
+        &self.config.model
+    }
 }
