@@ -3,21 +3,20 @@ use crate::permissions::OperationType;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
 pub fn render(frame: &mut Frame, app: &mut AppState) {
+    // Inline viewport: only render status and input area
+    // Messages are inserted above using terminal.insert_before()
     let vertical = Layout::vertical([
-        Constraint::Min(1),
         Constraint::Length(1), // Status line
-        Constraint::Length(3), // Input area
-        Constraint::Length(3), // Bottom padding
+        Constraint::Length(3), // Input area (fixed height)
     ]);
-    let [messages_area, status_area, input_area, _bottom_padding] = vertical.areas(frame.area());
+    let [status_area, input_area] = vertical.areas(frame.area());
 
-    render_messages(frame, messages_area, app);
     render_status(frame, status_area, app);
     render_input(frame, input_area, app);
 
@@ -56,40 +55,6 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
         let paragraph = Paragraph::new(status_line);
         frame.render_widget(paragraph, area);
     }
-}
-
-fn render_messages(frame: &mut Frame, area: Rect, app: &mut AppState) {
-    use super::app::MessageLine;
-
-    // Update viewport dimensions for scroll calculations
-    app.viewport_height = area.height;
-    app.viewport_width = area.width;
-
-    // On first render, scroll to bottom after viewport height is set
-    if !app.initial_scroll_done {
-        app.scroll_to_bottom();
-        app.initial_scroll_done = true;
-    }
-
-    // Create lines from all messages
-    let lines: Vec<Line> = app
-        .messages
-        .iter()
-        .flat_map(|message| match message {
-            MessageLine::Plain(text) => text
-                .lines()
-                .map(|line| Line::from(Span::raw(line.to_string())))
-                .collect::<Vec<_>>(),
-            MessageLine::Styled(line) => vec![line.clone()],
-        })
-        .collect();
-
-    let paragraph = Paragraph::new(Text::from(lines))
-        .block(Block::new())
-        .scroll((app.scroll_offset, 0))
-        .wrap(Wrap { trim: false });
-
-    frame.render_widget(paragraph, area);
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &mut AppState) {
