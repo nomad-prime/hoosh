@@ -386,7 +386,6 @@ async fn run_event_loop(
                                 let cursor_pos = app.input.cursor();
                                 app.start_completion(cursor_pos.0, completer_idx);
 
-                                // Trigger initial completion with empty query
                                 if let Some(completer) = app.completers.get(completer_idx) {
                                     if let Ok(candidates) = completer.get_completions("").await {
                                         app.set_completion_candidates(candidates);
