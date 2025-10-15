@@ -13,6 +13,10 @@ pub enum AgentEvent {
     Thinking,
     AssistantThought(String),
     ToolCalls(Vec<String>), // Display names for each tool call
+    ToolPreview {
+        tool_name: String,
+        preview: String,
+    },
     ToolResult {
         #[allow(dead_code)]
         tool_name: String,

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use serde_json;
+use tokio::sync::mpsc;
 
-use crate::conversations::{ToolCall, ToolResult};
+use crate::conversations::{AgentEvent, ToolCall, ToolResult};
 use crate::permissions::PermissionManager;
 use crate::tools::{BashTool, EditFileTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool};
 
@@ -9,6 +10,7 @@ use crate::tools::{BashTool, EditFileTool, ListDirectoryTool, ReadFileTool, Tool
 pub struct ToolExecutor {
     tool_registry: ToolRegistry,
     permission_manager: PermissionManager,
+    event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
 }
 
 impl ToolExecutor {
@@ -19,7 +21,13 @@ impl ToolExecutor {
         Self {
             tool_registry,
             permission_manager,
+            event_sender: None,
         }
+    }
+
+    pub fn with_event_sender(mut self, sender: mpsc::UnboundedSender<AgentEvent>) -> Self {
+        self.event_sender = Some(sender);
+        self
     }
 
     /// Execute a single tool call
@@ -55,6 +63,16 @@ impl ToolExecutor {
 
         // Get the display name from the tool
         let display_name = tool.format_call_display(&args);
+
+        // Generate and emit preview if available
+        if let Some(preview) = tool.generate_preview(&args).await {
+            if let Some(sender) = &self.event_sender {
+                let _ = sender.send(AgentEvent::ToolPreview {
+                    tool_name: tool_name.clone(),
+                    preview,
+                });
+            }
+        }
 
         // Check permissions using the tool's own permission check
         if let Err(e) = self.check_tool_permissions(tool, &args).await {
