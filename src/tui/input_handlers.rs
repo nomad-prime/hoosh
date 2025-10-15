@@ -208,6 +208,9 @@ pub async fn handle_normal_keys(
             if !input_text.trim().is_empty() && !agent_task_active {
                 app.add_message(format!("> {}", input_text));
                 app.add_message("\n".to_string());
+
+                // Add to history before clearing input
+                app.prompt_history.add(input_text.clone());
                 app.clear_input();
 
                 // Check if this is a command
@@ -220,7 +223,43 @@ pub async fn handle_normal_keys(
                 KeyHandlerResult::Handled
             }
         }
+        KeyCode::Up => {
+            // Navigate to previous prompt in history
+            let current_input = app.get_input_text();
+            if let Some(prev_prompt) = app.prompt_history.prev(&current_input) {
+                app.clear_input();
+                // Insert the prompt text
+                let lines: Vec<&str> = prev_prompt.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    app.input.insert_str(line);
+                    if i < lines.len() - 1 {
+                        app.input.insert_newline();
+                    }
+                }
+            }
+            KeyHandlerResult::Handled
+        }
+        KeyCode::Down => {
+            // Navigate to next prompt in history
+            if let Some(next_prompt) = app.prompt_history.next() {
+                app.clear_input();
+                // Insert the prompt text
+                let lines: Vec<&str> = next_prompt.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    app.input.insert_str(line);
+                    if i < lines.len() - 1 {
+                        app.input.insert_newline();
+                    }
+                }
+            }
+            KeyHandlerResult::Handled
+        }
         KeyCode::Char(c) => {
+            // Reset history navigation when user starts typing
+            if app.prompt_history.is_navigating() {
+                app.prompt_history.reset();
+            }
+
             // Check if this char triggers any completer
             if let Some(completer_idx) = app.find_completer_for_key(c) {
                 app.input.input(KeyEvent::new(KeyCode::Char(c), modifiers));
@@ -238,6 +277,10 @@ pub async fn handle_normal_keys(
             KeyHandlerResult::Handled
         }
         _ => {
+            // Reset history navigation on other key presses
+            if app.prompt_history.is_navigating() {
+                app.prompt_history.reset();
+            }
             app.input.input(KeyEvent::new(key, modifiers));
             KeyHandlerResult::Handled
         }
