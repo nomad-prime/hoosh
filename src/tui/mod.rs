@@ -4,6 +4,7 @@ pub mod completion;
 mod event_loop;
 mod events;
 mod header;
+pub mod history;
 mod input_handlers;
 mod terminal;
 mod ui;
@@ -22,6 +23,7 @@ use crate::tool_executor::ToolExecutor;
 use app::AppState;
 use completion::{CommandCompleter, FileCompleter};
 use event_loop::{run_event_loop, EventLoopContext};
+use history::PromptHistory;
 use terminal::{init_terminal, restore_terminal};
 
 pub async fn run(
@@ -32,6 +34,13 @@ pub async fn run(
 ) -> Result<()> {
     let mut terminal = init_terminal()?;
     let mut app = AppState::new();
+
+    // Load history from file
+    if let Some(history_path) = PromptHistory::default_history_path() {
+        if let Ok(history) = PromptHistory::with_file(1000, &history_path) {
+            app.prompt_history = history;
+        }
+    }
 
     // Setup working directory
     let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -109,6 +118,9 @@ pub async fn run(
 
     // Run event loop
     let result = run_event_loop(&mut terminal, &mut app, context).await;
+
+    // Save history before exiting
+    let _ = app.prompt_history.save();
 
     restore_terminal(terminal)?;
     result

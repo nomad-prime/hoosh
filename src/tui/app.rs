@@ -5,6 +5,7 @@ use tui_textarea::TextArea;
 
 use super::completion::Completer;
 use super::events::AgentState;
+use super::history::PromptHistory;
 use crate::conversations::AgentEvent;
 use crate::permissions::OperationType;
 
@@ -82,6 +83,7 @@ pub struct AppState {
     pub completers: Vec<Box<dyn Completer>>,
     pub permission_dialog_state: Option<PermissionDialogState>,
     pub animation_frame: usize,
+    pub prompt_history: PromptHistory,
 }
 
 impl AppState {
@@ -101,6 +103,7 @@ impl AppState {
             completers: Vec::new(),
             permission_dialog_state: None,
             animation_frame: 0,
+            prompt_history: PromptHistory::new(1000),
         }
     }
 
