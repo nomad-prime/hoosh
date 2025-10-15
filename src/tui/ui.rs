@@ -33,16 +33,40 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
 fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
     use super::events::AgentState;
 
+    // 7 different braille spinner sequences for Thinking state
+    let thinking_spinners = [
+        &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"][..], // Classic rotation
+        &["⠐", "⠒", "⠓", "⠋", "⠙", "⠹", "⠸", "⠼"][..], // Wave pattern
+        &["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"][..], // Binary progression
+        &["⡏", "⡟", "⡻", "⣻", "⣿", "⣯", "⣧", "⡧"][..], // Fill pattern
+        &["⣷", "⣯", "⣟", "⡿", "⢿", "⠿", "⠷", "⣶"][..], // Circle pattern
+        &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠴", "⠲"][..], // Twirl pattern
+        &["⢹", "⢺", "⢼", "⣸", "⣇", "⡧", "⡏", "⡃"][..], // Rotation pattern
+    ];
+
+    // 7 different braille spinner sequences for ExecutingTools state
+    let executing_spinners = [
+        &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠤", "⠐"][..], // Zigzag pattern
+        &["⠁", "⠉", "⠋", "⠛", "⠟", "⠿", "⠿", "⠟"][..], // Growing/shrinking
+        &["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"][..], // Pulse pattern
+        &["⡀", "⡁", "⡃", "⡇", "⡧", "⡷", "⣶", "⣦"][..], // Fill/unfill
+        &["⠐", "⠒", "⠖", "⠶", "⠷", "⠿", "⠻", "⠛"][..], // Ascending/descending
+        &["⢀", "⢄", "⢤", "⢦", "⢧", "⢧", "⢧", "⢧"][..], // Progressive dots
+        &["⣀", "⣄", "⣤", "⣦", "⣶", "⣾", "⣽", "⣻"][..], // Circle fill
+    ];
+
     let status_text = match app.agent_state {
         AgentState::Idle => String::new(),
         AgentState::Thinking => {
-            let spinner =
-                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][app.animation_frame % 10];
+            // Use the fixed spinner sequence for this thinking session
+            let spinner = thinking_spinners[app.current_thinking_spinner]
+                [app.animation_frame % thinking_spinners[app.current_thinking_spinner].len()];
             format!(" {} Processing", spinner)
         }
         AgentState::ExecutingTools => {
-            let spinner =
-                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][app.animation_frame % 10];
+            // Use the fixed spinner sequence for this execution session
+            let spinner = executing_spinners[app.current_executing_spinner]
+                [app.animation_frame % executing_spinners[app.current_executing_spinner].len()];
             format!(" {} Executing tools", spinner)
         }
     };
@@ -67,8 +91,8 @@ fn render_input(frame: &mut Frame, area: Rect, app: &mut AppState) {
 
     // Split the inner area to add prompt
     let horizontal = Layout::horizontal([
-        Constraint::Length(2),  // Prompt area ("> ")
-        Constraint::Min(1),     // Text input area
+        Constraint::Length(2), // Prompt area ("> ")
+        Constraint::Min(1),    // Text input area
     ]);
     let [prompt_area, text_area] = horizontal.areas(inner_area);
 
