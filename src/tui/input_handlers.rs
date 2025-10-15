@@ -11,12 +11,14 @@ pub enum KeyHandlerResult {
     Handled,
     NotHandled,
     ShouldQuit,
+    ShouldCancelTask,
     StartCommand(String),
     StartConversation(String),
 }
 
 pub fn handle_permission_keys(
     key: KeyCode,
+    modifiers: KeyModifiers,
     app: &mut AppState,
     permission_response_tx: &mpsc::UnboundedSender<PermissionResponse>,
 ) -> KeyHandlerResult {
@@ -31,6 +33,15 @@ pub fn handle_permission_keys(
             .options
             .get(dialog_state.selected_index)
             .cloned();
+
+        // Handle Ctrl+C separately - it should cancel the entire task
+        if let KeyCode::Char('c') = key {
+            if modifiers.contains(KeyModifiers::CONTROL) {
+                app.hide_permission_dialog();
+                app.should_cancel_task = true;
+                return KeyHandlerResult::ShouldCancelTask;
+            }
+        }
 
         let response = match key {
             KeyCode::Up => {
@@ -200,8 +211,15 @@ pub async fn handle_normal_keys(
 ) -> KeyHandlerResult {
     match key {
         KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
-            app.should_quit = true;
-            KeyHandlerResult::ShouldQuit
+            if agent_task_active {
+                // First Ctrl+C: Cancel the running task
+                app.should_cancel_task = true;
+                KeyHandlerResult::ShouldCancelTask
+            } else {
+                // Second Ctrl+C or Ctrl+C when nothing is running: Quit
+                app.should_quit = true;
+                KeyHandlerResult::ShouldQuit
+            }
         }
         KeyCode::Enter => {
             let input_text = app.get_input_text();

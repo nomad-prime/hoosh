@@ -78,6 +78,7 @@ pub struct AppState {
     pub pending_messages: VecDeque<MessageLine>, // Messages to insert with insert_before
     pub agent_state: AgentState,
     pub should_quit: bool,
+    pub should_cancel_task: bool,
     pub max_messages: usize,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
@@ -98,6 +99,7 @@ impl AppState {
             pending_messages: VecDeque::new(),
             agent_state: AgentState::Idle,
             should_quit: false,
+            should_cancel_task: false,
             max_messages: 1000,
             completion_state: None,
             completers: Vec::new(),
