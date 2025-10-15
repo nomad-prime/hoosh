@@ -264,6 +264,10 @@ impl AppState {
                     self.add_message(format!("● {}", display_name));
                 }
             }
+            AgentEvent::ToolPreview { tool_name: _, preview } => {
+                // Display the diff preview with syntax highlighting
+                self.add_message(format!("\n{}\n", preview));
+            }
             AgentEvent::ToolResult { summary, .. } => {
                 self.add_message(format!(" ⎿ {}", summary));
             }
