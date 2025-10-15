@@ -2,8 +2,10 @@ use crate::permissions::{OperationType, PermissionManager};
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use colored::Colorize;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use similar::{ChangeTag, TextDiff};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -204,10 +206,8 @@ impl Tool for EditFileTool {
 }
 
 impl EditFileTool {
-    /// Generate a unified diff showing what will change
+    /// Generate a unified diff showing what will change using the similar crate
     fn generate_diff(&self, content: &str, old_string: &str, new_string: &str, replace_all: bool) -> String {
-        let mut diff_lines = Vec::new();
-
         // Find all matches
         let matches: Vec<_> = content.match_indices(old_string).collect();
 
@@ -225,57 +225,55 @@ impl EditFileTool {
             1
         };
 
-        diff_lines.push(format!("Will replace {} occurrence{}:",
-            replacements,
-            if replacements == 1 { "" } else { "s" }));
-        diff_lines.push(String::new());
+        // Perform the replacement to get the new content
+        let new_content = if replace_all {
+            content.replace(old_string, new_string)
+        } else {
+            content.replacen(old_string, new_string, 1)
+        };
 
-        // For each match to replace, show context
-        let lines: Vec<&str> = content.lines().collect();
-        let context_lines = 3;
+        // Use similar crate to generate unified diff
+        let diff = TextDiff::from_lines(content, &new_content);
 
-        for (match_idx, &(byte_pos, _)) in matches.iter().take(replacements).enumerate() {
-            // Find line number for this match
-            let mut current_pos = 0;
-            let mut line_num = 0;
+        let mut output = String::new();
+        output.push_str(&format!("{}\n\n",
+            format!("Will replace {} occurrence{}:",
+                replacements,
+                if replacements == 1 { "" } else { "s" }
+            ).bold().cyan()));
 
-            for (idx, line) in lines.iter().enumerate() {
-                if current_pos >= byte_pos {
-                    line_num = idx;
-                    break;
+        // Track line numbers for old and new files
+        let mut old_line = 1;
+        let mut new_line = 1;
+
+        // Show full diff with line numbers and bright colors, indented for hierarchy
+        for change in diff.iter_all_changes() {
+            let line_content = change.to_string();
+            let line_content = line_content.trim_end();
+
+            let formatted_line = match change.tag() {
+                ChangeTag::Delete => {
+                    let line_str = format!("  {:4} {:4} - {}", old_line, " ", line_content);
+                    old_line += 1;
+                    line_str.bright_red().to_string()
                 }
-                current_pos += line.len() + 1; // +1 for newline
-            }
-
-            if match_idx > 0 {
-                diff_lines.push(String::new());
-                diff_lines.push("---".to_string());
-                diff_lines.push(String::new());
-            }
-
-            // Show context before
-            let start = line_num.saturating_sub(context_lines);
-            for i in start..line_num {
-                diff_lines.push(format!("  {}", lines[i]));
-            }
-
-            // Show the line with the old string (marked with -)
-            if let Some(line) = lines.get(line_num) {
-                diff_lines.push(format!("- {}", line));
-
-                // Show the line with the new string (marked with +)
-                let new_line = line.replace(old_string, new_string);
-                diff_lines.push(format!("+ {}", new_line));
-            }
-
-            // Show context after
-            let end = (line_num + 1 + context_lines).min(lines.len());
-            for i in (line_num + 1)..end {
-                diff_lines.push(format!("  {}", lines[i]));
-            }
+                ChangeTag::Insert => {
+                    let line_str = format!("  {:4} {:4} + {}", " ", new_line, line_content);
+                    new_line += 1;
+                    line_str.green().to_string()
+                }
+                ChangeTag::Equal => {
+                    let line_str = format!("  {:4} {:4}   {}", old_line, new_line, line_content);
+                    old_line += 1;
+                    new_line += 1;
+                    line_str.dimmed().to_string()
+                }
+            };
+            output.push_str(&formatted_line);
+            output.push('\n');
         }
 
-        diff_lines.join("\n")
+        output
     }
 }
 
