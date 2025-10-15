@@ -190,6 +190,93 @@ impl Tool for EditFileTool {
         let operation = OperationType::WriteFile(normalized_path);
         permission_manager.check_permission(&operation).await
     }
+
+    async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
+        let args: EditFileArgs = serde_json::from_value(args.clone()).ok()?;
+
+        let file_path = resolve_path(&args.path, &self.working_directory);
+        let content = fs::read_to_string(&file_path).await.ok()?;
+
+        // Generate unified diff
+        let preview = self.generate_diff(&content, &args.old_string, &args.new_string, args.replace_all);
+        Some(preview)
+    }
+}
+
+impl EditFileTool {
+    /// Generate a unified diff showing what will change
+    fn generate_diff(&self, content: &str, old_string: &str, new_string: &str, replace_all: bool) -> String {
+        let mut diff_lines = Vec::new();
+
+        // Find all matches
+        let matches: Vec<_> = content.match_indices(old_string).collect();
+
+        if matches.is_empty() {
+            return format!("No matches found for:\n{}", old_string);
+        }
+
+        // Determine which matches will be replaced
+        let replacements = if replace_all {
+            matches.len()
+        } else {
+            if matches.len() > 1 {
+                return format!("Found {} matches (use replace_all=true to replace all)", matches.len());
+            }
+            1
+        };
+
+        diff_lines.push(format!("Will replace {} occurrence{}:",
+            replacements,
+            if replacements == 1 { "" } else { "s" }));
+        diff_lines.push(String::new());
+
+        // For each match to replace, show context
+        let lines: Vec<&str> = content.lines().collect();
+        let context_lines = 3;
+
+        for (match_idx, &(byte_pos, _)) in matches.iter().take(replacements).enumerate() {
+            // Find line number for this match
+            let mut current_pos = 0;
+            let mut line_num = 0;
+
+            for (idx, line) in lines.iter().enumerate() {
+                if current_pos >= byte_pos {
+                    line_num = idx;
+                    break;
+                }
+                current_pos += line.len() + 1; // +1 for newline
+            }
+
+            if match_idx > 0 {
+                diff_lines.push(String::new());
+                diff_lines.push("---".to_string());
+                diff_lines.push(String::new());
+            }
+
+            // Show context before
+            let start = line_num.saturating_sub(context_lines);
+            for i in start..line_num {
+                diff_lines.push(format!("  {}", lines[i]));
+            }
+
+            // Show the line with the old string (marked with -)
+            if let Some(line) = lines.get(line_num) {
+                diff_lines.push(format!("- {}", line));
+
+                // Show the line with the new string (marked with +)
+                let new_line = line.replace(old_string, new_string);
+                diff_lines.push(format!("+ {}", new_line));
+            }
+
+            // Show context after
+            let end = (line_num + 1 + context_lines).min(lines.len());
+            for i in (line_num + 1)..end {
+                diff_lines.push(format!("  {}", lines[i]));
+            }
+        }
+
+        diff_lines.join("\n")
+    }
 }
 
 #[cfg(test)]
