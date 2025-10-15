@@ -3,15 +3,7 @@ use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-#[async_trait]
-pub trait Completer: Send + Sync {
-    fn trigger_key(&self) -> char;
-    async fn get_completions(&self, query: &str) -> Result<Vec<String>>;
-    #[allow(dead_code)]
-    fn format_completion(&self, item: &str) -> String {
-        item.to_string()
-    }
-}
+use super::Completer;
 
 pub struct FileCompleter {
     working_directory: PathBuf,

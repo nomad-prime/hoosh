@@ -292,6 +292,14 @@ impl AppState {
                 // Permission requests are handled separately in the TUI event loop
                 // This variant should not reach here, but we include it for exhaustiveness
             }
+            AgentEvent::Exit => {
+                // Exit is handled in the event loop
+                // This variant should not reach here, but we include it for exhaustiveness
+            }
+            AgentEvent::ClearConversation => {
+                // ClearConversation is handled in the event loop
+                // This variant should not reach here, but we include it for exhaustiveness
+            }
         }
     }
 
