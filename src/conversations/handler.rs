@@ -12,7 +12,11 @@ pub enum AgentEvent {
     Thinking,
     AssistantThought(String),
     ToolCalls(Vec<String>), // Display names for each tool call
-    ToolResult { #[allow(dead_code)] tool_name: String, summary: String },
+    ToolResult {
+        #[allow(dead_code)]
+        tool_name: String,
+        summary: String,
+    },
     ToolExecutionComplete,
     FinalResponse(String),
     Error(String),
@@ -221,6 +225,10 @@ mod tests {
 
         fn backend_name(&self) -> &'static str {
             "mock"
+        }
+
+        fn model_name(&self) -> &str {
+            "mock-model"
         }
     }
 

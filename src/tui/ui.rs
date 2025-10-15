@@ -9,13 +9,14 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame, app: &mut AppState) {
-    // Inline viewport: only render status and input area
-    // Messages are inserted above using terminal.insert_before()
+    let viewport_area = frame.area();
+
     let vertical = Layout::vertical([
-        Constraint::Length(1), // Status line
-        Constraint::Length(3), // Input area (fixed height)
+        Constraint::Length(1),
+        Constraint::Length(3),
+        Constraint::Min(0),
     ]);
-    let [status_area, input_area] = vertical.areas(frame.area());
+    let [status_area, input_area, _spacer] = vertical.areas(viewport_area);
 
     render_status(frame, status_area, app);
     render_input(frame, input_area, app);
@@ -25,7 +26,7 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
     }
 
     if app.is_showing_permission_dialog() {
-        render_permission_dialog(frame, app);
+        render_permission_dialog(frame, input_area, app);
     }
 }
 
@@ -108,7 +109,13 @@ fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) 
             })
             .collect();
 
-        let popup_height = (visible_candidates.len() as u16 + 2).min(12);
+        let viewport_area = frame.area();
+        let popup_start_y = input_area.y + input_area.height;
+        let viewport_bottom = viewport_area.y + viewport_area.height;
+        let available_height = viewport_bottom.saturating_sub(popup_start_y);
+        let desired_height = visible_candidates.len() as u16 + 2;
+        let popup_height = desired_height.min(available_height).max(3);
+
         let popup_width = visible_candidates
             .iter()
             .map(|c| c.len())
@@ -117,16 +124,9 @@ fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) 
             .min(60) as u16
             + 4;
 
-        let popup_x = input_area.x;
-        let popup_y = if input_area.y > popup_height {
-            input_area.y - popup_height
-        } else {
-            input_area.y + input_area.height
-        };
-
         let popup_area = Rect {
-            x: popup_x,
-            y: popup_y,
+            x: input_area.x,
+            y: popup_start_y,
             width: popup_width,
             height: popup_height,
         };
@@ -142,7 +142,7 @@ fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) 
     }
 }
 
-fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
+fn render_permission_dialog(frame: &mut Frame, input_area: Rect, app: &AppState) {
     use super::app::PermissionOption;
 
     if let Some(dialog_state) = &app.permission_dialog_state {
@@ -151,47 +151,20 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
         // Build the dialog content
         let mut lines = vec![];
 
-        // Title
-        let warning_emoji = if operation.is_destructive() {
-            "⚠️ "
-        } else {
-            "🔒 "
-        };
-        let title_style = if operation.is_destructive() {
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-        };
-
-        lines.push(Line::from(vec![Span::styled(
-            format!("{}Permission Required", warning_emoji),
-            title_style,
-        )]));
-        lines.push(Line::from(""));
-
         // Operation description
         lines.push(Line::from(vec![
             Span::styled("Operation: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(operation.description()),
         ]));
-        lines.push(Line::from(""));
 
         // Destructive warning
         if operation.is_destructive() {
             lines.push(Line::from(vec![Span::styled(
-                "⚠️  WARNING: This operation may be destructive!",
+                "⚠️  WARNING: Destructive!",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             )]));
-            lines.push(Line::from(""));
         }
 
-        // Options
-        lines.push(Line::from(Span::styled(
-            "Options:",
-            Style::default().add_modifier(Modifier::BOLD),
-        )));
         lines.push(Line::from(""));
 
         // Render each option with selection highlight
@@ -208,11 +181,11 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
                     ("a", label.to_string())
                 }
                 PermissionOption::AlwaysForDirectory(dir) => {
-                    ("d", format!("Always for this directory ({})", dir))
+                    ("d", format!("Always for dir ({})", dir))
                 }
                 PermissionOption::AlwaysForType => (
                     "A",
-                    format!("Always for all {} operations", operation.operation_kind()),
+                    format!("Always for all {}", operation.operation_kind()),
                 ),
             };
 
@@ -233,27 +206,29 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "Use ↑/↓ to navigate, Enter or key letter to choose, Esc to cancel",
+            "↑/↓ navigate, Enter/key to choose, Esc cancel",
             Style::default().fg(Color::Cyan),
         )));
 
-        // Calculate dialog dimensions
+        // Calculate dropdown dimensions - positioned below input area
+        let viewport_area = frame.area();
+        let popup_start_y = input_area.y + input_area.height;
+        let viewport_bottom = viewport_area.y + viewport_area.height;
+        let available_height = viewport_bottom.saturating_sub(popup_start_y);
+
         let max_width = lines
             .iter()
             .map(|l| l.spans.iter().map(|s| s.content.len()).sum::<usize>())
             .max()
             .unwrap_or(50) as u16;
 
-        let dialog_width = (max_width + 4).min(frame.area().width - 4);
-        let dialog_height = (lines.len() as u16 + 2).min(frame.area().height - 4);
-
-        // Center the dialog
-        let dialog_x = (frame.area().width.saturating_sub(dialog_width)) / 2;
-        let dialog_y = (frame.area().height.saturating_sub(dialog_height)) / 2;
+        let dialog_width = (max_width + 4).min(viewport_area.width.saturating_sub(4));
+        let desired_height = lines.len() as u16 + 2;
+        let dialog_height = desired_height.min(available_height).max(5);
 
         let dialog_area = Rect {
-            x: dialog_x,
-            y: dialog_y,
+            x: input_area.x,
+            y: popup_start_y,
             width: dialog_width,
             height: dialog_height,
         };
@@ -261,10 +236,11 @@ fn render_permission_dialog(frame: &mut Frame, app: &AppState) {
         let border_style = if operation.is_destructive() {
             Style::default().fg(Color::Red)
         } else {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(Color::Cyan)
         };
 
         let block = Block::default()
+            .title(" Permission Required ")
             .borders(Borders::ALL)
             .border_style(border_style)
             .style(Style::default().bg(Color::Black));
