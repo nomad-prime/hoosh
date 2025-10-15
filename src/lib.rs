@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod backends;
 pub mod cli;
+pub mod commands;
 pub mod config;
 pub mod console;
 pub mod conversations;
@@ -25,3 +26,4 @@ pub use permissions::PermissionManager;
 pub use tool_executor::ToolExecutor;
 pub use agents::{Agent, AgentManager};
 pub use tools::{Tool, ToolRegistry};
+pub use commands::{Command, CommandRegistry, CommandResult, CommandContext, register_default_commands};

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
@@ -25,6 +26,8 @@ pub enum AgentEvent {
         operation: OperationType,
         request_id: String,
     },
+    Exit,
+    ClearConversation,
 }
 
 #[derive(Debug, Clone)]
@@ -34,19 +37,19 @@ pub struct PermissionResponse {
     pub scope: Option<PermissionScope>,
 }
 
-pub struct ConversationHandler<'a> {
-    backend: &'a Box<dyn LlmBackend>,
-    tool_registry: &'a ToolRegistry,
-    tool_executor: &'a ToolExecutor,
+pub struct ConversationHandler {
+    backend: Arc<dyn LlmBackend>,
+    tool_registry: Arc<ToolRegistry>,
+    tool_executor: Arc<ToolExecutor>,
     max_steps: usize,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
 }
 
-impl<'a> ConversationHandler<'a> {
+impl ConversationHandler {
     pub fn new(
-        backend: &'a Box<dyn LlmBackend>,
-        tool_registry: &'a ToolRegistry,
-        tool_executor: &'a ToolExecutor,
+        backend: Arc<dyn LlmBackend>,
+        tool_registry: Arc<ToolRegistry>,
+        tool_executor: Arc<ToolExecutor>,
     ) -> Self {
         Self {
             backend,
@@ -79,7 +82,7 @@ impl<'a> ConversationHandler<'a> {
         for step in 0..self.max_steps {
             let response = self
                 .backend
-                .send_message_with_tools(conversation, self.tool_registry)
+                .send_message_with_tools(conversation, &self.tool_registry)
                 .await?;
 
             match self.process_response(conversation, response, step).await? {
@@ -236,16 +239,16 @@ mod tests {
     async fn test_conversation_handler_simple_response() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Box<dyn LlmBackend> =
-            Box::new(MockBackend::new(vec![LlmResponse::content_only(
+        let mock_backend: Arc<dyn LlmBackend> =
+            Arc::new(MockBackend::new(vec![LlmResponse::content_only(
                 "Hello, how can I help?".to_string(),
             )]));
 
-        let tool_registry = ToolRegistry::new();
+        let tool_registry = Arc::new(ToolRegistry::new());
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
-        let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
+        let tool_executor = Arc::new(ToolExecutor::new((*tool_registry).clone(), permission_manager));
 
-        let handler = ConversationHandler::new(&mock_backend, &tool_registry, &tool_executor);
+        let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
 
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
@@ -268,7 +271,7 @@ mod tests {
             },
         };
 
-        let mock_backend: Box<dyn LlmBackend> = Box::new(MockBackend::new(vec![
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new(vec![
             LlmResponse::with_tool_calls(Some("Reading file".to_string()), vec![tool_call]),
             LlmResponse::content_only("File read successfully".to_string()),
         ]));
@@ -278,11 +281,11 @@ mod tests {
         std::fs::write(&test_file, "test content").unwrap();
 
         let tool_registry =
-            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
+            Arc::new(ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf()));
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
-        let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
+        let tool_executor = Arc::new(ToolExecutor::new((*tool_registry).clone(), permission_manager));
 
-        let handler = ConversationHandler::new(&mock_backend, &tool_registry, &tool_executor);
+        let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
 
         let mut conversation = Conversation::new();
         conversation.add_user_message("Read test.txt".to_string());

@@ -2,126 +2,135 @@
 
 ### 0. Commands and Command Completion System 🔧 CRITICAL
 
-**Current State:** File completion with `@` exists (see `src/tui/completion.rs`), but no slash command system
+**Current State:** ✅ **CORE INFRASTRUCTURE COMPLETE** - Command system and completion fully functional!
 
-**What's Missing:**
+**What's Been Implemented:**
 
-- **Slash Command System** - Commands start with `/` like in Claude Code
-    - `/help` - Show available commands and usage
-    - `/clear` - Clear conversation history
-    - `/save [name]` - Save current conversation
-    - `/load <name>` - Load a saved conversation
-    - `/list` - List saved conversations
-    - `/delete <name>` - Delete a conversation
-    - `/reset` - Reset conversation context
-    - `/config` - Show/edit configuration
-    - `/tools` - List available tools
-    - `/agents` - List available agents
-    - `/agent <name>` - Switch to specific agent
-    - `/toggle` - Toggle between plan/code modes or cycle agents
-    - `/status` - Show current session status
-    - `/export [format]` - Export conversation (JSON, markdown, etc.)
-    - `/undo` - Undo last operation
-    - `/redo` - Redo undone operation
+- ✅ **Slash Command System** - Commands start with `/` like in Claude Code
+    - ✅ `/help [command]` - Show available commands and usage (aliases: h, ?)
+    - ✅ `/clear` - Clear conversation history (alias: c)
+    - ✅ `/status` - Show current session status (alias: s)
+    - ✅ `/tools` - List available tools (alias: t)
+    - ✅ `/agents` - List available agents (alias: a)
+    - ✅ `/exit` - Exit the application (aliases: quit, q)
 
-- **Command Completion** - Tab completion like file completion with `@`
-    - Trigger on `/` + Tab to show available commands
-    - Show command descriptions inline
-    - Complete command arguments (file paths, agent names, etc.)
-    - History-based suggestions for command arguments
+- ✅ **Command Completion** - Tab completion like file completion with `@`
+    - ✅ Trigger on `/` to show available commands
+    - ✅ Show command descriptions inline ("command - description" format)
+    - ✅ Fuzzy matching for commands (e.g., "hlp" matches "help")
+    - ✅ Interactive UI with up/down navigation
+    - ✅ Tab/Enter to apply completion
+    - ✅ Esc to cancel completion
+    - ✅ Dynamic filtering as user types
 
-- **@ Mention System** - Reference files, symbols, and context
-    - ✅ `@file.rs` - Reference a specific file (DONE - see src/tui/completion.rs)
-    - ✅ Fuzzy search for file mentions (DONE)
-    - `@src/` - Reference a directory (extend current implementation)
+- ✅ **@ Mention System** - Reference files, symbols, and context
+    - ✅ `@file.rs` - Reference a specific file (see src/tui/completion/file_completer.rs)
+    - ✅ Fuzzy search for file mentions
+    - `@src/` - Reference a directory (needs extension)
     - `@symbol_name` - Reference a function/struct/symbol (Post-v1, needs LSP)
-    - `@conversation` - Reference previous conversation
-    - Preview on hover/selection
+    - `@conversation` - Reference previous conversation (needs implementation)
+    - Preview on hover/selection (nice-to-have)
 
-- **Command Parser & Registry**
-    - Modular command system (easy to add new commands)
-    - Command validation and argument parsing
-    - Command aliases and shortcuts
-    - Command history (up/down arrows)
-    - Command chaining (e.g., `/save && /clear`)
+- ✅ **Command Parser & Registry** (see src/commands/)
+    - ✅ Modular command system (easy to add new commands via Command trait)
+    - ✅ Command validation and argument parsing
+    - ✅ Command aliases and shortcuts
+    - ✅ Trait-based architecture (async execution support)
+    - Command history (up/down arrows) - not yet implemented
+    - Command chaining (e.g., `/save && /clear`) - not yet implemented
 
 - **Interactive Command Mode**
-    - Multi-line command input
-    - Command prompt with syntax highlighting
-    - Visual feedback for command execution
-    - Error messages with suggestions
+    - ✅ Command prompt with detection (starts with '/')
+    - ✅ Visual feedback for command execution (via AgentEvent system)
+    - ✅ Error messages for command failures
+    - Multi-line command input - not needed for commands
+    - Command prompt with syntax highlighting - nice-to-have
+
+**What's Still Missing (Additional Commands):**
+
+- `/save [name]` - Save current conversation
+- `/load <name>` - Load a saved conversation
+- `/list` - List saved conversations
+- `/delete <name>` - Delete a conversation
+- `/reset` - Reset conversation context (similar to /clear but preserves history)
+- `/config` - Show/edit configuration
+- `/agent <name>` - Switch to specific agent
+- `/toggle` - Toggle between agents
+- `/export [format]` - Export conversation (JSON, markdown, etc.)
+- `/undo` - Undo last operation
+- `/redo` - Redo undone operation
 
 **Why it matters:** Commands provide a structured way to interact with the system, making it more user-friendly and
 efficient. This is foundational for all other features - conversation management, agent switching, configuration, etc.
 
-**Technical Requirements:**
+**Technical Implementation:** ✅ **COMPLETE**
+
+The command system is implemented across these modules:
+
+- **`src/commands/registry.rs`** - Command trait, CommandRegistry, and CommandContext
+- **`src/commands/commands.rs`** - Default command implementations (help, clear, status, tools, agents, exit)
+- **`src/tui/completion/mod.rs`** - Completer trait (unified interface for all completers)
+- **`src/tui/completion/file_completer.rs`** - File completion with @ trigger
+- **`src/tui/completion/command_completer.rs`** - Command completion with / trigger
+- **`src/tui/actions.rs`** - Command execution logic
+- **`src/tui/event_loop.rs`** - Event handling for commands and completions
+- **`src/tui/input_handlers.rs`** - Keyboard input handling for commands and completions
 
 ```rust
-// Reuse existing Completer trait from src/tui/completion.rs
-// This trait is already implemented by FileCompleter for @ mentions
-
-// CommandCompleter implements Completer for slash commands
-struct CommandCompleter {
-    registry: Arc<CommandRegistry>,
+// Implemented Completer trait from src/tui/completion/mod.rs
+#[async_trait]
+pub trait Completer: Send + Sync {
+    fn trigger_key(&self) -> char;
+    async fn get_completions(&self, query: &str) -> Result<Vec<String>>;
+    fn format_completion(&self, item: &str) -> String;
+    fn apply_completion(&self, input: &str, trigger_pos: usize, completion: &str) -> String;
 }
 
-impl Completer for CommandCompleter {
-    fn trigger_key(&self) -> char { '/' }
-    async fn get_completions(&self, query: &str) -> Result<Vec<String>> {
-        // Return matching commands based on query
-    }
-    fn format_completion(&self, item: &str) -> String {
-        // Format: "/command - description"
-    }
+// Implemented CommandRegistry from src/commands/registry.rs
+pub struct CommandRegistry {
+    commands: HashMap<String, Arc<dyn Command>>,
+    aliases: HashMap<String, String>,
 }
 
-// SymbolCompleter implements Completer for symbol mentions (needs LSP)
-struct SymbolCompleter {
-    lsp_client: Arc<LspClient>,
+impl CommandRegistry {
+    pub fn register(&mut self, command: Arc<dyn Command>) -> Result<()>
+    pub async fn execute(&self, input: &str, context: &mut CommandContext) -> Result<CommandResult>
+    pub fn get_help(&self, command_name: Option<&str>) -> String
+    pub fn list_commands(&self) -> Vec<(&str, &str)>
 }
 
-impl Completer for SymbolCompleter {
-    fn trigger_key(&self) -> char { '@' }  // Shares @ with files, but resolves symbols
-    async fn get_completions(&self, query: &str) -> Result<Vec<String>> {
-        // Return matching symbols from LSP
-    }
-}
-
-// Command execution and registry
-struct CommandRegistry {
-    commands: HashMap<String, Box<dyn Command>>,
-
-    fn register(&mut self, command: Box<dyn Command>) -> Result<()>
-    fn execute(&self, input: &str, context: &mut Context) -> Result<CommandResult>
-    fn get_help(&self, command_name: Option<&str>) -> String
-    fn list_commands(&self) -> Vec<(&str, &str)>  // For completion
-}
-
-trait Command {
+// Implemented Command trait from src/commands/registry.rs
+#[async_trait]
+pub trait Command: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn aliases(&self) -> Vec<&str>;
     fn usage(&self) -> &str;
-    fn execute(&self, args: Vec<String>, context: &mut Context) -> Result<CommandResult>;
+    async fn execute(&self, args: Vec<String>, context: &mut CommandContext) -> Result<CommandResult>;
 }
 ```
 
-**Architecture Note:** All completers (file, command) implement the same `Completer` trait from `src/tui/completion.rs`. This provides a unified interface for all completion types:
-- `FileCompleter` - `@` trigger for file paths (✅ already exists)
-- `CommandCompleter` - `/` trigger for slash commands (to be added)
+**Architecture Note:** All completers implement the same `Completer` trait from `src/tui/completion/mod.rs`.
+This provides a unified, extensible interface for all completion types:
+
+- ✅ `FileCompleter` - `@` trigger for file paths (implemented in src/tui/completion/file_completer.rs)
+- ✅ `CommandCompleter` - `/` trigger for slash commands (implemented in src/tui/completion/command_completer.rs)
 - `SymbolCompleter` - `@` trigger for code symbols (Post-v1, needs LSP integration)
 
 **Storage Location:**
 
-- Command history: `~/.config/hoosh/command_history`
-- Command aliases: `~/.config/hoosh/aliases.toml`
+- Command history: `~/.config/hoosh/command_history` (not yet implemented)
+- Command aliases: Built into Command trait implementation (configurable via code)
+- Saved conversations: `~/.config/hoosh/conversations/` (for future /save, /load commands)
 
-**UI Requirements:**
+**UI Status:**
 
-- Status bar showing current mode (command/chat)
-- Command palette (Ctrl+P / Cmd+P)
-- Inline command suggestions
-- Syntax highlighting for commands and mentions
+- ✅ Command detection and routing (starts with '/')
+- ✅ Inline command suggestions (completion dialog with up/down navigation)
+- ✅ Visual feedback for command execution (via AgentEvent system)
+- Status bar showing current mode - not yet implemented
+- Command palette (Ctrl+P / Cmd+P) - not needed (use / trigger instead)
+- Syntax highlighting for commands and mentions - nice-to-have
 
 ---
 
@@ -402,31 +411,32 @@ struct MultiFileOp {
 **What's Missing:**
 
 - **Dedicated Git Tool** - Native git integration beyond bash commands
-  - Git status with visual diff display
-  - Commit with auto-generated messages
-  - Branch creation and switching
-  - Merge conflict resolution assistance
-  - Pull/push operations
-  - Stash management
-  - Rebase operations
-  - Git history visualization
-  - Blame annotations
+    - Git status with visual diff display
+    - Commit with auto-generated messages
+    - Branch creation and switching
+    - Merge conflict resolution assistance
+    - Pull/push operations
+    - Stash management
+    - Rebase operations
+    - Git history visualization
+    - Blame annotations
 
 - **Smart Git Operations**
-  - Commit message generation based on changes
-  - Auto-detect related changes for atomic commits
-  - Suggest branch names based on task
-  - Detect merge conflicts and suggest resolutions
-  - Pre-commit hooks integration
-  - Git ignore management
+    - Commit message generation based on changes
+    - Auto-detect related changes for atomic commits
+    - Suggest branch names based on task
+    - Detect merge conflicts and suggest resolutions
+    - Pre-commit hooks integration
+    - Git ignore management
 
 - **Repository Intelligence**
-  - Detect repository type and structure
-  - Understand branching strategy (gitflow, trunk-based, etc.)
-  - Track uncommitted changes in status bar
-  - Show current branch in UI
+    - Detect repository type and structure
+    - Understand branching strategy (gitflow, trunk-based, etc.)
+    - Track uncommitted changes in status bar
+    - Show current branch in UI
 
-**Why it matters (but not critical for v1):** Bash commands work fine for git operations. Dedicated git integration would provide better UX and structured output for the AI, but this is polish, not a blocker. Can be deferred to v1.1+.
+**Why it matters (but not critical for v1):** Bash commands work fine for git operations. Dedicated git integration
+would provide better UX and structured output for the AI, but this is polish, not a blocker. Can be deferred to v1.1+.
 
 **Technical Requirements:**
 
@@ -434,13 +444,19 @@ struct MultiFileOp {
 struct GitTool {
     repo_path: PathBuf,
 
-    fn status(&self) -> Result<GitStatus>
-    fn commit(&self, message: String, files: Vec<PathBuf>) -> Result<String>
-    fn create_branch(&self, name: String) -> Result<()>
-    fn switch_branch(&self, name: String) -> Result<()>
-    fn diff(&self, staged: bool) -> Result<String>
-    fn generate_commit_message(&self, changes: &[FileChange]) -> Result<String>
-    fn detect_conflicts(&self) -> Result<Vec<Conflict>>
+    fn status( & self ) -> Result<GitStatus>
+    fn commit( & self,
+    message: String,
+    files: Vec<PathBuf>) -> Result<String>
+    fn create_branch( & self,
+    name: String) -> Result<() >
+    fn switch_branch( & self,
+    name: String) -> Result<() >
+    fn diff( & self,
+    staged: bool) -> Result<String>
+    fn generate_commit_message( & self,
+    changes: &[FileChange]) -> Result<String>
+    fn detect_conflicts( & self ) -> Result<Vec<Conflict> >
 }
 
 struct GitStatus {
@@ -462,36 +478,38 @@ struct GitStatus {
 **What's Missing:**
 
 - **MCP Server Integration**
-  - Connect to MCP servers for extended capabilities
-  - Support for stdio, HTTP, and WebSocket transports
-  - Server lifecycle management (start, stop, restart)
-  - Server discovery and registration
+    - Connect to MCP servers for extended capabilities
+    - Support for stdio, HTTP, and WebSocket transports
+    - Server lifecycle management (start, stop, restart)
+    - Server discovery and registration
 
 - **MCP Tools**
-  - Dynamic tool registration from MCP servers
-  - Tool schema validation and conversion
-  - Tool execution with proper error handling
-  - Tool permissions and sandboxing
+    - Dynamic tool registration from MCP servers
+    - Tool schema validation and conversion
+    - Tool execution with proper error handling
+    - Tool permissions and sandboxing
 
 - **MCP Resources**
-  - Access to remote resources (files, databases, APIs)
-  - Resource caching and invalidation
-  - Resource permissions
+    - Access to remote resources (files, databases, APIs)
+    - Resource caching and invalidation
+    - Resource permissions
 
 - **MCP Prompts**
-  - Import prompts from MCP servers
-  - Prompt templates and composition
-  - Dynamic prompt generation
+    - Import prompts from MCP servers
+    - Prompt templates and composition
+    - Dynamic prompt generation
 
 - **Standard MCP Servers**
-  - File system server (enhanced file operations)
-  - Git server (repository operations)
-  - Database server (SQL queries)
-  - Web server (HTTP requests, web scraping)
-  - Slack server (team communication)
-  - GitHub server (issues, PRs, etc.)
+    - File system server (enhanced file operations)
+    - Git server (repository operations)
+    - Database server (SQL queries)
+    - Web server (HTTP requests, web scraping)
+    - Slack server (team communication)
+    - GitHub server (issues, PRs, etc.)
 
-**Why it matters:** MCP is the standard for extending AI assistants with custom tools and integrations. This enables hoosh to integrate with any MCP-compatible service and significantly extends its capabilities without modifying core code.
+**Why it matters:** MCP is the standard for extending AI assistants with custom tools and integrations. This enables
+hoosh to integrate with any MCP-compatible service and significantly extends its capabilities without modifying core
+code.
 
 **Technical Requirements:**
 
@@ -499,12 +517,21 @@ struct GitStatus {
 struct McpClient {
     servers: HashMap<String, McpServer>,
 
-    fn connect(&mut self, config: McpServerConfig) -> Result<String>
-    fn disconnect(&mut self, server_id: &str) -> Result<()>
-    fn list_tools(&self, server_id: &str) -> Result<Vec<ToolSchema>>
-    fn execute_tool(&self, server_id: &str, tool: &str, args: Value) -> Result<Value>
-    fn list_resources(&self, server_id: &str) -> Result<Vec<Resource>>
-    fn read_resource(&self, server_id: &str, uri: &str) -> Result<String>
+    fn connect( & mut self,
+    config: McpServerConfig) -> Result<String>
+    fn disconnect( & mut self,
+    server_id: &str) -> Result<() >
+    fn list_tools( & self,
+    server_id: &str) -> Result<Vec<ToolSchema> >
+    fn execute_tool( & self,
+    server_id: &str,
+    tool: &str,
+    args: Value) -> Result<Value>
+    fn list_resources( & self,
+    server_id: &str) -> Result<Vec<Resource> >
+    fn read_resource( & self,
+    server_id: &str,
+    uri: &str) -> Result<String>
 }
 
 struct McpServer {
@@ -540,40 +567,41 @@ env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
 **What's Missing:**
 
 - **LSP Client Implementation**
-  - Connect to language servers for various languages
-  - Support for common LSP features:
-    - Go to definition
-    - Find references
-    - Hover information
-    - Code completion suggestions
-    - Diagnostics (errors, warnings)
-    - Symbol search (workspace-wide)
-    - Rename symbol
-    - Code actions (quick fixes)
-    - Document formatting
+    - Connect to language servers for various languages
+    - Support for common LSP features:
+        - Go to definition
+        - Find references
+        - Hover information
+        - Code completion suggestions
+        - Diagnostics (errors, warnings)
+        - Symbol search (workspace-wide)
+        - Rename symbol
+        - Code actions (quick fixes)
+        - Document formatting
 
 - **Multi-language Support**
-  - Rust (rust-analyzer)
-  - Python (pyright, pylsp)
-  - JavaScript/TypeScript (typescript-language-server)
-  - Go (gopls)
-  - Java (jdtls)
-  - C/C++ (clangd)
-  - Auto-detect language from file extension
+    - Rust (rust-analyzer)
+    - Python (pyright, pylsp)
+    - JavaScript/TypeScript (typescript-language-server)
+    - Go (gopls)
+    - Java (jdtls)
+    - C/C++ (clangd)
+    - Auto-detect language from file extension
 
 - **Code Intelligence Features**
-  - Semantic symbol search (find all usages of a function)
-  - Type information and signatures
-  - Documentation on hover
-  - Import management
-  - Code navigation breadcrumbs
+    - Semantic symbol search (find all usages of a function)
+    - Type information and signatures
+    - Documentation on hover
+    - Import management
+    - Code navigation breadcrumbs
 
 - **Integration with Tools**
-  - Enhance @ mentions with symbol search
-  - Use diagnostics to guide error fixing
-  - Suggest code actions when editing
+    - Enhance @ mentions with symbol search
+    - Use diagnostics to guide error fixing
+    - Suggest code actions when editing
 
-**Why it matters:** LSP provides deep code understanding that enables intelligent refactoring, navigation, and error detection. This makes hoosh significantly more powerful for coding tasks.
+**Why it matters:** LSP provides deep code understanding that enables intelligent refactoring, navigation, and error
+detection. This makes hoosh significantly more powerful for coding tasks.
 
 **Technical Requirements:**
 
@@ -581,13 +609,26 @@ env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
 struct LspClient {
     servers: HashMap<String, LanguageServer>,
 
-    fn start_server(&mut self, language: &str, root_path: PathBuf) -> Result<()>
-    fn goto_definition(&self, file: &Path, position: Position) -> Result<Location>
-    fn find_references(&self, file: &Path, position: Position) -> Result<Vec<Location>>
-    fn hover(&self, file: &Path, position: Position) -> Result<String>
-    fn diagnostics(&self, file: &Path) -> Result<Vec<Diagnostic>>
-    fn symbols(&self, workspace: bool) -> Result<Vec<Symbol>>
-    fn rename(&self, file: &Path, position: Position, new_name: String) -> Result<WorkspaceEdit>
+    fn start_server( & mut self,
+    language: &str,
+    root_path: PathBuf) -> Result<() >
+    fn goto_definition( & self,
+    file: &Path,
+    position: Position) -> Result<Location>
+    fn find_references( & self,
+    file: &Path,
+    position: Position) -> Result<Vec<Location> >
+    fn hover( & self,
+    file: &Path,
+    position: Position) -> Result<String>
+    fn diagnostics( & self,
+    file: &Path) -> Result<Vec<Diagnostic> >
+    fn symbols( & self,
+    workspace: bool) -> Result<Vec<Symbol> >
+    fn rename( & self,
+    file: &Path,
+    position: Position,
+    new_name: String) -> Result<WorkspaceEdit>
 }
 
 struct LanguageServer {
@@ -623,32 +664,33 @@ args = ["--stdio"]
 **What's Missing:**
 
 - **Codebase Indexing**
-  - Build AST (Abstract Syntax Tree) for source files
-  - Index symbols (functions, classes, variables)
-  - Track dependencies and imports
-  - Build call graph
-  - Detect project structure and conventions
+    - Build AST (Abstract Syntax Tree) for source files
+    - Index symbols (functions, classes, variables)
+    - Track dependencies and imports
+    - Build call graph
+    - Detect project structure and conventions
 
 - **Semantic Search**
-  - Search by concept, not just keywords
-  - Find similar code patterns
-  - Detect code duplication
-  - Identify related files
+    - Search by concept, not just keywords
+    - Find similar code patterns
+    - Detect code duplication
+    - Identify related files
 
 - **Project Analysis**
-  - Detect frameworks and libraries used
-  - Identify project architecture (MVC, microservices, etc.)
-  - Find entry points and configuration files
-  - Detect test files and test frameworks
-  - Understand build system (Cargo, npm, Maven, etc.)
+    - Detect frameworks and libraries used
+    - Identify project architecture (MVC, microservices, etc.)
+    - Find entry points and configuration files
+    - Detect test files and test frameworks
+    - Understand build system (Cargo, npm, Maven, etc.)
 
 - **Context Building**
-  - Auto-include relevant files in context
-  - Smart file selection based on task
-  - Detect which files need to be modified for a feature
-  - Track file relationships and dependencies
+    - Auto-include relevant files in context
+    - Smart file selection based on task
+    - Detect which files need to be modified for a feature
+    - Track file relationships and dependencies
 
-**Why it matters:** Understanding the entire codebase enables better suggestions, refactoring, and feature development. The AI can make informed decisions about where to make changes.
+**Why it matters:** Understanding the entire codebase enables better suggestions, refactoring, and feature development.
+The AI can make informed decisions about where to make changes.
 
 **Technical Requirements:**
 
@@ -659,11 +701,15 @@ struct ProjectIndex {
     dependencies: DependencyGraph,
     file_tree: FileTree,
 
-    fn build_index(&mut self) -> Result<()>
-    fn search_symbols(&self, query: &str) -> Result<Vec<SymbolMatch>>
-    fn find_related_files(&self, file: &Path) -> Result<Vec<PathBuf>>
-    fn get_dependencies(&self, file: &Path) -> Result<Vec<Dependency>>
-    fn suggest_context(&self, task: &str) -> Result<Vec<PathBuf>>
+    fn build_index( & mut self ) -> Result<() >
+    fn search_symbols( & self,
+    query: &str) -> Result<Vec<SymbolMatch> >
+    fn find_related_files( & self,
+    file: &Path) -> Result<Vec<PathBuf> >
+    fn get_dependencies( & self,
+    file: &Path) -> Result<Vec<Dependency> >
+    fn suggest_context( & self,
+    task: &str) -> Result<Vec<PathBuf> >
 }
 
 struct Symbol {
@@ -684,31 +730,32 @@ struct Symbol {
 **What's Missing:**
 
 - **Test Execution**
-  - Detect test framework (pytest, jest, cargo test, etc.)
-  - Run all tests or specific test files
-  - Run tests matching a pattern
-  - Watch mode for continuous testing
-  - Parallel test execution
+    - Detect test framework (pytest, jest, cargo test, etc.)
+    - Run all tests or specific test files
+    - Run tests matching a pattern
+    - Watch mode for continuous testing
+    - Parallel test execution
 
 - **Test Result Analysis**
-  - Parse test output and failures
-  - Show failed tests with context
-  - Suggest fixes for failing tests
-  - Track test coverage
-  - Compare test runs
+    - Parse test output and failures
+    - Show failed tests with context
+    - Suggest fixes for failing tests
+    - Track test coverage
+    - Compare test runs
 
 - **Test Generation**
-  - Generate test cases for functions
-  - Create test scaffolding
-  - Suggest edge cases to test
-  - Generate mocks and fixtures
+    - Generate test cases for functions
+    - Create test scaffolding
+    - Suggest edge cases to test
+    - Generate mocks and fixtures
 
 - **Test-Driven Development**
-  - Write tests first, then implementation
-  - Red-Green-Refactor cycle support
-  - Test coverage goals
+    - Write tests first, then implementation
+    - Red-Green-Refactor cycle support
+    - Test coverage goals
 
-**Why it matters (but not critical for v1):** Testing works fine via bash commands. Dedicated test integration would provide structured output parsing and better UX, but this is polish, not a blocker. Can be deferred to v1.1+.
+**Why it matters (but not critical for v1):** Testing works fine via bash commands. Dedicated test integration would
+provide structured output parsing and better UX, but this is polish, not a blocker. Can be deferred to v1.1+.
 
 **Technical Requirements:**
 
@@ -716,11 +763,15 @@ struct Symbol {
 struct TestRunner {
     framework: TestFramework,
 
-    fn detect_framework(&self, path: &Path) -> Result<TestFramework>
-    fn run_tests(&self, filter: Option<&str>) -> Result<TestResults>
-    fn run_test_file(&self, file: &Path) -> Result<TestResults>
-    fn watch(&self) -> Result<TestWatcher>
-    fn generate_test(&self, target: &Symbol) -> Result<String>
+    fn detect_framework( & self,
+    path: &Path) -> Result<TestFramework>
+    fn run_tests( & self,
+    filter: Option<&str>) -> Result<TestResults>
+    fn run_test_file( & self,
+    file: &Path) -> Result<TestResults>
+    fn watch( & self ) -> Result<TestWatcher>
+    fn generate_test( & self,
+    target: &Symbol) -> Result<String>
 }
 
 struct TestResults {
@@ -742,30 +793,31 @@ struct TestResults {
 **What's Missing:**
 
 - **Token Usage Tracking**
-  - Track tokens per request (input/output)
-  - Track tokens per session
-  - Show token usage in status bar
-  - Alert when approaching context limits
+    - Track tokens per request (input/output)
+    - Track tokens per session
+    - Show token usage in status bar
+    - Alert when approaching context limits
 
 - **Cost Estimation**
-  - Track API costs per backend
-  - Show cost per session
-  - Cumulative cost tracking
-  - Budget alerts and limits
+    - Track API costs per backend
+    - Show cost per session
+    - Cumulative cost tracking
+    - Budget alerts and limits
 
 - **Performance Metrics**
-  - Response time tracking
-  - Tool execution time
-  - Cache hit rates
-  - Request success/failure rates
+    - Response time tracking
+    - Tool execution time
+    - Cache hit rates
+    - Request success/failure rates
 
 - **Usage Analytics**
-  - Most used tools
-  - Most used backends
-  - Session duration
-  - Export usage reports
+    - Most used tools
+    - Most used backends
+    - Session duration
+    - Export usage reports
 
-**Why it matters:** Understanding costs and performance helps users optimize their usage and avoid unexpected bills. Critical for production use.
+**Why it matters:** Understanding costs and performance helps users optimize their usage and avoid unexpected bills.
+Critical for production use.
 
 **Technical Requirements:**
 
@@ -774,10 +826,14 @@ struct UsageTracker {
     session_stats: SessionStats,
     cumulative_stats: CumulativeStats,
 
-    fn record_request(&mut self, backend: &str, tokens: TokenUsage, cost: f64)
-    fn get_session_stats(&self) -> &SessionStats
-    fn get_cumulative_stats(&self) -> &CumulativeStats
-    fn export_report(&self, format: ReportFormat) -> Result<String>
+    fn record_request( & mut self,
+    backend: &str,
+    tokens: TokenUsage,
+    cost: f64)
+    fn get_session_stats( & self ) -> & SessionStats
+    fn get_cumulative_stats( & self ) -> & CumulativeStats
+    fn export_report( & self,
+    format: ReportFormat) -> Result<String>
 }
 
 struct TokenUsage {
@@ -804,4 +860,5 @@ struct TokenUsage {
 - Option to include screenshots in conversation history
 - Command to trigger screenshot capture (e.g., `/screenshot`)
 
-**Why it matters:** Some coding tasks involve visual elements (e.g., UI design, bug reproduction). Screenshots allow the AI to access visual context and provide better assistance.
+**Why it matters:** Some coding tasks involve visual elements (e.g., UI design, bug reproduction). Screenshots allow the
+AI to access visual context and provide better assistance.
