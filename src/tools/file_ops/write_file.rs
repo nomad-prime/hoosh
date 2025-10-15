@@ -2,6 +2,7 @@ use crate::permissions::{OperationType, PermissionManager};
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use colored::Colorize;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -155,6 +156,88 @@ impl Tool for WriteFileTool {
         let operation = OperationType::WriteFile(normalized_path);
 
         permission_manager.check_permission(&operation).await
+    }
+
+    async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
+        let args: WriteFileArgs = serde_json::from_value(args.clone()).ok()?;
+        let file_path = resolve_path(&args.path, &self.working_directory);
+
+        // Check if file exists
+        if file_path.exists() {
+            // Show diff for overwriting existing file
+            let old_content = fs::read_to_string(&file_path).await.ok()?;
+            Some(self.generate_diff(&old_content, &args.content, &args.path))
+        } else {
+            // Show preview of new file content
+            Some(self.generate_new_file_preview(&args.content, &args.path))
+        }
+    }
+}
+
+impl WriteFileTool {
+    /// Generate a diff showing the old file vs new file content
+    fn generate_diff(&self, old_content: &str, new_content: &str, path: &str) -> String {
+        let mut output = String::new();
+
+        output.push_str(&format!("{}\n\n", format!("Overwriting file: {}", path).bold().cyan()));
+
+        let old_lines: Vec<&str> = old_content.lines().collect();
+        let new_lines: Vec<&str> = new_content.lines().collect();
+
+        let total_old = old_lines.len();
+        let total_new = new_lines.len();
+
+        // Show size comparison
+        output.push_str(&format!("{}\n", format!("Old: {} lines, {} bytes", total_old, old_content.len()).yellow()));
+        output.push_str(&format!("{}\n\n", format!("New: {} lines, {} bytes", total_new, new_content.len()).yellow()));
+
+        let max_preview_lines = 20;
+
+        // Show first few lines of old content
+        if total_old > 0 {
+            output.push_str(&format!("{}:\n", "Old content (first lines)".bold()));
+            for (i, line) in old_lines.iter().take(max_preview_lines).enumerate() {
+                output.push_str(&format!("{}\n", format!("  {:4} - {}", i + 1, line).bright_red()));
+                if i == max_preview_lines - 1 && total_old > max_preview_lines {
+                    output.push_str(&format!("{}\n", format!("       ... ({} more lines)", total_old - max_preview_lines).dimmed()));
+                }
+            }
+            output.push('\n');
+        }
+
+        // Show first few lines of new content
+        output.push_str(&format!("{}:\n", "New content (first lines)".bold()));
+        for (i, line) in new_lines.iter().take(max_preview_lines).enumerate() {
+            output.push_str(&format!("{}\n", format!("  {:4} + {}", i + 1, line).green()));
+            if i == max_preview_lines - 1 && total_new > max_preview_lines {
+                output.push_str(&format!("{}\n", format!("       ... ({} more lines)", total_new - max_preview_lines).dimmed()));
+            }
+        }
+
+        output
+    }
+
+    /// Generate a preview for creating a new file
+    fn generate_new_file_preview(&self, content: &str, path: &str) -> String {
+        let mut output = String::new();
+
+        output.push_str(&format!("{}\n\n", format!("Creating new file: {}", path).bold().bright_cyan()));
+
+        let lines: Vec<&str> = content.lines().collect();
+        let total_lines = lines.len();
+        let max_preview_lines = 20;
+
+        output.push_str(&format!("{}\n\n", format!("Size: {} lines, {} bytes", total_lines, content.len()).yellow()));
+        output.push_str(&format!("{}:\n", "Content".bold()));
+
+        for (i, line) in lines.iter().take(max_preview_lines).enumerate() {
+            output.push_str(&format!("{}\n", format!("  {:4} + {}", i + 1, line).green()));
+            if i == max_preview_lines - 1 && total_lines > max_preview_lines {
+                output.push_str(&format!("{}\n", format!("       ... ({} more lines)", total_lines - max_preview_lines).dimmed()));
+            }
+        }
+
+        output
     }
 }
 

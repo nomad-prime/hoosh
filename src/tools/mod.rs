@@ -53,6 +53,13 @@ pub trait Tool: Send + Sync {
         Ok(true)
     }
 
+    /// Generate a preview of what this tool will do (e.g., a diff for edits)
+    /// This is shown to the user before requesting permission
+    /// Default implementation returns None (most tools don't need previews)
+    async fn generate_preview(&self, _args: &serde_json::Value) -> Option<String> {
+        None
+    }
+
     /// Get the complete tool schema in OpenAI function calling format
     fn tool_schema(&self) -> Value {
         json!({

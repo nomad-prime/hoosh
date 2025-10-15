@@ -99,7 +99,8 @@ pub async fn run(
         .with_event_sender(event_tx.clone())
         .with_response_receiver(permission_response_rx);
 
-    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager);
+    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager)
+        .with_event_sender(event_tx.clone());
 
     // Create context
     let context = EventLoopContext {
