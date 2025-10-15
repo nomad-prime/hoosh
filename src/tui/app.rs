@@ -2,6 +2,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
+use rand::Rng;
 
 use super::completion::Completer;
 use super::events::AgentState;
@@ -85,6 +86,8 @@ pub struct AppState {
     pub permission_dialog_state: Option<PermissionDialogState>,
     pub animation_frame: usize,
     pub prompt_history: PromptHistory,
+    pub current_thinking_spinner: usize,
+    pub current_executing_spinner: usize,
 }
 
 impl AppState {
@@ -92,6 +95,11 @@ impl AppState {
         let mut input = TextArea::default();
         input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         input.set_cursor_line_style(Style::default());
+
+        // Initialize with random spinner indices
+        let mut rng = rand::thread_rng();
+        let current_thinking_spinner = rng.gen_range(0..7);
+        let current_executing_spinner = rng.gen_range(0..7);
 
         Self {
             input,
@@ -106,6 +114,8 @@ impl AppState {
             permission_dialog_state: None,
             animation_frame: 0,
             prompt_history: PromptHistory::new(1000),
+            current_thinking_spinner,
+            current_executing_spinner,
         }
     }
 
@@ -254,6 +264,9 @@ impl AppState {
         match event {
             AgentEvent::Thinking => {
                 self.agent_state = AgentState::Thinking;
+                // Select a new spinner for this thinking session
+                let mut rng = rand::thread_rng();
+                self.current_thinking_spinner = rng.gen_range(0..7);
             }
             AgentEvent::AssistantThought(content) => {
                 if !content.is_empty() {
@@ -262,6 +275,9 @@ impl AppState {
             }
             AgentEvent::ToolCalls(tool_call_displays) => {
                 self.agent_state = AgentState::ExecutingTools;
+                // Select a new spinner for this execution session
+                let mut rng = rand::thread_rng();
+                self.current_executing_spinner = rng.gen_range(0..7);
                 for display_name in tool_call_displays {
                     self.add_message(format!("● {}", display_name));
                 }
