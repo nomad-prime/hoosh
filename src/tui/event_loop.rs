@@ -109,12 +109,26 @@ pub async fn run_event_loop(
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 // Try permission dialog handler first
-                match handle_permission_keys(key.code, app, &context.permission_response_tx) {
+                match handle_permission_keys(key.code, key.modifiers, app, &context.permission_response_tx) {
                     KeyHandlerResult::Handled => continue,
                     KeyHandlerResult::NotHandled => {}
                     KeyHandlerResult::ShouldQuit => {
                         app.should_quit = true;
+                        // If quitting with an active agent task, abort it immediately
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                        }
                         break;
+                    }
+                    KeyHandlerResult::ShouldCancelTask => {
+                        // Cancel the running task but don't quit
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                            app.agent_state = super::events::AgentState::Idle;
+                            app.add_message("⚠️  Task cancelled by user (press Ctrl+C again to quit)\n".to_string());
+                        }
+                        app.should_cancel_task = false;
+                        continue;
                     }
                     _ => {}
                 }
@@ -125,7 +139,21 @@ pub async fn run_event_loop(
                     KeyHandlerResult::NotHandled => {}
                     KeyHandlerResult::ShouldQuit => {
                         app.should_quit = true;
+                        // If quitting with an active agent task, abort it immediately
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                        }
                         break;
+                    }
+                    KeyHandlerResult::ShouldCancelTask => {
+                        // Cancel the running task but don't quit
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                            app.agent_state = super::events::AgentState::Idle;
+                            app.add_message("⚠️  Task cancelled by user (press Ctrl+C again to quit)\n".to_string());
+                        }
+                        app.should_cancel_task = false;
+                        continue;
                     }
                     _ => {}
                 }
@@ -135,7 +163,21 @@ pub async fn run_event_loop(
                 match handle_normal_keys(key.code, key.modifiers, app, agent_task_active).await {
                     KeyHandlerResult::ShouldQuit => {
                         app.should_quit = true;
+                        // If quitting with an active agent task, abort it immediately
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                        }
                         break;
+                    }
+                    KeyHandlerResult::ShouldCancelTask => {
+                        // Cancel the running task but don't quit
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                            app.agent_state = super::events::AgentState::Idle;
+                            app.add_message("⚠️  Task cancelled by user (press Ctrl+C again to quit)\n".to_string());
+                        }
+                        app.should_cancel_task = false;
+                        continue;
                     }
                     KeyHandlerResult::StartCommand(input) => {
                         execute_command(
@@ -169,6 +211,8 @@ pub async fn run_event_loop(
         }
     }
 
+    // Clean up any remaining agent task
+    // (This should only happen if the loop exits without should_quit being set)
     if let Some(task) = agent_task {
         let _ = task.await;
     }
