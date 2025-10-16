@@ -13,11 +13,12 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
 
     let vertical = Layout::vertical([
         Constraint::Length(1),
+        Constraint::Length(1),
         Constraint::Length(3),
         Constraint::Length(1),
         Constraint::Min(0),
     ]);
-    let [status_area, input_area, mode_area, _spacer] = vertical.areas(viewport_area);
+    let [_, status_area, input_area, mode_area, _spacer] = vertical.areas(viewport_area);
 
     render_status(frame, status_area, app);
     render_input(frame, input_area, app);

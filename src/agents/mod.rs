@@ -4,9 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DEFAULT_ASSISTANT_PROMPT: &str = include_str!("../prompts/assistant.txt");
-const HOOSH_CODER_PROMPT: &str = include_str!("../prompts/hoosh_coder.txt");
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     pub name: String,
@@ -33,8 +30,6 @@ impl Agent {
     }
 }
 
-
-
 impl AgentManager {
     pub fn new() -> Result<Self> {
         let config = AppConfig::load()?;
@@ -59,16 +54,38 @@ impl AgentManager {
     }
 
     fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
-        let assistant_path = agents_dir.join("assistant.txt");
-        if !assistant_path.exists() {
-            fs::write(&assistant_path, DEFAULT_ASSISTANT_PROMPT)
-                .context("Failed to write default assistant agent")?;
-        }
-
-        let hoosh_coder_path = agents_dir.join("hoosh_coder.txt");
-        if !hoosh_coder_path.exists() {
-            fs::write(&hoosh_coder_path, HOOSH_CODER_PROMPT)
-                .context("Failed to write hoosh_coder agent")?;
+        // Get the path to the prompts directory in the source code
+        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src").join("prompts");
+        
+        // Read all files from the prompts directory
+        let prompt_files = fs::read_dir(&prompts_dir)
+            .context("Failed to read prompts directory")?;
+        
+        // Process each prompt file
+        for entry in prompt_files {
+            let entry = entry.context("Failed to read directory entry")?;
+            let file_path = entry.path();
+            
+            // Skip directories and non-file entries
+            if !file_path.is_file() {
+                continue;
+            }
+            
+            // Get the file name
+            let file_name = file_path
+                .file_name()
+                .context("Failed to get file name")?
+                .to_str()
+                .context("Failed to convert file name to string")?;
+            
+            // Read the prompt content
+            let prompt_content = fs::read_to_string(&file_path)
+                .with_context(|| format!("Failed to read prompt file: {}", file_name))?;
+            
+            // Write the prompt content to the agent file
+            let agent_path = agents_dir.join(file_name);
+            fs::write(&agent_path, prompt_content)
+                .with_context(|| format!("Failed to write agent file: {}", file_name))?;
         }
 
         Ok(())

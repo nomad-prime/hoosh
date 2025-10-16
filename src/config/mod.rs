@@ -42,28 +42,49 @@ fn default_review_mode() -> bool {
 impl Default for AppConfig {
     fn default() -> Self {
         let mut agents = HashMap::new();
-        agents.insert(
-            "assistant".to_string(),
-            AgentConfig {
-                file: "assistant.txt".to_string(),
-                description: Some("General purpose assistant".to_string()),
-                tags: vec![],
-            },
-        );
-        agents.insert(
-            "hoosh_coder".to_string(),
-            AgentConfig {
-                file: "hoosh_coder.txt".to_string(),
-                description: Some("Specialized coding agent for the hoosh project".to_string()),
-                tags: vec!["coding".to_string(), "development".to_string()],
-            },
-        );
+
+        // Get the path to the prompts directory in the source code
+        let prompts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("prompts");
+
+        // Read all files from the prompts directory
+        if let Ok(prompt_files) = std::fs::read_dir(&prompts_dir) {
+            for entry in prompt_files.filter_map(|e| e.ok()) {
+                let file_path = entry.path();
+
+                // Skip directories and non-file entries
+                if !file_path.is_file() {
+                    continue;
+                }
+
+                // Get the file name without extension for the agent name
+                if let Some(file_name) = file_path.file_name().and_then(|f| f.to_str()) {
+                    // Remove .txt extension for the agent name
+                    let agent_name = if let Some(stripped) = file_name.strip_suffix(".txt") {
+                        stripped.to_string()
+                    } else {
+                        file_name.to_string()
+                    };
+
+                    // Add the agent to the config
+                    agents.insert(
+                        agent_name,
+                        AgentConfig {
+                            file: file_name.to_string(),
+                            description: None,
+                            tags: vec![],
+                        },
+                    );
+                }
+            }
+        }
 
         Self {
             default_backend: "mock".to_string(),
             backends: HashMap::new(),
             verbosity: None,
-            default_agent: Some("assistant".to_string()),
+            default_agent: Some("hoosh_coder".to_string()),
             agents,
             review_mode: default_review_mode(),
         }
