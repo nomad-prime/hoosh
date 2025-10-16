@@ -3,11 +3,12 @@ use std::fmt;
 use std::sync::{Arc, OnceLock};
 
 /// Verbosity levels for console output
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum VerbosityLevel {
     /// Only show errors
     Quiet = 0,
     /// Normal output (default)
+    #[default]
     Normal = 1,
     /// Verbose output with additional info
     Verbose = 2,
@@ -49,12 +50,6 @@ impl fmt::Display for VerbosityLevel {
     }
 }
 
-impl Default for VerbosityLevel {
-    fn default() -> Self {
-        VerbosityLevel::Normal
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Console {
     verbosity: VerbosityLevel,
@@ -63,12 +58,6 @@ pub struct Console {
 impl Console {
     pub fn new(verbosity: VerbosityLevel) -> Self {
         Self { verbosity }
-    }
-
-    pub fn default() -> Self {
-        Self {
-            verbosity: VerbosityLevel::Normal,
-        }
     }
 
     pub fn set_verbosity(&mut self, verbosity: VerbosityLevel) {
@@ -152,7 +141,7 @@ impl Console {
             "⏺".dimmed(),
             tool_name.green(),
             "(".dimmed(),
-            format!("{}", args_summary).dimmed()
+            args_summary.dimmed()
         );
     }
 
@@ -315,6 +304,14 @@ pub fn console() -> Arc<Console> {
         .get()
         .expect("Console not initialized - call init_console() first")
         .clone()
+}
+
+impl Default for Console {
+    fn default() -> Self {
+        Self {
+            verbosity: VerbosityLevel::Normal,
+        }
+    }
 }
 
 #[cfg(test)]

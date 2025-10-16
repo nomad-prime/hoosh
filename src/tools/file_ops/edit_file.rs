@@ -302,6 +302,12 @@ impl EditFileTool {
     }
 }
 
+impl Default for EditFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

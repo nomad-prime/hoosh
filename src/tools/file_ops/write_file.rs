@@ -283,6 +283,12 @@ impl WriteFileTool {
     }
 }
 
+impl Default for WriteFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

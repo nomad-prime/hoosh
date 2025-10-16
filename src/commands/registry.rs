@@ -59,6 +59,12 @@ impl CommandContext {
     }
 }
 
+impl Default for CommandContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 pub trait Command: Send + Sync {
     fn name(&self) -> &str;

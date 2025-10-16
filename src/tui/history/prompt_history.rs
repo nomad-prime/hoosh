@@ -150,7 +150,7 @@ impl PromptHistory {
 
     /// Navigate to the next prompt in history (down arrow)
     /// Returns the next prompt, or the original input if at the end
-    pub fn next(&mut self) -> Option<String> {
+    pub fn next_entry(&mut self) -> Option<String> {
         match self.current_index {
             None => None,
             Some(idx) => {
@@ -197,9 +197,9 @@ mod tests {
         assert_eq!(history.prev(""), Some("first".to_string()));
         assert_eq!(history.prev(""), None); // At the beginning
 
-        assert_eq!(history.next(), Some("second".to_string()));
-        assert_eq!(history.next(), Some("third".to_string()));
-        assert_eq!(history.next(), Some("".to_string())); // Back to original
+        assert_eq!(history.next_entry(), Some("second".to_string()));
+        assert_eq!(history.next_entry(), Some("third".to_string()));
+        assert_eq!(history.next_entry(), Some("".to_string())); // Back to original
     }
 
     #[test]
@@ -246,7 +246,7 @@ mod tests {
 
         let current = "new command in progress";
         assert_eq!(history.prev(current), Some("old command".to_string()));
-        assert_eq!(history.next(), Some(current.to_string()));
+        assert_eq!(history.next_entry(), Some(current.to_string()));
     }
 
     #[test]
