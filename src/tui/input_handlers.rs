@@ -326,7 +326,7 @@ pub async fn handle_normal_keys(
         }
         KeyCode::Down => {
             // Navigate to next prompt in history
-            if let Some(next_prompt) = app.prompt_history.next() {
+            if let Some(next_prompt) = app.prompt_history.next_entry() {
                 app.clear_input();
                 // Insert the prompt text
                 let lines: Vec<&str> = next_prompt.lines().collect();

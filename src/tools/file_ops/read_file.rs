@@ -168,6 +168,12 @@ impl Tool for ReadFileTool {
     }
 }
 
+impl Default for ReadFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

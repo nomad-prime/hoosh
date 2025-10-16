@@ -50,3 +50,9 @@ impl LlmBackend for MockBackend {
         "mock-model"
     }
 }
+
+impl Default for MockBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}

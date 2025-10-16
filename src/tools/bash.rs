@@ -353,6 +353,12 @@ impl Tool for BashTool {
     }
 }
 
+impl Default for BashTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -139,7 +139,7 @@ impl LlmBackend for TogetherAiBackend {
             .first()
             .and_then(|choice| choice.message.as_ref())
             .and_then(|message| message.content.as_ref())
-            .map(|content| content.clone())
+            .cloned()
             .ok_or_else(|| anyhow::anyhow!("No response from Together AI"))
     }
 

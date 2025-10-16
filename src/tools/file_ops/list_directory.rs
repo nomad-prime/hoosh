@@ -223,6 +223,12 @@ impl Tool for ListDirectoryTool {
     }
 }
 
+impl Default for ListDirectoryTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

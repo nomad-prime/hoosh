@@ -2,7 +2,7 @@ use crate::config::{AgentConfig, AppConfig};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
@@ -84,7 +84,7 @@ impl AgentManager {
         Ok(agents_dir)
     }
 
-    fn initialize_default_agents(agents_dir: &PathBuf) -> Result<()> {
+    fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
         let assistant_path = agents_dir.join("assistant.txt");
         if !assistant_path.exists() {
             fs::write(&assistant_path, DEFAULT_ASSISTANT_AGENT)
