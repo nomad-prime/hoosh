@@ -704,3 +704,13 @@ struct TokenUsage {
 
 **Why it matters:** Some coding tasks involve visual elements (e.g., UI design, bug reproduction). Screenshots allow the
 AI to access visual context and provide better assistance.
+
+### 12. Markdown rendering in TUI 🔧 LOW PRIORITY
+
+**Current State:** Plain text only in TUI
+**What's Missing:**
+
+- Render markdown formatting (bold, italics, code blocks, lists)
+- Support for inline code highlighting
+- Render links and allow opening in browser
+

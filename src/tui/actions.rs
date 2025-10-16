@@ -18,6 +18,7 @@ pub fn execute_command(
     agent_manager: Arc<AgentManager>,
     working_dir: String,
     event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+    permission_manager: Arc<crate::permissions::PermissionManager>,
 ) {
     tokio::spawn(async move {
         let mut context = CommandContext::new()
@@ -25,7 +26,8 @@ pub fn execute_command(
             .with_tool_registry(tool_registry)
             .with_agent_manager(agent_manager)
             .with_command_registry(Arc::clone(&command_registry))
-            .with_working_directory(working_dir);
+            .with_working_directory(working_dir)
+            .with_permission_manager(permission_manager);
 
         match command_registry.execute(&input, &mut context).await {
             Ok(CommandResult::Success(msg)) => {

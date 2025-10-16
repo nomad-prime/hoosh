@@ -8,6 +8,7 @@ use super::help_command::HelpCommand;
 use super::registry::CommandRegistry;
 use super::status_command::StatusCommand;
 use super::tools_command::ToolsCommand;
+use super::untrust_command::UntrustCommand;
 
 pub fn register_default_commands(registry: &mut CommandRegistry) -> Result<()> {
     registry.register(Arc::new(HelpCommand))?;
@@ -16,5 +17,6 @@ pub fn register_default_commands(registry: &mut CommandRegistry) -> Result<()> {
     registry.register(Arc::new(ToolsCommand))?;
     registry.register(Arc::new(AgentsCommand))?;
     registry.register(Arc::new(ExitCommand))?;
+    registry.register(Arc::new(UntrustCommand))?;
     Ok(())
 }
