@@ -177,33 +177,55 @@ fn handle_config(action: ConfigAction) -> Result<()> {
         ConfigAction::Show => {
             let config = AppConfig::load()?;
             console().plain(&format!("default_backend = \"{}\"", config.default_backend));
+            if let Some(ref default_agent) = config.default_agent {
+                console().plain(&format!("default_agent = \"{}\"", default_agent));
+            }
             if let Some(ref verbosity) = config.verbosity {
                 console().plain(&format!("verbosity = \"{}\"", verbosity));
             }
+            console().plain(&format!("review_mode = {}", config.review_mode));
 
-            for (backend_name, backend_config) in &config.backends {
+            if !config.agents.is_empty() {
                 console().newline();
-                console().plain(&format!("[{}]", backend_name));
-                if let Some(ref api_key) = backend_config.api_key {
-                    // Use char-based slicing to safely handle UTF-8 and avoid panics
-                    let masked_key = if api_key.chars().count() > 8 {
-                        let chars: Vec<char> = api_key.chars().collect();
-                        let prefix: String = chars.iter().take(4).collect();
-                        let suffix: String = chars.iter().rev().take(4).rev().collect();
-                        format!("{}...{}", prefix, suffix)
-                    } else {
-                        "***".to_string()
-                    };
-                    console().plain(&format!("api_key = \"{}\"", masked_key));
+                console().plain("[agents]");
+                for (agent_name, agent_config) in &config.agents {
+                    console().plain(&format!("{} = {{ file = \"{}\"", agent_name, agent_config.file));
+                    if let Some(ref description) = agent_config.description {
+                        console().plain(&format!("  description = \"{}\"", description));
+                    }
+                    if !agent_config.tags.is_empty() {
+                        console().plain(&format!("  tags = [{}]", agent_config.tags.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(", ")));
+                    }
+                    console().plain("}");
                 }
-                if let Some(ref model) = backend_config.model {
-                    console().plain(&format!("model = \"{}\"", model));
-                }
-                if let Some(ref base_url) = backend_config.base_url {
-                    console().plain(&format!("base_url = \"{}\"", base_url));
-                }
-                if let Some(temperature) = backend_config.temperature {
-                    console().plain(&format!("temperature = {}", temperature));
+            }
+
+            if !config.backends.is_empty() {
+                console().newline();
+                for (backend_name, backend_config) in &config.backends {
+                    console().newline();
+                    console().plain(&format!("[{}]", backend_name));
+                    if let Some(ref api_key) = backend_config.api_key {
+                        // Use char-based slicing to safely handle UTF-8 and avoid panics
+                        let masked_key = if api_key.chars().count() > 8 {
+                            let chars: Vec<char> = api_key.chars().collect();
+                            let prefix: String = chars.iter().take(4).collect();
+                            let suffix: String = chars.iter().rev().take(4).rev().collect();
+                            format!("{}...{}", prefix, suffix)
+                        } else {
+                            "***".to_string()
+                        };
+                        console().plain(&format!("api_key = \"{}\"", masked_key));
+                    }
+                    if let Some(ref model) = backend_config.model {
+                        console().plain(&format!("model = \"{}\"", model));
+                    }
+                    if let Some(ref base_url) = backend_config.base_url {
+                        console().plain(&format!("base_url = \"{}\"", base_url));
+                    }
+                    if let Some(temperature) = backend_config.temperature {
+                        console().plain(&format!("temperature = {}", temperature));
+                    }
                 }
             }
         }

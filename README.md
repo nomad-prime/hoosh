@@ -113,27 +113,6 @@ hoosh config set together_ai_model Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
 hoosh config set ollama_model llama3
 ```
 
-## Project Structure
-
-```
-src/
-├── backends/       # LLM backend implementations
-├── cli/            # Command-line interface handling
-├── config/         # Configuration management
-├── console/        # Console output and logging
-├── conversation/   # Conversation and message handling
-├── parser/         # Message parsing utilities
-├── permissions/    # Permission management system
-├── system_prompts/ # System prompt management
-├── tools/          # Built-in tools and tool registry
-├── tool_executor/  # Tool execution engine
-├── console.rs      # Console utilities
-├── conversation.rs # Conversation handling
-├── lib.rs          # Library exports
-├── main.rs         # Main entry point
-└── tool_executor.rs # Tool execution logic
-```
-
 ## Supported Backends
 
 ### OpenAI

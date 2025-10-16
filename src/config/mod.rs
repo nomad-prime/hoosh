@@ -50,6 +50,14 @@ impl Default for AppConfig {
                 tags: vec![],
             },
         );
+        agents.insert(
+            "hoosh_coder".to_string(),
+            AgentConfig {
+                file: "hoosh_coder.txt".to_string(),
+                description: Some("Specialized coding agent for the hoosh project".to_string()),
+                tags: vec!["coding".to_string(), "development".to_string()],
+            },
+        );
 
         Self {
             default_backend: "mock".to_string(),
