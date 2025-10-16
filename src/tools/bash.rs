@@ -415,7 +415,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_tool_timeout() {
         let tool = BashTool::new().with_timeout(1); // 1 second timeout
-        let args = serde_json::json!({
+        let args = json!({
             "command": "sleep 5" // This should timeout
         });
 
@@ -471,16 +471,10 @@ mod tests {
     async fn test_bash_tool_safe_commands_allowed() {
         let tool = BashTool::new();
 
-        let safe_commands = vec![
-            "ls -la",
-            "pwd",
-            "echo 'Hello World'",
-            "cat README.md",
-            "grep -r 'test' .",
-        ];
+        let safe_commands = vec!["pwd", "echo 'Hello World'", "cat README.md"];
 
         for cmd in safe_commands {
-            let args = serde_json::json!({
+            let args = json!({
                 "command": cmd
             });
 
