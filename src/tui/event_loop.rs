@@ -124,146 +124,147 @@ pub async fn run_event_loop(
                 Event::Key(key) => {
                     // Try permission dialog handler first
                     match handle_permission_keys(
-                    key.code,
-                    key.modifiers,
-                    app,
-                    &context.permission_response_tx,
-                ) {
-                    KeyHandlerResult::Handled => continue,
-                    KeyHandlerResult::NotHandled => {}
-                    KeyHandlerResult::ShouldQuit => {
-                        app.should_quit = true;
-                        // If quitting with an active agent task, abort it immediately
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
+                        key.code,
+                        key.modifiers,
+                        app,
+                        &context.permission_response_tx,
+                    ) {
+                        KeyHandlerResult::Handled => continue,
+                        KeyHandlerResult::NotHandled => {}
+                        KeyHandlerResult::ShouldQuit => {
+                            app.should_quit = true;
+                            // If quitting with an active agent task, abort it immediately
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    KeyHandlerResult::ShouldCancelTask => {
-                        // Cancel the running task but don't quit
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
-                            app.agent_state = super::events::AgentState::Idle;
-                            app.add_message(
-                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                    .to_string(),
-                            );
+                        KeyHandlerResult::ShouldCancelTask => {
+                            // Cancel the running task but don't quit
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                                app.agent_state = super::events::AgentState::Idle;
+                                app.add_message(
+                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                        .to_string(),
+                                );
+                            }
+                            app.should_cancel_task = false;
+                            continue;
                         }
-                        app.should_cancel_task = false;
-                        continue;
+                        _ => {}
                     }
-                    _ => {}
-                }
 
-                // Try approval dialog handler
-                match handle_approval_keys(
-                    key.code,
-                    key.modifiers,
-                    app,
-                    &context.approval_response_tx,
-                ) {
-                    KeyHandlerResult::Handled => continue,
-                    KeyHandlerResult::NotHandled => {}
-                    KeyHandlerResult::ShouldQuit => {
-                        app.should_quit = true;
-                        // If quitting with an active agent task, abort it immediately
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
+                    // Try approval dialog handler
+                    match handle_approval_keys(
+                        key.code,
+                        key.modifiers,
+                        app,
+                        &context.approval_response_tx,
+                    ) {
+                        KeyHandlerResult::Handled => continue,
+                        KeyHandlerResult::NotHandled => {}
+                        KeyHandlerResult::ShouldQuit => {
+                            app.should_quit = true;
+                            // If quitting with an active agent task, abort it immediately
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    KeyHandlerResult::ShouldCancelTask => {
-                        // Cancel the running task but don't quit
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
-                            app.agent_state = super::events::AgentState::Idle;
-                            app.add_message(
-                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                    .to_string(),
-                            );
+                        KeyHandlerResult::ShouldCancelTask => {
+                            // Cancel the running task but don't quit
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                                app.agent_state = super::events::AgentState::Idle;
+                                app.add_message(
+                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                        .to_string(),
+                                );
+                            }
+                            app.should_cancel_task = false;
+                            continue;
                         }
-                        app.should_cancel_task = false;
-                        continue;
+                        _ => {}
                     }
-                    _ => {}
-                }
 
-                // Try completion handler
-                match handle_completion_keys(key.code, app).await {
-                    KeyHandlerResult::Handled => continue,
-                    KeyHandlerResult::NotHandled => {}
-                    KeyHandlerResult::ShouldQuit => {
-                        app.should_quit = true;
-                        // If quitting with an active agent task, abort it immediately
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
+                    // Try completion handler
+                    match handle_completion_keys(key.code, app).await {
+                        KeyHandlerResult::Handled => continue,
+                        KeyHandlerResult::NotHandled => {}
+                        KeyHandlerResult::ShouldQuit => {
+                            app.should_quit = true;
+                            // If quitting with an active agent task, abort it immediately
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    KeyHandlerResult::ShouldCancelTask => {
-                        // Cancel the running task but don't quit
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
-                            app.agent_state = super::events::AgentState::Idle;
-                            app.add_message(
-                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                    .to_string(),
-                            );
+                        KeyHandlerResult::ShouldCancelTask => {
+                            // Cancel the running task but don't quit
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                                app.agent_state = super::events::AgentState::Idle;
+                                app.add_message(
+                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                        .to_string(),
+                                );
+                            }
+                            app.should_cancel_task = false;
+                            continue;
                         }
-                        app.should_cancel_task = false;
-                        continue;
+                        _ => {}
                     }
-                    _ => {}
-                }
 
-                // Normal key handling
-                let agent_task_active = agent_task.is_some();
-                match handle_normal_keys(key.code, key.modifiers, app, agent_task_active).await {
-                    KeyHandlerResult::ShouldQuit => {
-                        app.should_quit = true;
-                        // If quitting with an active agent task, abort it immediately
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
+                    // Normal key handling
+                    let agent_task_active = agent_task.is_some();
+                    match handle_normal_keys(key.code, key.modifiers, app, agent_task_active).await
+                    {
+                        KeyHandlerResult::ShouldQuit => {
+                            app.should_quit = true;
+                            // If quitting with an active agent task, abort it immediately
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    KeyHandlerResult::ShouldCancelTask => {
-                        // Cancel the running task but don't quit
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
-                            app.agent_state = super::events::AgentState::Idle;
-                            app.add_message(
-                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                    .to_string(),
+                        KeyHandlerResult::ShouldCancelTask => {
+                            // Cancel the running task but don't quit
+                            if let Some(task) = agent_task.take() {
+                                task.abort();
+                                app.agent_state = super::events::AgentState::Idle;
+                                app.add_message(
+                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                        .to_string(),
+                                );
+                            }
+                            app.should_cancel_task = false;
+                            continue;
+                        }
+                        KeyHandlerResult::StartCommand(input) => {
+                            execute_command(
+                                input,
+                                Arc::clone(&context.command_registry),
+                                Arc::clone(&context.conversation),
+                                Arc::clone(&context.tool_registry),
+                                Arc::clone(&context.agent_manager),
+                                context.working_dir.clone(),
+                                context.event_tx.clone(),
                             );
                         }
-                        app.should_cancel_task = false;
-                        continue;
+                        KeyHandlerResult::StartConversation(input) => {
+                            agent_task = Some(start_agent_conversation(
+                                input,
+                                Arc::clone(&context.parser),
+                                Arc::clone(&context.conversation),
+                                Arc::clone(&context.backend),
+                                Arc::clone(&context.tool_registry),
+                                Arc::clone(&context.tool_executor),
+                                context.event_tx.clone(),
+                            ));
+                        }
+                        _ => {}
                     }
-                    KeyHandlerResult::StartCommand(input) => {
-                        execute_command(
-                            input,
-                            Arc::clone(&context.command_registry),
-                            Arc::clone(&context.conversation),
-                            Arc::clone(&context.tool_registry),
-                            Arc::clone(&context.agent_manager),
-                            context.working_dir.clone(),
-                            context.event_tx.clone(),
-                        );
-                    }
-                    KeyHandlerResult::StartConversation(input) => {
-                        agent_task = Some(start_agent_conversation(
-                            input,
-                            Arc::clone(&context.parser),
-                            Arc::clone(&context.conversation),
-                            Arc::clone(&context.backend),
-                            Arc::clone(&context.tool_registry),
-                            Arc::clone(&context.tool_executor),
-                            context.event_tx.clone(),
-                        ));
-                    }
-                    _ => {}
-                }
                 }
                 _ => {}
             }

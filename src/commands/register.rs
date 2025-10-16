@@ -1,13 +1,13 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use super::registry::CommandRegistry;
-use super::help_command::HelpCommand;
+use super::agents_command::AgentsCommand;
 use super::clear_command::ClearCommand;
+use super::exit_command::ExitCommand;
+use super::help_command::HelpCommand;
+use super::registry::CommandRegistry;
 use super::status_command::StatusCommand;
 use super::tools_command::ToolsCommand;
-use super::agents_command::AgentsCommand;
-use super::exit_command::ExitCommand;
 
 pub fn register_default_commands(registry: &mut CommandRegistry) -> Result<()> {
     registry.register(Arc::new(HelpCommand))?;
