@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json;
 use tokio::sync::mpsc;
 
@@ -11,6 +11,9 @@ pub struct ToolExecutor {
     tool_registry: ToolRegistry,
     permission_manager: PermissionManager,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
+    autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    approval_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
+    approval_receiver: Option<std::sync::Arc<std::sync::Mutex<mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>>>>,
 }
 
 impl ToolExecutor {
@@ -22,11 +25,28 @@ impl ToolExecutor {
             tool_registry,
             permission_manager,
             event_sender: None,
+            autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            approval_sender: None,
+            approval_receiver: None,
         }
     }
 
     pub fn with_event_sender(mut self, sender: mpsc::UnboundedSender<AgentEvent>) -> Self {
-        self.event_sender = Some(sender);
+        self.event_sender = Some(sender.clone());
+        self.approval_sender = Some(sender);
+        self
+    }
+
+    pub fn with_autopilot_state(mut self, autopilot_state: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.autopilot_enabled = autopilot_state;
+        self
+    }
+
+    pub fn with_approval_receiver(
+        mut self,
+        receiver: mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>,
+    ) -> Self {
+        self.approval_receiver = Some(std::sync::Arc::new(std::sync::Mutex::new(receiver)));
         self
     }
 
@@ -66,11 +86,22 @@ impl ToolExecutor {
 
         // Generate and emit preview if available
         if let Some(preview) = tool.generate_preview(&args).await {
+            // Always show the preview in the message stream first
             if let Some(sender) = &self.event_sender {
                 let _ = sender.send(AgentEvent::ToolPreview {
                     tool_name: tool_name.clone(),
-                    preview,
+                    preview: preview.clone(),
                 });
+            }
+
+            // Check autopilot state atomically
+            let is_autopilot = self.autopilot_enabled.load(std::sync::atomic::Ordering::Relaxed);
+
+            // If not in autopilot mode, request approval before continuing
+            if !is_autopilot {
+                if let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
+                    return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
+                }
             }
         }
 
@@ -96,6 +127,54 @@ impl ToolExecutor {
         }
 
         results
+    }
+
+    /// Request user approval for a tool execution
+    async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> Result<()> {
+        // Send approval request event
+        if let Some(sender) = &self.approval_sender {
+            let event = AgentEvent::ApprovalRequest {
+                tool_call_id: tool_call_id.to_string(),
+                tool_name: tool_name.to_string(),
+            };
+            sender.send(event).context("Failed to send approval request event")?;
+        } else {
+            // No approval system configured, auto-approve
+            return Ok(());
+        }
+
+        // Wait for response
+        if let Some(receiver) = &self.approval_receiver {
+            let receiver_clone = std::sync::Arc::clone(receiver);
+            let response = loop {
+                // Try to receive in a block that drops the lock immediately
+                let maybe_response = {
+                    let mut rx = receiver_clone.lock().unwrap();
+                    rx.try_recv().ok()
+                };
+
+                if let Some(response) = maybe_response {
+                    // Verify tool_call_id matches
+                    if response.tool_call_id == tool_call_id {
+                        break response;
+                    }
+                }
+
+                // Small sleep to avoid busy-waiting
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            };
+
+            if !response.approved {
+                // Send UserRejection event to signal that user rejected the operation
+                if let Some(sender) = &self.event_sender {
+                    let _ = sender.send(AgentEvent::UserRejection);
+                }
+                let reason = response.rejection_reason.unwrap_or_else(|| "User rejected".to_string());
+                anyhow::bail!("Operation rejected: {}", reason);
+            }
+        }
+
+        Ok(())
     }
 
     /// Check if a tool execution is permitted

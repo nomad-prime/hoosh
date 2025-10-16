@@ -1,8 +1,8 @@
+use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
-use rand::Rng;
 
 use super::completion::Completer;
 use super::events::AgentState;
@@ -30,6 +30,22 @@ pub struct PermissionDialogState {
     pub request_id: String,
     pub selected_index: usize,
     pub options: Vec<PermissionOption>,
+}
+
+pub struct ApprovalDialogState {
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub selected_index: usize,
+}
+
+impl ApprovalDialogState {
+    pub fn new(tool_call_id: String, tool_name: String) -> Self {
+        Self {
+            tool_call_id,
+            tool_name,
+            selected_index: 0, // 0 = Approve, 1 = Reject
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -84,6 +100,8 @@ pub struct AppState {
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
     pub permission_dialog_state: Option<PermissionDialogState>,
+    pub approval_dialog_state: Option<ApprovalDialogState>,
+    pub autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub animation_frame: usize,
     pub prompt_history: PromptHistory,
     pub current_thinking_spinner: usize,
@@ -112,6 +130,8 @@ impl AppState {
             completion_state: None,
             completers: Vec::new(),
             permission_dialog_state: None,
+            approval_dialog_state: None,
+            autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)), // Default to review mode (autopilot off)
             animation_frame: 0,
             prompt_history: PromptHistory::new(1000),
             current_thinking_spinner,
@@ -137,6 +157,38 @@ impl AppState {
 
     pub fn is_showing_permission_dialog(&self) -> bool {
         self.permission_dialog_state.is_some()
+    }
+
+    pub fn is_showing_approval_dialog(&self) -> bool {
+        self.approval_dialog_state.is_some()
+    }
+
+    pub fn toggle_autopilot(&mut self) {
+        let current = self
+            .autopilot_enabled
+            .load(std::sync::atomic::Ordering::Relaxed);
+        self.autopilot_enabled
+            .store(!current, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn show_approval_dialog(&mut self, tool_call_id: String, tool_name: String) {
+        self.approval_dialog_state = Some(ApprovalDialogState::new(tool_call_id, tool_name));
+    }
+
+    pub fn hide_approval_dialog(&mut self) {
+        self.approval_dialog_state = None;
+    }
+
+    pub fn select_next_approval_option(&mut self) {
+        if let Some(dialog) = &mut self.approval_dialog_state {
+            dialog.selected_index = (dialog.selected_index + 1) % 2; // 0 = Approve, 1 = Reject
+        }
+    }
+
+    pub fn select_prev_approval_option(&mut self) {
+        if let Some(dialog) = &mut self.approval_dialog_state {
+            dialog.selected_index = (dialog.selected_index + 1) % 2; // Same as next for 2 options
+        }
     }
 
     pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
@@ -282,7 +334,10 @@ impl AppState {
                     self.add_message(format!("● {}", display_name));
                 }
             }
-            AgentEvent::ToolPreview { tool_name: _, preview } => {
+            AgentEvent::ToolPreview {
+                tool_name: _,
+                preview,
+            } => {
                 // Display the diff preview with syntax highlighting
                 self.add_message(format!("\n{}\n", preview));
             }
@@ -317,6 +372,14 @@ impl AppState {
                 // Permission requests are handled separately in the TUI event loop
                 // This variant should not reach here, but we include it for exhaustiveness
             }
+            AgentEvent::ApprovalRequest { .. } => {
+                // Approval requests are handled separately in the TUI event loop
+                // This variant should not reach here, but we include it for exhaustiveness
+            }
+            AgentEvent::UserRejection => {
+                // User rejected operation, agent will stop and wait for user input
+                self.agent_state = AgentState::Idle;
+            }
             AgentEvent::Exit => {
                 // Exit is handled in the event loop
                 // This variant should not reach here, but we include it for exhaustiveness
@@ -334,7 +397,8 @@ impl AppState {
 
     pub fn clear_input(&mut self) {
         self.input = TextArea::default();
-        self.input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        self.input
+            .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         // Remove the underline from the cursor line
         self.input.set_cursor_line_style(Style::default());
     }

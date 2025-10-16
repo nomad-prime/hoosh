@@ -30,6 +30,11 @@ pub enum AgentEvent {
         operation: OperationType,
         request_id: String,
     },
+    ApprovalRequest {
+        tool_call_id: String,
+        tool_name: String,
+    },
+    UserRejection,
     Exit,
     ClearConversation,
 }
@@ -39,6 +44,13 @@ pub struct PermissionResponse {
     pub request_id: String,
     pub allowed: bool,
     pub scope: Option<PermissionScope>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApprovalResponse {
+    pub tool_call_id: String,
+    pub approved: bool,
+    pub rejection_reason: Option<String>,
 }
 
 pub struct ConversationHandler {
@@ -155,18 +167,43 @@ impl ConversationHandler {
 
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
+        // Check if any tool result contains a rejection error
+        let has_rejection = tool_results.iter().any(|result| {
+            if let Err(e) = &result.result {
+                e.to_string().contains("Operation rejected:")
+            } else {
+                false
+            }
+        });
+
         for tool_result in &tool_results {
             // Get the tool to access its result_summary method
             let summary = if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
                 match &tool_result.result {
                     Ok(output) => tool.result_summary(output),
-                    Err(e) => format!("Error: {}", e),
+                    Err(e) => {
+                        // Check if this is a user rejection
+                        let err_str = e.to_string();
+                        if err_str.contains("Operation rejected:") {
+                            "Rejected by user".to_string()
+                        } else {
+                            format!("Error: {}", e)
+                        }
+                    }
                 }
             } else {
                 // Fallback if tool not found
                 match &tool_result.result {
                     Ok(_) => "Completed".to_string(),
-                    Err(e) => format!("Error: {}", e),
+                    Err(e) => {
+                        // Check if this is a user rejection
+                        let err_str = e.to_string();
+                        if err_str.contains("Operation rejected:") {
+                            "Rejected by user".to_string()
+                        } else {
+                            format!("Error: {}", e)
+                        }
+                    }
                 }
             };
 
@@ -181,6 +218,11 @@ impl ConversationHandler {
         }
 
         self.send_event(AgentEvent::ToolExecutionComplete);
+
+        // If user rejected an operation, stop the conversation loop
+        if has_rejection {
+            return Ok(TurnStatus::Complete);
+        }
 
         Ok(TurnStatus::Continue)
     }

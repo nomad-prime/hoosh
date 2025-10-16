@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 
-use crate::conversations::PermissionResponse;
+use crate::conversations::{ApprovalResponse, PermissionResponse};
 use crate::permissions::PermissionScope;
 
 use super::app::AppState;
@@ -92,6 +92,68 @@ pub fn handle_permission_keys(
             };
             let _ = permission_response_tx.send(perm_response);
             app.hide_permission_dialog();
+        }
+    }
+
+    KeyHandlerResult::Handled
+}
+
+pub fn handle_approval_keys(
+    key: KeyCode,
+    modifiers: KeyModifiers,
+    app: &mut AppState,
+    approval_response_tx: &mpsc::UnboundedSender<ApprovalResponse>,
+) -> KeyHandlerResult {
+    if !app.is_showing_approval_dialog() {
+        return KeyHandlerResult::NotHandled;
+    }
+
+    if let Some(dialog_state) = &app.approval_dialog_state {
+        let tool_call_id = dialog_state.tool_call_id.clone();
+        let selected_index = dialog_state.selected_index;
+
+        // Handle Ctrl+C separately - it should cancel the entire task
+        if let KeyCode::Char('c') = key {
+            if modifiers.contains(KeyModifiers::CONTROL) {
+                app.hide_approval_dialog();
+                app.should_cancel_task = true;
+                return KeyHandlerResult::ShouldCancelTask;
+            }
+        }
+
+        let response = match key {
+            KeyCode::Up | KeyCode::Down => {
+                if key == KeyCode::Up {
+                    app.select_prev_approval_option();
+                } else {
+                    app.select_next_approval_option();
+                }
+                None
+            }
+            KeyCode::Enter => {
+                // 0 = Approve, 1 = Reject
+                Some((selected_index == 0, None))
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Char('a') | KeyCode::Char('A') => {
+                Some((true, None))
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                Some((false, Some("User rejected".to_string())))
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                Some((false, Some("User requested different approach".to_string())))
+            }
+            _ => None,
+        };
+
+        if let Some((approved, rejection_reason)) = response {
+            let approval_response = ApprovalResponse {
+                tool_call_id,
+                approved,
+                rejection_reason,
+            };
+            let _ = approval_response_tx.send(approval_response);
+            app.hide_approval_dialog();
         }
     }
 
@@ -210,6 +272,11 @@ pub async fn handle_normal_keys(
     agent_task_active: bool,
 ) -> KeyHandlerResult {
     match key {
+        KeyCode::BackTab => {
+            // Shift+Tab toggles autopilot mode
+            app.toggle_autopilot();
+            KeyHandlerResult::Handled
+        }
         KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
             if agent_task_active {
                 // First Ctrl+C: Cancel the running task
