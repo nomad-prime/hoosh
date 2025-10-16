@@ -18,8 +18,8 @@ use crate::tools::ToolRegistry;
 use super::actions::{execute_command, start_agent_conversation};
 use super::app::{AppState, MessageLine};
 use super::input_handlers::{
-    handle_approval_keys, handle_completion_keys, handle_normal_keys, handle_permission_keys,
-    KeyHandlerResult,
+    handle_approval_keys, handle_completion_keys, handle_normal_keys, handle_paste,
+    handle_permission_keys, KeyHandlerResult,
 };
 use super::terminal::Tui;
 use super::ui;
@@ -117,9 +117,13 @@ pub async fn run_event_loop(
 
         // Poll for keyboard and mouse events
         if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                // Try permission dialog handler first
-                match handle_permission_keys(
+            match event::read()? {
+                Event::Paste(text) => {
+                    handle_paste(text, app);
+                }
+                Event::Key(key) => {
+                    // Try permission dialog handler first
+                    match handle_permission_keys(
                     key.code,
                     key.modifiers,
                     app,
@@ -260,6 +264,8 @@ pub async fn run_event_loop(
                     }
                     _ => {}
                 }
+                }
+                _ => {}
             }
         }
 

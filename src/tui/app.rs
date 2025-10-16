@@ -4,6 +4,7 @@ use ratatui::text::Line;
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
+use super::clipboard::ClipboardManager;
 use super::completion::Completer;
 use super::events::AgentState;
 use super::history::PromptHistory;
@@ -91,8 +92,8 @@ impl CompletionState {
 
 pub struct AppState {
     pub input: TextArea<'static>,
-    pub messages: VecDeque<MessageLine>, // Keep for reference, but won't render
-    pub pending_messages: VecDeque<MessageLine>, // Messages to insert with insert_before
+    pub messages: VecDeque<MessageLine>,
+    pub pending_messages: VecDeque<MessageLine>,
     pub agent_state: AgentState,
     pub should_quit: bool,
     pub should_cancel_task: bool,
@@ -106,6 +107,7 @@ pub struct AppState {
     pub prompt_history: PromptHistory,
     pub current_thinking_spinner: usize,
     pub current_executing_spinner: usize,
+    pub clipboard: ClipboardManager,
 }
 
 impl AppState {
@@ -131,11 +133,12 @@ impl AppState {
             completers: Vec::new(),
             permission_dialog_state: None,
             approval_dialog_state: None,
-            autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)), // Default to review mode (autopilot off)
+            autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             animation_frame: 0,
             prompt_history: PromptHistory::new(1000),
             current_thinking_spinner,
             current_executing_spinner,
+            clipboard: ClipboardManager::new(),
         }
     }
 
