@@ -94,7 +94,7 @@ impl Default for AppConfig {
 impl AppConfig {
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
-        let config = if config_path.exists() {
+        let mut config = if config_path.exists() {
             let content = fs::read_to_string(&config_path).context("Failed to read config file")?;
             toml::from_str(&content).context("Failed to parse config file")?
         } else {
@@ -103,7 +103,68 @@ impl AppConfig {
             config
         };
 
+        // Ensure default agents are always available
+        config.ensure_default_agents()?;
+
+        config.validate()?;
+
         Ok(config)
+    }
+
+    fn validate(&self) -> Result<()> {
+        if let Some(default_agent) = &self.default_agent {
+            if !self.agents.contains_key(default_agent) {
+                eprintln!(
+                    "Warning: Configured default agent '{}' not found in agents configuration",
+                    default_agent
+                );
+                if !self.agents.is_empty() {
+                    let available_agents: Vec<&str> =
+                        self.agents.keys().map(|s| s.as_str()).collect();
+                    eprintln!("Available agents: {}", available_agents.join(", "));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Ensure default agents from prompts directory are available in config
+    fn ensure_default_agents(&mut self) -> Result<()> {
+        // Get the path to the prompts directory in the source code
+        let prompts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("prompts");
+
+        // Read all files from the prompts directory
+        if let Ok(prompt_files) = std::fs::read_dir(&prompts_dir) {
+            for entry in prompt_files.filter_map(|e| e.ok()) {
+                let file_path = entry.path();
+
+                // Skip directories and non-file entries
+                if !file_path.is_file() {
+                    continue;
+                }
+
+                // Get the file name without extension for the agent name
+                if let Some(file_name) = file_path.file_name().and_then(|f| f.to_str()) {
+                    // Remove .txt extension for the agent name
+                    let agent_name = if let Some(stripped) = file_name.strip_suffix(".txt") {
+                        stripped.to_string()
+                    } else {
+                        file_name.to_string()
+                    };
+
+                    // Add the agent to the config if it doesn't exist
+                    self.agents.entry(agent_name).or_insert(AgentConfig {
+                        file: file_name.to_string(),
+                        description: None,
+                        tags: vec![],
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn save(&self) -> Result<()> {

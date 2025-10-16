@@ -1,4 +1,5 @@
 use crate::config::{AgentConfig, AppConfig};
+use crate::console;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -55,33 +56,35 @@ impl AgentManager {
 
     fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
         // Get the path to the prompts directory in the source code
-        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src").join("prompts");
-        
+        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("prompts");
+
         // Read all files from the prompts directory
-        let prompt_files = fs::read_dir(&prompts_dir)
-            .context("Failed to read prompts directory")?;
-        
+        let prompt_files =
+            fs::read_dir(&prompts_dir).context("Failed to read prompts directory")?;
+
         // Process each prompt file
         for entry in prompt_files {
             let entry = entry.context("Failed to read directory entry")?;
             let file_path = entry.path();
-            
+
             // Skip directories and non-file entries
             if !file_path.is_file() {
                 continue;
             }
-            
+
             // Get the file name
             let file_name = file_path
                 .file_name()
                 .context("Failed to get file name")?
                 .to_str()
                 .context("Failed to convert file name to string")?;
-            
+
             // Read the prompt content
             let prompt_content = fs::read_to_string(&file_path)
                 .with_context(|| format!("Failed to read prompt file: {}", file_name))?;
-            
+
             // Write the prompt content to the agent file
             let agent_path = agents_dir.join(file_name);
             fs::write(&agent_path, prompt_content)
@@ -90,6 +93,8 @@ impl AgentManager {
 
         Ok(())
     }
+
+    
 
     fn load_agent_content(&self, agent_config: &AgentConfig) -> Result<String> {
         let agents_dir = Self::agents_dir()?;
@@ -107,10 +112,22 @@ impl AgentManager {
     }
 
     pub fn get_default_agent(&self) -> Option<Agent> {
-        self.config
-            .default_agent
-            .as_ref()
-            .and_then(|name| self.get_agent(name))
+        if let Some(name) = &self.config.default_agent {
+            if let Some(agent) = self.get_agent(name) {
+                return Some(agent);
+            } else {
+                let available_agents: Vec<&str> =
+                    self.config.agents.keys().map(|s| s.as_str()).collect();
+                console::console().warning(&format!(
+                        "Configured default agent '{}' not found. Available agents: {}. Falling back to first available agent.",
+                        name,
+                        available_agents.join(", ")
+                    ));
+            }
+        }
+
+        // Fallback to the first available agent
+        self.list_agents().into_iter().next()
     }
 
     pub fn list_agents(&self) -> Vec<Agent> {
