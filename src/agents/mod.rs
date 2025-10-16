@@ -94,8 +94,6 @@ impl AgentManager {
         Ok(())
     }
 
-    
-
     fn load_agent_content(&self, agent_config: &AgentConfig) -> Result<String> {
         let agents_dir = Self::agents_dir()?;
         let agent_path = agents_dir.join(&agent_config.file);

@@ -46,7 +46,6 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
 fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
     use super::events::AgentState;
 
-    // 7 different braille spinner sequences for Thinking state
     let thinking_spinners = [
         &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"][..], // Classic rotation
         &["⠐", "⠒", "⠓", "⠋", "⠙", "⠹", "⠸", "⠼"][..], // Wave pattern
@@ -57,7 +56,6 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
         &["⢹", "⢺", "⢼", "⣸", "⣇", "⡧", "⡏", "⡃"][..], // Rotation pattern
     ];
 
-    // 7 different braille spinner sequences for ExecutingTools state
     let executing_spinners = [
         &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠤", "⠐"][..], // Zigzag pattern
         &["⠁", "⠉", "⠋", "⠛", "⠟", "⠿", "⠿", "⠟"][..], // Growing/shrinking
@@ -68,28 +66,45 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
         &["⣀", "⣄", "⣤", "⣦", "⣶", "⣾", "⣽", "⣻"][..], // Circle fill
     ];
 
-    let status_text = match app.agent_state {
-        AgentState::Idle => String::new(),
-        AgentState::Thinking => {
-            // Use the fixed spinner sequence for this thinking session
-            let spinner = thinking_spinners[app.current_thinking_spinner]
-                [app.animation_frame % thinking_spinners[app.current_thinking_spinner].len()];
-            format!(" {} Processing", spinner)
-        }
-        AgentState::ExecutingTools => {
-            // Use the fixed spinner sequence for this execution session
-            let spinner = executing_spinners[app.current_executing_spinner]
-                [app.animation_frame % executing_spinners[app.current_executing_spinner].len()];
-            format!(" {} Executing tools", spinner)
+    let waiting_spinners = ["⠄", "⠂", "⠁", "⠂"];
+
+    // Check if we're showing dialogs (permission or approval) and show "waiting for your input" instead
+    let (status_text, status_color) = if app.is_showing_permission_dialog()
+        || app.is_showing_approval_dialog()
+    {
+        // Show waiting for input when dialogs are displayed
+        let waiting_spinner = waiting_spinners[app.animation_frame % waiting_spinners.len()];
+        (
+            format!(" {} Waiting for your input", waiting_spinner),
+            Color::Yellow,
+        )
+    } else {
+        match app.agent_state {
+            AgentState::Idle => (String::new(), Color::Rgb(142, 240, 204)),
+            AgentState::Thinking => {
+                // Use the fixed spinner sequence for this thinking session
+                let spinner = thinking_spinners[app.current_thinking_spinner]
+                    [app.animation_frame % thinking_spinners[app.current_thinking_spinner].len()];
+                (
+                    format!(" {} Processing", spinner),
+                    Color::Rgb(142, 240, 204),
+                )
+            }
+            AgentState::ExecutingTools => {
+                // Use the fixed spinner sequence for this execution session
+                let spinner = executing_spinners[app.current_executing_spinner]
+                    [app.animation_frame % executing_spinners[app.current_executing_spinner].len()];
+                (
+                    format!(" {} Executing tools", spinner),
+                    Color::Rgb(142, 240, 204),
+                )
+            }
         }
     };
 
     // Build status line (agent status only, no mode indicator)
     if !status_text.is_empty() {
-        let status_line = Line::from(Span::styled(
-            status_text,
-            Style::default().fg(Color::Rgb(142, 240, 204)),
-        ));
+        let status_line = Line::from(Span::styled(status_text, Style::default().fg(status_color)));
         let paragraph = Paragraph::new(status_line);
         frame.render_widget(paragraph, area);
     }
