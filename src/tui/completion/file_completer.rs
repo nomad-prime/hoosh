@@ -20,8 +20,7 @@ impl FileCompleter {
 
     async fn scan_directory(&self, dir: &Path, max_depth: usize) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
-        Self::scan_directory_recursive(dir, dir, max_depth, 0, &mut files)
-            .await?;
+        Self::scan_directory_recursive(dir, dir, max_depth, 0, &mut files).await?;
         Ok(files)
     }
 
