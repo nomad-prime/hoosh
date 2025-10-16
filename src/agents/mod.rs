@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use crate::config::{AgentConfig, AppConfig};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -79,8 +79,7 @@ impl AgentManager {
             .join("hoosh")
             .join("agents");
 
-        fs::create_dir_all(&agents_dir)
-            .context("Failed to create agents directory")?;
+        fs::create_dir_all(&agents_dir).context("Failed to create agents directory")?;
 
         Ok(agents_dir)
     }
@@ -104,23 +103,27 @@ impl AgentManager {
 
     pub fn get_agent(&self, name: &str) -> Option<Agent> {
         self.config.agents.get(name).and_then(|agent_config| {
-            self.load_agent_content(agent_config).ok().map(|content| {
-                Agent::from_config(name.to_string(), agent_config.clone(), content)
-            })
+            self.load_agent_content(agent_config)
+                .ok()
+                .map(|content| Agent::from_config(name.to_string(), agent_config.clone(), content))
         })
     }
 
     pub fn get_default_agent(&self) -> Option<Agent> {
-        self.config.default_agent.as_ref()
+        self.config
+            .default_agent
+            .as_ref()
             .and_then(|name| self.get_agent(name))
     }
 
     pub fn list_agents(&self) -> Vec<Agent> {
-        self.config.agents.iter()
+        self.config
+            .agents
+            .iter()
             .filter_map(|(name, agent_config)| {
-                self.load_agent_content(agent_config).ok().map(|content| {
-                    Agent::from_config(name.clone(), agent_config.clone(), content)
-                })
+                self.load_agent_content(agent_config)
+                    .ok()
+                    .map(|content| Agent::from_config(name.clone(), agent_config.clone(), content))
             })
             .collect()
     }

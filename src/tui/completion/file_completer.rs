@@ -34,35 +34,44 @@ impl FileCompleter {
         files: &'a mut Vec<PathBuf>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
-        if current_depth > max_depth {
-            return Ok(());
-        }
-
-        let mut entries = fs::read_dir(current_dir).await?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            // Skip hidden files and common ignore patterns
-            if file_name.starts_with('.') || file_name == "target" || file_name == "node_modules" {
-                continue;
+            if current_depth > max_depth {
+                return Ok(());
             }
 
-            let metadata = entry.metadata().await?;
+            let mut entries = fs::read_dir(current_dir).await?;
 
-            if metadata.is_file() {
-                // Store relative path from working directory
-                if let Ok(relative) = path.strip_prefix(base_dir) {
-                    files.push(relative.to_path_buf());
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+                // Skip hidden files and common ignore patterns
+                if file_name.starts_with('.')
+                    || file_name == "target"
+                    || file_name == "node_modules"
+                {
+                    continue;
                 }
-            } else if metadata.is_dir() {
-                self.scan_directory_recursive(base_dir, &path, max_depth, current_depth + 1, files)
-                    .await?;
-            }
-        }
 
-        Ok(())
+                let metadata = entry.metadata().await?;
+
+                if metadata.is_file() {
+                    // Store relative path from working directory
+                    if let Ok(relative) = path.strip_prefix(base_dir) {
+                        files.push(relative.to_path_buf());
+                    }
+                } else if metadata.is_dir() {
+                    self.scan_directory_recursive(
+                        base_dir,
+                        &path,
+                        max_depth,
+                        current_depth + 1,
+                        files,
+                    )
+                    .await?;
+                }
+            }
+
+            Ok(())
         })
     }
 
@@ -164,11 +173,7 @@ impl Completer for FileCompleter {
         matches.sort_by(|a, b| b.1.cmp(&a.1));
 
         // Return top 50 matches
-        Ok(matches
-            .into_iter()
-            .take(50)
-            .map(|(path, _)| path)
-            .collect())
+        Ok(matches.into_iter().take(50).map(|(path, _)| path).collect())
     }
 
     fn format_completion(&self, item: &str) -> String {
@@ -191,12 +196,21 @@ mod tests {
     #[test]
     fn test_score_match() {
         // Exact match should score highest
-        assert!(FileCompleter::score_match("test", "test") > FileCompleter::score_match("test", "test.rs"));
+        assert!(
+            FileCompleter::score_match("test", "test")
+                > FileCompleter::score_match("test", "test.rs")
+        );
 
         // Prefix match should score higher than fuzzy
-        assert!(FileCompleter::score_match("src", "src/main.rs") > FileCompleter::score_match("src", "source/main.rs"));
+        assert!(
+            FileCompleter::score_match("src", "src/main.rs")
+                > FileCompleter::score_match("src", "source/main.rs")
+        );
 
         // Shorter paths should score higher
-        assert!(FileCompleter::score_match("test", "test.rs") > FileCompleter::score_match("test", "long/path/to/test.rs"));
+        assert!(
+            FileCompleter::score_match("test", "test.rs")
+                > FileCompleter::score_match("test", "long/path/to/test.rs")
+        );
     }
 }

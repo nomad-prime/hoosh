@@ -1,11 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
+#[cfg(feature = "anthropic")]
+use hoosh::backends::{AnthropicBackend, AnthropicConfig};
 #[cfg(feature = "openai-compatible")]
 use hoosh::backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
-#[cfg(feature = "anthropic")]
-use hoosh::backends::{AnthropicBackend, AnthropicConfig};
 use hoosh::{
     backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
@@ -129,15 +129,20 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
 
             let api_key = backend_config
                 .and_then(|c| c.api_key.clone())
-                .unwrap_or_else(|| if name == "ollama" { "ollama".to_string() } else { String::new() });
+                .unwrap_or_else(|| {
+                    if name == "ollama" {
+                        "ollama".to_string()
+                    } else {
+                        String::new()
+                    }
+                });
             let model = backend_config
                 .and_then(|c| c.model.clone())
                 .unwrap_or_else(|| default_model.to_string());
             let base_url = backend_config
                 .and_then(|c| c.base_url.clone())
                 .unwrap_or_else(|| default_base_url.to_string());
-            let temperature = backend_config
-                .and_then(|c| c.temperature);
+            let temperature = backend_config.and_then(|c| c.temperature);
 
             let openai_config = OpenAICompatibleConfig {
                 name: name.to_string(),
@@ -217,7 +222,9 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                         console().success("Verbosity configuration updated successfully");
                     }
                     _ => {
-                        console().error("Invalid verbosity level. Valid options: quiet, normal, verbose, debug");
+                        console().error(
+                            "Invalid verbosity level. Valid options: quiet, normal, verbose, debug",
+                        );
                         return Ok(());
                     }
                 }
@@ -251,4 +258,3 @@ fn handle_config(action: ConfigAction) -> Result<()> {
     }
     Ok(())
 }
-

@@ -52,20 +52,18 @@ pub fn handle_permission_keys(
                 app.select_next_permission_option();
                 None
             }
-            KeyCode::Enter => {
-                selected_option.as_ref().and_then(|opt| match opt {
-                    PermissionOption::YesOnce => Some((true, None)),
-                    PermissionOption::No => Some((false, None)),
-                    PermissionOption::AlwaysForFile => {
-                        let target = operation.target().to_string();
-                        Some((true, Some(PermissionScope::Specific(target))))
-                    }
-                    PermissionOption::AlwaysForDirectory(dir) => {
-                        Some((true, Some(PermissionScope::Directory(dir.clone()))))
-                    }
-                    PermissionOption::AlwaysForType => Some((true, Some(PermissionScope::Global))),
-                })
-            }
+            KeyCode::Enter => selected_option.as_ref().and_then(|opt| match opt {
+                PermissionOption::YesOnce => Some((true, None)),
+                PermissionOption::No => Some((false, None)),
+                PermissionOption::AlwaysForFile => {
+                    let target = operation.target().to_string();
+                    Some((true, Some(PermissionScope::Specific(target))))
+                }
+                PermissionOption::AlwaysForDirectory(dir) => {
+                    Some((true, Some(PermissionScope::Directory(dir.clone()))))
+                }
+                PermissionOption::AlwaysForType => Some((true, Some(PermissionScope::Global))),
+            }),
             KeyCode::Char('y') | KeyCode::Char('Y') => Some((true, None)),
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some((false, None)),
             KeyCode::Char('a') => {
@@ -209,7 +207,8 @@ pub async fn handle_completion_keys(key: KeyCode, app: &mut AppState) -> KeyHand
             KeyHandlerResult::Handled
         }
         KeyCode::Backspace => {
-            app.input.input(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+            app.input
+                .input(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
             let input_text = app.get_input_text();
             let completer_idx = app.completion_state.as_ref().map(|s| s.completer_index);
 
@@ -236,7 +235,8 @@ pub async fn handle_completion_keys(key: KeyCode, app: &mut AppState) -> KeyHand
             KeyHandlerResult::Handled
         }
         KeyCode::Char(c) => {
-            app.input.input(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+            app.input
+                .input(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             let input_text = app.get_input_text();
             let completer_idx = app.completion_state.as_ref().map(|s| s.completer_index);
 

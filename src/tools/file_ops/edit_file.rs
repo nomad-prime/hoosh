@@ -41,8 +41,8 @@ struct EditFileArgs {
 #[async_trait]
 impl Tool for EditFileTool {
     async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        let args: EditFileArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for edit_file tool")?;
+        let args: EditFileArgs =
+            serde_json::from_value(args.clone()).context("Invalid arguments for edit_file tool")?;
 
         // Validate that old_string and new_string are different
         if args.old_string == args.new_string {
@@ -55,9 +55,12 @@ impl Tool for EditFileTool {
         let canonical_file = file_path
             .canonicalize()
             .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?;
-        let canonical_working = self.working_directory
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+        let canonical_working = self.working_directory.canonicalize().with_context(|| {
+            format!(
+                "Failed to resolve working directory: {}",
+                self.working_directory.display()
+            )
+        })?;
 
         if !canonical_file.starts_with(&canonical_working) {
             anyhow::bail!("Access denied: cannot edit files outside working directory");
@@ -166,8 +169,11 @@ impl Tool for EditFileTool {
         // Extract occurrence count from result like "Successfully edited ... (replaced N occurrence(s))"
         if let Some(replaced_part) = result.split("replaced ").nth(1) {
             if let Some(count_str) = replaced_part.split(" occurrence").next() {
-                return format!("Replaced {} occurrence{}", count_str,
-                    if count_str == "1" { "" } else { "s" });
+                return format!(
+                    "Replaced {} occurrence{}",
+                    count_str,
+                    if count_str == "1" { "" } else { "s" }
+                );
             }
         }
         "File edited successfully".to_string()
@@ -178,8 +184,8 @@ impl Tool for EditFileTool {
         args: &serde_json::Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: EditFileArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for edit_file tool")?;
+        let args: EditFileArgs =
+            serde_json::from_value(args.clone()).context("Invalid arguments for edit_file tool")?;
 
         // Normalize the path for consistent caching
         let file_path = resolve_path(&args.path, &self.working_directory);
@@ -200,14 +206,25 @@ impl Tool for EditFileTool {
         let content = fs::read_to_string(&file_path).await.ok()?;
 
         // Generate unified diff
-        let preview = self.generate_diff(&content, &args.old_string, &args.new_string, args.replace_all);
+        let preview = self.generate_diff(
+            &content,
+            &args.old_string,
+            &args.new_string,
+            args.replace_all,
+        );
         Some(preview)
     }
 }
 
 impl EditFileTool {
     /// Generate a unified diff showing what will change using the similar crate
-    fn generate_diff(&self, content: &str, old_string: &str, new_string: &str, replace_all: bool) -> String {
+    fn generate_diff(
+        &self,
+        content: &str,
+        old_string: &str,
+        new_string: &str,
+        replace_all: bool,
+    ) -> String {
         // Find all matches
         let matches: Vec<_> = content.match_indices(old_string).collect();
 
@@ -220,7 +237,10 @@ impl EditFileTool {
             matches.len()
         } else {
             if matches.len() > 1 {
-                return format!("Found {} matches (use replace_all=true to replace all)", matches.len());
+                return format!(
+                    "Found {} matches (use replace_all=true to replace all)",
+                    matches.len()
+                );
             }
             1
         };
@@ -236,11 +256,16 @@ impl EditFileTool {
         let diff = TextDiff::from_lines(content, &new_content);
 
         let mut output = String::new();
-        output.push_str(&format!("{}\n\n",
-            format!("Will replace {} occurrence{}:",
+        output.push_str(&format!(
+            "{}\n\n",
+            format!(
+                "Will replace {} occurrence{}:",
                 replacements,
                 if replacements == 1 { "" } else { "s" }
-            ).bold().cyan()));
+            )
+            .bold()
+            .cyan()
+        ));
 
         // Track line numbers for old and new files
         let mut old_line = 1;
@@ -412,6 +437,9 @@ mod tests {
         assert!(result.contains("Successfully edited"));
 
         let modified_content = fs::read_to_string(&test_file).await.unwrap();
-        assert_eq!(modified_content, "fn main() {\n    println!(\"Goodbye\");\n}");
+        assert_eq!(
+            modified_content,
+            "fn main() {\n    println!(\"Goodbye\");\n}"
+        );
     }
 }

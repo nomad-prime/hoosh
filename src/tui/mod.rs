@@ -17,8 +17,8 @@ use crate::backends::LlmBackend;
 use crate::commands::{register_default_commands, CommandRegistry};
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
-use crate::tools::ToolRegistry;
 use crate::tool_executor::ToolExecutor;
+use crate::tools::ToolRegistry;
 
 use app::AppState;
 use completion::{CommandCompleter, FileCompleter};

@@ -118,10 +118,7 @@ impl ToolRegistry {
     }
 
     pub fn get_tool_schemas(&self) -> Vec<Value> {
-        self.tools
-            .values()
-            .map(|tool| tool.tool_schema())
-            .collect()
+        self.tools.values().map(|tool| tool.tool_schema()).collect()
     }
 }
 

@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
 use crate::console::VerbosityLevel;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(author, version, about)]

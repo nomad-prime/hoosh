@@ -292,7 +292,10 @@ mod tests {
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
-        let tool_executor = Arc::new(ToolExecutor::new((*tool_registry).clone(), permission_manager));
+        let tool_executor = Arc::new(ToolExecutor::new(
+            (*tool_registry).clone(),
+            permission_manager,
+        ));
 
         let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
 
@@ -326,10 +329,14 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         std::fs::write(&test_file, "test content").unwrap();
 
-        let tool_registry =
-            Arc::new(ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf()));
+        let tool_registry = Arc::new(ToolExecutor::create_tool_registry_with_working_dir(
+            temp_dir.path().to_path_buf(),
+        ));
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
-        let tool_executor = Arc::new(ToolExecutor::new((*tool_registry).clone(), permission_manager));
+        let tool_executor = Arc::new(ToolExecutor::new(
+            (*tool_registry).clone(),
+            permission_manager,
+        ));
 
         let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
 

@@ -46,9 +46,12 @@ impl Tool for WriteFileTool {
 
         // Security check: ensure we're not writing outside the working directory
         // For write operations, we need to check the parent directory since the file might not exist yet
-        let canonical_working = self.working_directory
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+        let canonical_working = self.working_directory.canonicalize().with_context(|| {
+            format!(
+                "Failed to resolve working directory: {}",
+                self.working_directory.display()
+            )
+        })?;
 
         // Create parent directories if requested
         if args.create_dirs {
@@ -61,13 +64,14 @@ impl Tool for WriteFileTool {
 
         // Check if file exists to determine which path to canonicalize
         let path_to_check = if file_path.exists() {
-            file_path.canonicalize()
+            file_path
+                .canonicalize()
                 .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?
         } else if let Some(parent) = file_path.parent() {
             // Check parent directory if file doesn't exist
-            let canonical_parent = parent
-                .canonicalize()
-                .with_context(|| format!("Failed to resolve parent directory: {}", parent.display()))?;
+            let canonical_parent = parent.canonicalize().with_context(|| {
+                format!("Failed to resolve parent directory: {}", parent.display())
+            })?;
             canonical_parent.join(file_path.file_name().unwrap())
         } else {
             anyhow::bail!("Invalid file path: {}", file_path.display());
@@ -179,7 +183,10 @@ impl WriteFileTool {
     fn generate_diff(&self, old_content: &str, new_content: &str, path: &str) -> String {
         let mut output = String::new();
 
-        output.push_str(&format!("{}\n\n", format!("Overwriting file: {}", path).bold().cyan()));
+        output.push_str(&format!(
+            "{}\n\n",
+            format!("Overwriting file: {}", path).bold().cyan()
+        ));
 
         let old_lines: Vec<&str> = old_content.lines().collect();
         let new_lines: Vec<&str> = new_content.lines().collect();
@@ -188,8 +195,14 @@ impl WriteFileTool {
         let total_new = new_lines.len();
 
         // Show size comparison
-        output.push_str(&format!("{}\n", format!("Old: {} lines, {} bytes", total_old, old_content.len()).yellow()));
-        output.push_str(&format!("{}\n\n", format!("New: {} lines, {} bytes", total_new, new_content.len()).yellow()));
+        output.push_str(&format!(
+            "{}\n",
+            format!("Old: {} lines, {} bytes", total_old, old_content.len()).yellow()
+        ));
+        output.push_str(&format!(
+            "{}\n\n",
+            format!("New: {} lines, {} bytes", total_new, new_content.len()).yellow()
+        ));
 
         let max_preview_lines = 20;
 
@@ -197,9 +210,16 @@ impl WriteFileTool {
         if total_old > 0 {
             output.push_str(&format!("{}:\n", "Old content (first lines)".bold()));
             for (i, line) in old_lines.iter().take(max_preview_lines).enumerate() {
-                output.push_str(&format!("{}\n", format!("  {:4} - {}", i + 1, line).bright_red()));
+                output.push_str(&format!(
+                    "{}\n",
+                    format!("  {:4} - {}", i + 1, line).bright_red()
+                ));
                 if i == max_preview_lines - 1 && total_old > max_preview_lines {
-                    output.push_str(&format!("{}\n", format!("       ... ({} more lines)", total_old - max_preview_lines).dimmed()));
+                    output.push_str(&format!(
+                        "{}\n",
+                        format!("       ... ({} more lines)", total_old - max_preview_lines)
+                            .dimmed()
+                    ));
                 }
             }
             output.push('\n');
@@ -208,9 +228,15 @@ impl WriteFileTool {
         // Show first few lines of new content
         output.push_str(&format!("{}:\n", "New content (first lines)".bold()));
         for (i, line) in new_lines.iter().take(max_preview_lines).enumerate() {
-            output.push_str(&format!("{}\n", format!("  {:4} + {}", i + 1, line).green()));
+            output.push_str(&format!(
+                "{}\n",
+                format!("  {:4} + {}", i + 1, line).green()
+            ));
             if i == max_preview_lines - 1 && total_new > max_preview_lines {
-                output.push_str(&format!("{}\n", format!("       ... ({} more lines)", total_new - max_preview_lines).dimmed()));
+                output.push_str(&format!(
+                    "{}\n",
+                    format!("       ... ({} more lines)", total_new - max_preview_lines).dimmed()
+                ));
             }
         }
 
@@ -221,19 +247,35 @@ impl WriteFileTool {
     fn generate_new_file_preview(&self, content: &str, path: &str) -> String {
         let mut output = String::new();
 
-        output.push_str(&format!("{}\n\n", format!("Creating new file: {}", path).bold().bright_cyan()));
+        output.push_str(&format!(
+            "{}\n\n",
+            format!("Creating new file: {}", path).bold().bright_cyan()
+        ));
 
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
         let max_preview_lines = 20;
 
-        output.push_str(&format!("{}\n\n", format!("Size: {} lines, {} bytes", total_lines, content.len()).yellow()));
+        output.push_str(&format!(
+            "{}\n\n",
+            format!("Size: {} lines, {} bytes", total_lines, content.len()).yellow()
+        ));
         output.push_str(&format!("{}:\n", "Content".bold()));
 
         for (i, line) in lines.iter().take(max_preview_lines).enumerate() {
-            output.push_str(&format!("{}\n", format!("  {:4} + {}", i + 1, line).green()));
+            output.push_str(&format!(
+                "{}\n",
+                format!("  {:4} + {}", i + 1, line).green()
+            ));
             if i == max_preview_lines - 1 && total_lines > max_preview_lines {
-                output.push_str(&format!("{}\n", format!("       ... ({} more lines)", total_lines - max_preview_lines).dimmed()));
+                output.push_str(&format!(
+                    "{}\n",
+                    format!(
+                        "       ... ({} more lines)",
+                        total_lines - max_preview_lines
+                    )
+                    .dimmed()
+                ));
             }
         }
 

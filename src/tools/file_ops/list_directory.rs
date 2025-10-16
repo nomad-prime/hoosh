@@ -67,9 +67,12 @@ impl Tool for ListDirectoryTool {
         let canonical_dir = dir_path
             .canonicalize()
             .with_context(|| format!("Failed to resolve path: {}", dir_path.display()))?;
-        let canonical_working = self.working_directory
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+        let canonical_working = self.working_directory.canonicalize().with_context(|| {
+            format!(
+                "Failed to resolve working directory: {}",
+                self.working_directory.display()
+            )
+        })?;
 
         if !canonical_dir.starts_with(&canonical_working) {
             anyhow::bail!("Access denied: cannot access directories outside working directory");
