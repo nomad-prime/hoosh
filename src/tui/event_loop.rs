@@ -37,6 +37,7 @@ pub struct EventLoopContext {
     pub command_registry: Arc<CommandRegistry>,
     pub agent_manager: Arc<AgentManager>,
     pub working_dir: String,
+    pub permission_manager: Arc<crate::permissions::PermissionManager>,
 }
 
 pub async fn run_event_loop(
@@ -250,6 +251,7 @@ pub async fn run_event_loop(
                                 Arc::clone(&context.agent_manager),
                                 context.working_dir.clone(),
                                 context.event_tx.clone(),
+                                Arc::clone(&context.permission_manager),
                             );
                         }
                         KeyHandlerResult::StartConversation(input) => {

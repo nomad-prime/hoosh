@@ -6,6 +6,7 @@ mod register;
 mod registry;
 mod status_command;
 mod tools_command;
+mod untrust_command;
 
 pub use register::register_default_commands;
 pub use registry::{Command, CommandContext, CommandRegistry, CommandResult};

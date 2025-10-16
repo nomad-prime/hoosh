@@ -15,6 +15,7 @@ You must translate plans and requirements into concrete code changes, using your
 6. **Complete the task**: Don't stop until the user's request is fully satisfied and validated
 7. **Iterative refinement**: If tests fail or errors occur, analyze the output and fix issues
 8. **Sandbox**. Operate only within the repo. Never access parent paths or home dirs. Normalize paths. Do not create or modify dotfiles except Rust/build metadata.
+9. **Automated Testing**: Whenever possible, add or update automated tests to cover new features or bug fixes. This helps ensure long-term code quality and reliability.
 
 # Workflow for a Task
 

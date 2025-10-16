@@ -63,6 +63,9 @@ pub fn handle_permission_keys(
                     (true, Some(PermissionScope::Directory(dir.clone())))
                 }
                 PermissionOption::AlwaysForType => (true, Some(PermissionScope::Global)),
+                PermissionOption::TrustProject(project_path) => {
+                    (true, Some(PermissionScope::ProjectWide(project_path.clone())))
+                }
             }),
             KeyCode::Char('y') | KeyCode::Char('Y') => Some((true, None)),
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some((false, None)),
@@ -79,10 +82,25 @@ pub fn handle_permission_keys(
                 }
             }
             KeyCode::Char('A') => Some((true, Some(PermissionScope::Global))),
+            KeyCode::Char('T') => {
+                if let Ok(current_dir) = std::env::current_dir() {
+                    Some((true, Some(PermissionScope::ProjectWide(current_dir))))
+                } else {
+                    None
+                }
+            }
             _ => None,
         };
 
         if let Some((allowed, scope)) = response {
+            // Update app state if ProjectWide scope was selected
+            if let Some(PermissionScope::ProjectWide(ref path)) = scope {
+                if allowed {
+                    app.set_trusted_project(path.clone());
+                    app.add_message("🔓 Project trusted for this session. All operations will be auto-approved.\n".to_string());
+                }
+            }
+
             let perm_response = PermissionResponse {
                 request_id,
                 allowed,

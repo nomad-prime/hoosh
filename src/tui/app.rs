@@ -56,6 +56,7 @@ pub enum PermissionOption {
     AlwaysForFile,
     AlwaysForDirectory(String),
     AlwaysForType,
+    TrustProject(std::path::PathBuf),
 }
 
 impl CompletionState {
@@ -108,6 +109,7 @@ pub struct AppState {
     pub current_thinking_spinner: usize,
     pub current_executing_spinner: usize,
     pub clipboard: ClipboardManager,
+    pub trusted_project: Option<std::path::PathBuf>,
 }
 
 impl AppState {
@@ -139,6 +141,7 @@ impl AppState {
             current_thinking_spinner,
             current_executing_spinner,
             clipboard: ClipboardManager::new(),
+            trusted_project: None,
         }
     }
 
@@ -172,6 +175,10 @@ impl AppState {
             .load(std::sync::atomic::Ordering::Relaxed);
         self.autopilot_enabled
             .store(!current, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn set_trusted_project(&mut self, path: std::path::PathBuf) {
+        self.trusted_project = Some(path);
     }
 
     pub fn show_approval_dialog(&mut self, tool_call_id: String, tool_name: String) {
@@ -208,6 +215,11 @@ impl AppState {
         }
 
         options.push(PermissionOption::AlwaysForType);
+
+        // Add Trust Project option with current working directory
+        if let Ok(current_dir) = std::env::current_dir() {
+            options.push(PermissionOption::TrustProject(current_dir));
+        }
 
         self.permission_dialog_state = Some(PermissionDialogState {
             operation,
