@@ -1,0 +1,53 @@
+# Example Hoosh Configuration File
+
+# Default backend to use when none is specified
+default_backend = "anthropic"
+
+# Default agent to use when none is specified
+# Note: If this agent is not defined in the [agents] section below, 
+# a warning will be shown with available agents and the system will 
+# fall back to the first available agent
+default_agent = "coder"
+
+# Verbosity level: "quiet", "normal", "verbose", or "debug"
+verbosity = "normal"
+
+# Review mode - whether to ask for confirmation before executing commands
+review_mode = true
+
+# Backend configurations
+[backends.anthropic]
+api_key = "your-anthropic-api-key-here"
+model = "claude-3-5-sonnet-20241022"
+temperature = 0.7
+
+[backends.openai]
+api_key = "your-openai-api-key-here"
+model = "gpt-4o"
+temperature = 0.7
+
+[backends.together]
+api_key = "your-together-api-key-here"
+base_url = "https://api.together.xyz/v1"
+model = "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo"
+temperature = 0.7
+
+# Agent configurations
+# Note: If the default_agent setting above doesn't match any agent defined here,
+# a warning will be shown and the system will automatically fall back to the 
+# first available agent from this list
+
+[agents.coder]
+file = "hoosh_coder.txt"
+description = "Implements features and writes code"
+tags = ["coding", "implementation"]
+
+[agents.planner]
+file = "hoosh_planner.txt"
+description = "Breaks down complex tasks into actionable steps"
+tags = ["planning", "architecture", "strategy"]
+
+[agents.assistant]
+file = "hoosh_assistant.txt"
+description = "General purpose assistant for answering questions"
+tags = ["general", "q&a", "help"]
