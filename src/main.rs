@@ -189,12 +189,23 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                 console().newline();
                 console().plain("[agents]");
                 for (agent_name, agent_config) in &config.agents {
-                    console().plain(&format!("{} = {{ file = \"{}\"", agent_name, agent_config.file));
+                    console().plain(&format!(
+                        "{} = {{ file = \"{}\"",
+                        agent_name, agent_config.file
+                    ));
                     if let Some(ref description) = agent_config.description {
                         console().plain(&format!("  description = \"{}\"", description));
                     }
                     if !agent_config.tags.is_empty() {
-                        console().plain(&format!("  tags = [{}]", agent_config.tags.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(", ")));
+                        console().plain(&format!(
+                            "  tags = [{}]",
+                            agent_config
+                                .tags
+                                .iter()
+                                .map(|t| format!("\"{}\"", t))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
                     }
                     console().plain("}");
                 }
@@ -250,6 +261,10 @@ fn handle_config(action: ConfigAction) -> Result<()> {
                         return Ok(());
                     }
                 }
+            } else if key == "default_agent" {
+                config.default_agent = Some(value);
+                config.save()?;
+                console().success("Default agent configuration updated successfully");
             } else {
                 // Handle backend config keys: <backend>_api_key, <backend>_model, <backend>_base_url, <backend>_temperature
                 // Try to match known patterns
