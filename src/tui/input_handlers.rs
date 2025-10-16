@@ -52,17 +52,17 @@ pub fn handle_permission_keys(
                 app.select_next_permission_option();
                 None
             }
-            KeyCode::Enter => selected_option.as_ref().and_then(|opt| match opt {
-                PermissionOption::YesOnce => Some((true, None)),
-                PermissionOption::No => Some((false, None)),
+            KeyCode::Enter => selected_option.as_ref().map(|opt| match opt {
+                PermissionOption::YesOnce => (true, None),
+                PermissionOption::No => (false, None),
                 PermissionOption::AlwaysForFile => {
                     let target = operation.target().to_string();
-                    Some((true, Some(PermissionScope::Specific(target))))
+                    (true, Some(PermissionScope::Specific(target)))
                 }
                 PermissionOption::AlwaysForDirectory(dir) => {
-                    Some((true, Some(PermissionScope::Directory(dir.clone()))))
+                    (true, Some(PermissionScope::Directory(dir.clone())))
                 }
-                PermissionOption::AlwaysForType => Some((true, Some(PermissionScope::Global))),
+                PermissionOption::AlwaysForType => (true, Some(PermissionScope::Global)),
             }),
             KeyCode::Char('y') | KeyCode::Char('Y') => Some((true, None)),
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some((false, None)),
@@ -156,6 +156,16 @@ pub fn handle_approval_keys(
     }
 
     KeyHandlerResult::Handled
+}
+
+pub fn handle_paste(text: String, app: &mut AppState) {
+    let lines: Vec<&str> = text.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        app.input.insert_str(line);
+        if i < lines.len() - 1 {
+            app.input.insert_newline();
+        }
+    }
 }
 
 pub async fn handle_completion_keys(key: KeyCode, app: &mut AppState) -> KeyHandlerResult {
@@ -279,14 +289,24 @@ pub async fn handle_normal_keys(
         }
         KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
             if agent_task_active {
-                // First Ctrl+C: Cancel the running task
                 app.should_cancel_task = true;
                 KeyHandlerResult::ShouldCancelTask
             } else {
-                // Second Ctrl+C or Ctrl+C when nothing is running: Quit
-                app.should_quit = true;
-                KeyHandlerResult::ShouldQuit
+                let input_text = app.get_input_text();
+                if !input_text.is_empty() {
+                    app.clear_input();
+                    KeyHandlerResult::Handled
+                } else {
+                    app.should_quit = true;
+                    KeyHandlerResult::ShouldQuit
+                }
             }
+        }
+        KeyCode::Char('v') if modifiers.contains(KeyModifiers::CONTROL) => {
+            if let Ok(text) = app.clipboard.get_text() {
+                handle_paste(text, app);
+            }
+            KeyHandlerResult::Handled
         }
         KeyCode::Enter => {
             let input_text = app.get_input_text();

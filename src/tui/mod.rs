@@ -1,5 +1,6 @@
 mod actions;
 mod app;
+mod clipboard;
 pub mod completion;
 mod event_loop;
 mod events;
