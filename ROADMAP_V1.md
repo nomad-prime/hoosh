@@ -1,48 +1,18 @@
 # Hoosh v1.0 Roadmap
 
-### 0. Commands and Command Completion System 🔧 CRITICAL
+### 0. Commands and Command Completion System 🔧 Missing pieces
 
-**Current State:** ✅ **CORE INFRASTRUCTURE COMPLETE** - Command system and completion fully functional!
-
-**What's Been Implemented:**
-
-- ✅ **Slash Command System** - Commands start with `/` like in Claude Code
-    - ✅ `/help [command]` - Show available commands and usage (aliases: h, ?)
-    - ✅ `/clear` - Clear conversation history (alias: c)
-    - ✅ `/status` - Show current session status (alias: s)
-    - ✅ `/tools` - List available tools (alias: t)
-    - ✅ `/agents` - List available agents (alias: a)
-    - ✅ `/exit` - Exit the application (aliases: quit, q)
-
-- ✅ **Command Completion** - Tab completion like file completion with `@`
-    - ✅ Trigger on `/` to show available commands
-    - ✅ Show command descriptions inline ("command - description" format)
-    - ✅ Fuzzy matching for commands (e.g., "hlp" matches "help")
-    - ✅ Interactive UI with up/down navigation
-    - ✅ Tab/Enter to apply completion
-    - ✅ Esc to cancel completion
-    - ✅ Dynamic filtering as user types
-
-- ✅ **@ Mention System** - Reference files, symbols, and context
-    - ✅ `@file.rs` - Reference a specific file (see src/tui/completion/file_completer.rs)
-    - ✅ Fuzzy search for file mentions
+- **@ Mention System** - Reference files, symbols, and context
     - `@src/` - Reference a directory (needs extension)
     - `@symbol_name` - Reference a function/struct/symbol (Post-v1, needs LSP)
     - `@conversation` - Reference previous conversation (needs implementation)
     - Preview on hover/selection (nice-to-have)
 
-- ✅ **Command Parser & Registry** (see src/commands/)
-    - ✅ Modular command system (easy to add new commands via Command trait)
-    - ✅ Command validation and argument parsing
-    - ✅ Command aliases and shortcuts
-    - ✅ Trait-based architecture (async execution support)
+- **Command Parser & Registry** (see src/commands/)
     - Command history (up/down arrows) - not yet implemented
     - Command chaining (e.g., `/save && /clear`) - not yet implemented
 
 - **Interactive Command Mode**
-    - ✅ Command prompt with detection (starts with '/')
-    - ✅ Visual feedback for command execution (via AgentEvent system)
-    - ✅ Error messages for command failures
     - Multi-line command input - not needed for commands
     - Command prompt with syntax highlighting - nice-to-have
 
@@ -404,74 +374,9 @@ struct MultiFileOp {
 }
 ```
 
-### 7. Git Integration and Operations 🔧 LOW PRIORITY (Nice-to-Have)
-
-**Current State:** Git operations work fine via Bash tool
-
-**What's Missing:**
-
-- **Dedicated Git Tool** - Native git integration beyond bash commands
-    - Git status with visual diff display
-    - Commit with auto-generated messages
-    - Branch creation and switching
-    - Merge conflict resolution assistance
-    - Pull/push operations
-    - Stash management
-    - Rebase operations
-    - Git history visualization
-    - Blame annotations
-
-- **Smart Git Operations**
-    - Commit message generation based on changes
-    - Auto-detect related changes for atomic commits
-    - Suggest branch names based on task
-    - Detect merge conflicts and suggest resolutions
-    - Pre-commit hooks integration
-    - Git ignore management
-
-- **Repository Intelligence**
-    - Detect repository type and structure
-    - Understand branching strategy (gitflow, trunk-based, etc.)
-    - Track uncommitted changes in status bar
-    - Show current branch in UI
-
-**Why it matters (but not critical for v1):** Bash commands work fine for git operations. Dedicated git integration
-would provide better UX and structured output for the AI, but this is polish, not a blocker. Can be deferred to v1.1+.
-
-**Technical Requirements:**
-
-```rust
-struct GitTool {
-    repo_path: PathBuf,
-
-    fn status( & self ) -> Result<GitStatus>
-    fn commit( & self,
-    message: String,
-    files: Vec<PathBuf>) -> Result<String>
-    fn create_branch( & self,
-    name: String) -> Result<() >
-    fn switch_branch( & self,
-    name: String) -> Result<() >
-    fn diff( & self,
-    staged: bool) -> Result<String>
-    fn generate_commit_message( & self,
-    changes: &[FileChange]) -> Result<String>
-    fn detect_conflicts( & self ) -> Result<Vec<Conflict> >
-}
-
-struct GitStatus {
-    current_branch: String,
-    staged: Vec<PathBuf>,
-    unstaged: Vec<PathBuf>,
-    untracked: Vec<PathBuf>,
-    ahead: usize,
-    behind: usize,
-}
-```
-
 ---
 
-### 8. MCP (Model Context Protocol) Support 🔧 CRITICAL
+### 7. MCP (Model Context Protocol) Support 🔧 CRITICAL
 
 **Current State:** No MCP support
 
@@ -559,7 +464,7 @@ env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
 
 ---
 
-### 9. LSP (Language Server Protocol) Integration 🔧 LOW PRIORITY (Post-v1)
+### 8. LSP (Language Server Protocol) Integration 🔧 LOW PRIORITY (Post-v1)
 
 **Current State:** No LSP support, limited code intelligence
 **Note:** Not required for v1 - can be added in future releases
@@ -656,7 +561,7 @@ args = ["--stdio"]
 
 ---
 
-### 10. Project/Codebase Indexing and Understanding 🔧 LOW PRIORITY (Post-v1)
+### 9. Project/Codebase Indexing and Understanding 🔧 LOW PRIORITY (Post-v1)
 
 **Current State:** No project indexing, limited codebase understanding
 **Note:** Not required for v1 - can be added in future releases
@@ -723,70 +628,7 @@ struct Symbol {
 
 ---
 
-### 11. Testing Integration 🔧 LOW PRIORITY (Nice-to-Have)
-
-**Current State:** Tests work fine via Bash tool (cargo test, npm test, pytest, etc.)
-
-**What's Missing:**
-
-- **Test Execution**
-    - Detect test framework (pytest, jest, cargo test, etc.)
-    - Run all tests or specific test files
-    - Run tests matching a pattern
-    - Watch mode for continuous testing
-    - Parallel test execution
-
-- **Test Result Analysis**
-    - Parse test output and failures
-    - Show failed tests with context
-    - Suggest fixes for failing tests
-    - Track test coverage
-    - Compare test runs
-
-- **Test Generation**
-    - Generate test cases for functions
-    - Create test scaffolding
-    - Suggest edge cases to test
-    - Generate mocks and fixtures
-
-- **Test-Driven Development**
-    - Write tests first, then implementation
-    - Red-Green-Refactor cycle support
-    - Test coverage goals
-
-**Why it matters (but not critical for v1):** Testing works fine via bash commands. Dedicated test integration would
-provide structured output parsing and better UX, but this is polish, not a blocker. Can be deferred to v1.1+.
-
-**Technical Requirements:**
-
-```rust
-struct TestRunner {
-    framework: TestFramework,
-
-    fn detect_framework( & self,
-    path: &Path) -> Result<TestFramework>
-    fn run_tests( & self,
-    filter: Option<&str>) -> Result<TestResults>
-    fn run_test_file( & self,
-    file: &Path) -> Result<TestResults>
-    fn watch( & self ) -> Result<TestWatcher>
-    fn generate_test( & self,
-    target: &Symbol) -> Result<String>
-}
-
-struct TestResults {
-    total: usize,
-    passed: usize,
-    failed: usize,
-    skipped: usize,
-    failures: Vec<TestFailure>,
-    coverage: Option<Coverage>,
-}
-```
-
----
-
-### 12. Performance Monitoring and Cost Tracking 🔧 MEDIUM PRIORITY
+### 10. Performance Monitoring and Cost Tracking 🔧 MEDIUM PRIORITY
 
 **Current State:** No monitoring or cost tracking
 
@@ -847,7 +689,7 @@ struct TokenUsage {
 
 ---
 
-### 13. Screenshot Tool for Visual Tasks 🔧 LOW PRIORITY
+### 11. Screenshot Tool for Visual Tasks 🔧 LOW PRIORITY
 
 **Current State:** No screenshot capability
 **What's Missing:**
