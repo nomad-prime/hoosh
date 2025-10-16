@@ -1,10 +1,10 @@
+use super::{LlmBackend, LlmResponse};
+use crate::conversations::{Conversation, ConversationMessage, ToolCall};
+use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use super::{LlmBackend, LlmResponse};
-use crate::conversations::{Conversation, ConversationMessage, ToolCall};
-use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
 pub struct TogetherAiConfig {
@@ -94,11 +94,7 @@ impl TogetherAiBackend {
             messages: conversation.get_messages_for_api().clone(),
             max_tokens: Some(4096),
             temperature: Some(0.7),
-            tools: if has_tools {
-                Some(tool_schemas)
-            } else {
-                None
-            },
+            tools: if has_tools { Some(tool_schemas) } else { None },
             tool_choice: if has_tools {
                 Some("auto".to_string())
             } else {
@@ -118,7 +114,8 @@ impl LlmBackend for TogetherAiBackend {
         let request = self.create_request(message);
         let url = format!("{}/chat/completions", self.config.base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .json(&request)
@@ -158,8 +155,8 @@ impl LlmBackend for TogetherAiBackend {
         let request = self.create_request_with_tools(conversation, tools);
         let url = format!("{}/chat/completions", self.config.base_url);
 
-
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .json(&request)

@@ -2,8 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::commands::CommandRegistry;
 use super::Completer;
+use crate::commands::CommandRegistry;
 
 pub struct CommandCompleter {
     registry: Arc<CommandRegistry>,
@@ -120,15 +120,21 @@ mod tests {
     #[test]
     fn test_score_match() {
         // Exact match should score higher than prefix match
-        assert!(CommandCompleter::score_match("help", "help")
-            > CommandCompleter::score_match("help", "helper"));
+        assert!(
+            CommandCompleter::score_match("help", "help")
+                > CommandCompleter::score_match("help", "helper")
+        );
 
         // Prefix match should score higher than fuzzy match
-        assert!(CommandCompleter::score_match("cl", "clear")
-            > CommandCompleter::score_match("cr", "clear"));
+        assert!(
+            CommandCompleter::score_match("cl", "clear")
+                > CommandCompleter::score_match("cr", "clear")
+        );
 
         // Shorter targets with same prefix score equal or better
-        assert!(CommandCompleter::score_match("ex", "exit")
-            >= CommandCompleter::score_match("ex", "export"));
+        assert!(
+            CommandCompleter::score_match("ex", "exit")
+                >= CommandCompleter::score_match("ex", "export")
+        );
     }
 }

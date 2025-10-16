@@ -67,7 +67,11 @@ pub trait Command: Send + Sync {
         Vec::new()
     }
     fn usage(&self) -> &str;
-    async fn execute(&self, args: Vec<String>, context: &mut CommandContext) -> Result<CommandResult>;
+    async fn execute(
+        &self,
+        args: Vec<String>,
+        context: &mut CommandContext,
+    ) -> Result<CommandResult>;
 }
 
 pub struct CommandRegistry {
@@ -94,7 +98,11 @@ impl CommandRegistry {
         Ok(())
     }
 
-    pub async fn execute(&self, input: &str, context: &mut CommandContext) -> Result<CommandResult> {
+    pub async fn execute(
+        &self,
+        input: &str,
+        context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         let input = input.trim();
 
         if !input.starts_with('/') {
@@ -143,7 +151,11 @@ impl CommandRegistry {
             commands.sort_by_key(|c| c.name());
 
             for command in commands {
-                help.push_str(&format!("  /{:<12} {}\n", command.name(), command.description()));
+                help.push_str(&format!(
+                    "  /{:<12} {}\n",
+                    command.name(),
+                    command.description()
+                ));
             }
 
             help.push_str("\nType /help <command> for more information about a specific command.");

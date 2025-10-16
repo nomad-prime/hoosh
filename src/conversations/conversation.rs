@@ -35,7 +35,12 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
-    pub fn success(tool_call_id: String, tool_name: String, display_name: String, output: String) -> Self {
+    pub fn success(
+        tool_call_id: String,
+        tool_name: String,
+        display_name: String,
+        output: String,
+    ) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -44,7 +49,12 @@ impl ToolResult {
         }
     }
 
-    pub fn error(tool_call_id: String, tool_name: String, display_name: String, error: anyhow::Error) -> Self {
+    pub fn error(
+        tool_call_id: String,
+        tool_name: String,
+        display_name: String,
+        error: anyhow::Error,
+    ) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -101,7 +111,11 @@ impl Conversation {
         });
     }
 
-    pub fn add_assistant_message(&mut self, content: Option<String>, tool_calls: Option<Vec<ToolCall>>) {
+    pub fn add_assistant_message(
+        &mut self,
+        content: Option<String>,
+        tool_calls: Option<Vec<ToolCall>>,
+    ) {
         self.messages.push(ConversationMessage {
             role: "assistant".to_string(),
             content,
@@ -187,7 +201,10 @@ mod tests {
         conversation.add_assistant_message(Some("Hi there!".to_string()), None);
         assert_eq!(conversation.messages.len(), 2);
         assert_eq!(conversation.messages[1].role, "assistant");
-        assert_eq!(conversation.messages[1].content, Some("Hi there!".to_string()));
+        assert_eq!(
+            conversation.messages[1].content,
+            Some("Hi there!".to_string())
+        );
     }
 
     #[test]
@@ -227,8 +244,14 @@ mod tests {
 
         assert_eq!(conversation.messages.len(), 3);
         assert_eq!(conversation.messages[2].role, "tool");
-        assert_eq!(conversation.messages[2].content, Some("File contents here".to_string()));
-        assert_eq!(conversation.messages[2].tool_call_id, Some("call_123".to_string()));
+        assert_eq!(
+            conversation.messages[2].content,
+            Some("File contents here".to_string())
+        );
+        assert_eq!(
+            conversation.messages[2].tool_call_id,
+            Some("call_123".to_string())
+        );
     }
 
     #[test]

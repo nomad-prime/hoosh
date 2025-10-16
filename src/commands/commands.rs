@@ -24,7 +24,11 @@ impl Command for HelpCommand {
         "/help [command]\n\nShow help for all commands or a specific command."
     }
 
-    async fn execute(&self, args: Vec<String>, context: &mut CommandContext) -> Result<CommandResult> {
+    async fn execute(
+        &self,
+        args: Vec<String>,
+        context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         let help_text = if args.is_empty() {
             if let Some(registry) = &context.command_registry {
                 registry.get_help(None)
@@ -63,7 +67,11 @@ impl Command for ClearCommand {
         "/clear\n\nClears the current conversation history, starting a fresh session."
     }
 
-    async fn execute(&self, _args: Vec<String>, _context: &mut CommandContext) -> Result<CommandResult> {
+    async fn execute(
+        &self,
+        _args: Vec<String>,
+        _context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         Ok(CommandResult::ClearConversation)
     }
 }
@@ -88,10 +96,17 @@ impl Command for StatusCommand {
         "/status\n\nDisplays information about the current session, including working directory and conversation state."
     }
 
-    async fn execute(&self, _args: Vec<String>, context: &mut CommandContext) -> Result<CommandResult> {
+    async fn execute(
+        &self,
+        _args: Vec<String>,
+        context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         let mut status = String::from("📊 Session Status\n\n");
 
-        status.push_str(&format!("Working Directory: {}\n", context.working_directory));
+        status.push_str(&format!(
+            "Working Directory: {}\n",
+            context.working_directory
+        ));
 
         if let Some(conv) = &context.conversation {
             let conv = conv.lock().await;
@@ -134,7 +149,11 @@ impl Command for ToolsCommand {
         "/tools\n\nLists all available tools that can be used during conversations."
     }
 
-    async fn execute(&self, _args: Vec<String>, context: &mut CommandContext) -> Result<CommandResult> {
+    async fn execute(
+        &self,
+        _args: Vec<String>,
+        context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         if let Some(tool_registry) = &context.tool_registry {
             let tools = tool_registry.list_tools();
             let mut output = String::from("🛠️  Available Tools:\n\n");
@@ -171,7 +190,11 @@ impl Command for AgentsCommand {
         "/agents\n\nLists all available agents that can be used."
     }
 
-    async fn execute(&self, _args: Vec<String>, context: &mut CommandContext) -> Result<CommandResult> {
+    async fn execute(
+        &self,
+        _args: Vec<String>,
+        context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         if let Some(agent_manager) = &context.agent_manager {
             let agents = agent_manager.list_agents();
             let mut output = String::from("🤖 Available Agents:\n\n");
@@ -210,7 +233,11 @@ impl Command for ExitCommand {
         "/exit\n\nExits the application."
     }
 
-    async fn execute(&self, _args: Vec<String>, _context: &mut CommandContext) -> Result<CommandResult> {
+    async fn execute(
+        &self,
+        _args: Vec<String>,
+        _context: &mut CommandContext,
+    ) -> Result<CommandResult> {
         Ok(CommandResult::Exit)
     }
 }

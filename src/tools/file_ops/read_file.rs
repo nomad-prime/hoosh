@@ -49,9 +49,12 @@ impl Tool for ReadFileTool {
         let canonical_file = file_path
             .canonicalize()
             .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?;
-        let canonical_working = self.working_directory
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve working directory: {}", self.working_directory.display()))?;
+        let canonical_working = self.working_directory.canonicalize().with_context(|| {
+            format!(
+                "Failed to resolve working directory: {}",
+                self.working_directory.display()
+            )
+        })?;
 
         if !canonical_file.starts_with(&canonical_working) {
             anyhow::bail!("Access denied: cannot read files outside working directory");
@@ -149,8 +152,8 @@ impl Tool for ReadFileTool {
         args: &serde_json::Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: ReadFileArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for read_file tool")?;
+        let args: ReadFileArgs =
+            serde_json::from_value(args.clone()).context("Invalid arguments for read_file tool")?;
 
         // Normalize the path for consistent caching
         // Use the same resolved path that will be used in execute()

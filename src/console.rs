@@ -1,6 +1,6 @@
+use colored::Colorize;
 use std::fmt;
 use std::sync::{Arc, OnceLock};
-use colored::Colorize;
 
 /// Verbosity levels for console output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -147,7 +147,8 @@ impl Console {
         if !self.should_show(VerbosityLevel::Normal) {
             return;
         }
-        println!("{} {}{}{}",
+        println!(
+            "{} {}{}{}",
             "⏺".dimmed(),
             tool_name.green(),
             "(".dimmed(),
@@ -159,10 +160,7 @@ impl Console {
         if !self.should_show(VerbosityLevel::Normal) {
             return;
         }
-        println!("  {} {}",
-            "⎿".dimmed(),
-            summary.dimmed()
-        );
+        println!("  {} {}", "⎿".dimmed(), summary.dimmed());
     }
 
     pub fn tool_result(&self, tool_name: &str, result: &str, max_length: usize) {
@@ -178,7 +176,8 @@ impl Console {
             result.to_string()
         };
 
-        println!("{} {} {}",
+        println!(
+            "{} {} {}",
             "Tool".dimmed(),
             format!("'{}'", tool_name).cyan(),
             "result:".dimmed()
@@ -297,7 +296,10 @@ impl Console {
 
     pub fn max_steps_reached(&self, max_steps: usize) {
         if self.should_show(VerbosityLevel::Normal) {
-            println!("⚠️ Maximum conversation steps ({}) reached, stopping.", max_steps);
+            println!(
+                "⚠️ Maximum conversation steps ({}) reached, stopping.",
+                max_steps
+            );
         }
     }
 }

@@ -1,8 +1,8 @@
-mod file_completer;
 mod command_completer;
+mod file_completer;
 
-pub use file_completer::FileCompleter;
 pub use command_completer::CommandCompleter;
+pub use file_completer::FileCompleter;
 
 use anyhow::Result;
 use async_trait::async_trait;

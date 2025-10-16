@@ -52,38 +52,96 @@ impl BashTool {
 
         let dangerous_patterns = [
             // File deletion
-            "rm -rf", "rm -fr", "rm -r", "rmdir",
+            "rm -rf",
+            "rm -fr",
+            "rm -r",
+            "rmdir",
             // Privilege escalation
-            "sudo", "su ", "doas",
+            "sudo",
+            "su ",
+            "doas",
             // User management
-            "passwd", "useradd", "userdel", "usermod",
+            "passwd",
+            "useradd",
+            "userdel",
+            "usermod",
             // Permission changes
-            "chmod 777", "chmod -r", "chown", "chgrp",
+            "chmod 777",
+            "chmod -r",
+            "chown",
+            "chgrp",
             // Disk operations
-            "dd if=", "dd of=", "mkfs", "fdisk", "parted", "gparted",
-            "format", "del /f", "rmdir /s",
+            "dd if=",
+            "dd of=",
+            "mkfs",
+            "fdisk",
+            "parted",
+            "gparted",
+            "format",
+            "del /f",
+            "rmdir /s",
             // Device access (specific patterns to avoid false positives)
-            "> /dev/sd", "< /dev/sd", "> /dev/nvme", "< /dev/nvme",
-            "cat /dev/urandom >", "cat /dev/zero >", "cat /dev/random >",
-            "/dev/sda", "/dev/sdb", "/dev/nvme", "of=/dev/",
+            "> /dev/sd",
+            "< /dev/sd",
+            "> /dev/nvme",
+            "< /dev/nvme",
+            "cat /dev/urandom >",
+            "cat /dev/zero >",
+            "cat /dev/random >",
+            "/dev/sda",
+            "/dev/sdb",
+            "/dev/nvme",
+            "of=/dev/",
             // System control
-            "shutdown", "reboot", "halt", "poweroff", "init 0", "init 6",
-            "systemctl", "service ", "launchctl",
+            "shutdown",
+            "reboot",
+            "halt",
+            "poweroff",
+            "init 0",
+            "init 6",
+            "systemctl",
+            "service ",
+            "launchctl",
             // Process killing
-            "kill -9", "killall", "pkill",
+            "kill -9",
+            "killall",
+            "pkill",
             // Fork bombs and loops
-            ":(){ :|:& };:", "forkbomb", "while true", "while :; do",
+            ":(){ :|:& };:",
+            "forkbomb",
+            "while true",
+            "while :; do",
             // Piped execution (command injection)
-            "curl | sh", "wget | sh", "curl | bash", "wget | bash",
-            "curl|sh", "wget|sh", "curl|bash", "wget|bash",
+            "curl | sh",
+            "wget | sh",
+            "curl | bash",
+            "wget | bash",
+            "curl|sh",
+            "wget|sh",
+            "curl|bash",
+            "wget|bash",
             // Environment manipulation
-            "export path=", "export ld_preload", "unset path",
+            "export path=",
+            "export ld_preload",
+            "unset path",
             // Cron manipulation (be specific to avoid false positives)
-            "crontab -", "crontab ", " at ", ";at ", "|at ", "&at ", " batch", ";batch", "|batch",
+            "crontab -",
+            "crontab ",
+            " at ",
+            ";at ",
+            "|at ",
+            "&at ",
+            " batch",
+            ";batch",
+            "|batch",
             // Network attacks
-            "nc -", "netcat", "ncat", "telnet",
+            "nc -",
+            "netcat",
+            "ncat",
+            "telnet",
             // Archive bombs
-            "zip -r", "tar czf",
+            "zip -r",
+            "tar czf",
         ];
 
         let command_lower = command.to_lowercase();
@@ -98,7 +156,10 @@ impl BashTool {
 
         // Check for shell metacharacters that could enable injection
         // Allow basic pipes and redirects, but be suspicious of multiple ones
-        let metachar_count = command.chars().filter(|c| matches!(c, ';' | '|' | '&')).count();
+        let metachar_count = command
+            .chars()
+            .filter(|c| matches!(c, ';' | '|' | '&'))
+            .count();
         if metachar_count > 1 {
             return true;
         }
@@ -118,11 +179,7 @@ impl BashTool {
         // Keep newlines and tabs as they might be intentional
         command
             .chars()
-            .filter(|c| {
-                !c.is_control()
-                    || matches!(c, '\n' | '\t' | ' ')
-                    || c.is_whitespace()
-            })
+            .filter(|c| !c.is_control() || matches!(c, '\n' | '\t' | ' ') || c.is_whitespace())
             .collect()
     }
 }
@@ -288,8 +345,8 @@ impl Tool for BashTool {
         args: &serde_json::Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: BashArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for bash tool")?;
+        let args: BashArgs =
+            serde_json::from_value(args.clone()).context("Invalid arguments for bash tool")?;
 
         let operation = OperationType::ExecuteBash(args.command);
         permission_manager.check_permission(&operation).await

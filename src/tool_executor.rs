@@ -4,7 +4,9 @@ use tokio::sync::mpsc;
 
 use crate::conversations::{AgentEvent, ToolCall, ToolResult};
 use crate::permissions::PermissionManager;
-use crate::tools::{BashTool, EditFileTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool};
+use crate::tools::{
+    BashTool, EditFileTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool,
+};
 
 /// Handles execution of tool calls
 pub struct ToolExecutor {
@@ -13,14 +15,15 @@ pub struct ToolExecutor {
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     approval_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
-    approval_receiver: Option<std::sync::Arc<std::sync::Mutex<mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>>>>,
+    approval_receiver: Option<
+        std::sync::Arc<
+            std::sync::Mutex<mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>>,
+        >,
+    >,
 }
 
 impl ToolExecutor {
-    pub fn new(
-        tool_registry: ToolRegistry,
-        permission_manager: PermissionManager,
-    ) -> Self {
+    pub fn new(tool_registry: ToolRegistry, permission_manager: PermissionManager) -> Self {
         Self {
             tool_registry,
             permission_manager,
@@ -37,7 +40,10 @@ impl ToolExecutor {
         self
     }
 
-    pub fn with_autopilot_state(mut self, autopilot_state: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+    pub fn with_autopilot_state(
+        mut self,
+        autopilot_state: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
         self.autopilot_enabled = autopilot_state;
         self
     }
@@ -95,7 +101,9 @@ impl ToolExecutor {
             }
 
             // Check autopilot state atomically
-            let is_autopilot = self.autopilot_enabled.load(std::sync::atomic::Ordering::Relaxed);
+            let is_autopilot = self
+                .autopilot_enabled
+                .load(std::sync::atomic::Ordering::Relaxed);
 
             // If not in autopilot mode, request approval before continuing
             if !is_autopilot {
@@ -112,7 +120,9 @@ impl ToolExecutor {
 
         // Execute the tool
         match tool.execute(&args).await {
-            Ok(output) => ToolResult::success(tool_call_id, tool_name.clone(), display_name, output),
+            Ok(output) => {
+                ToolResult::success(tool_call_id, tool_name.clone(), display_name, output)
+            }
             Err(e) => ToolResult::error(tool_call_id, tool_name.clone(), display_name, e),
         }
     }
@@ -137,7 +147,9 @@ impl ToolExecutor {
                 tool_call_id: tool_call_id.to_string(),
                 tool_name: tool_name.to_string(),
             };
-            sender.send(event).context("Failed to send approval request event")?;
+            sender
+                .send(event)
+                .context("Failed to send approval request event")?;
         } else {
             // No approval system configured, auto-approve
             return Ok(());
@@ -169,7 +181,9 @@ impl ToolExecutor {
                 if let Some(sender) = &self.event_sender {
                     let _ = sender.send(AgentEvent::UserRejection);
                 }
-                let reason = response.rejection_reason.unwrap_or_else(|| "User rejected".to_string());
+                let reason = response
+                    .rejection_reason
+                    .unwrap_or_else(|| "User rejected".to_string());
                 anyhow::bail!("Operation rejected: {}", reason);
             }
         }
@@ -179,14 +193,20 @@ impl ToolExecutor {
 
     /// Check if a tool execution is permitted
     /// Delegates to the tool's own permission check implementation
-    async fn check_tool_permissions(&self, tool: &dyn crate::tools::Tool, args: &serde_json::Value) -> Result<()> {
+    async fn check_tool_permissions(
+        &self,
+        tool: &dyn crate::tools::Tool,
+        args: &serde_json::Value,
+    ) -> Result<()> {
         // Skip permission checks if enforcement is disabled
         if !self.permission_manager.is_enforcing() {
             return Ok(());
         }
 
         // Ask the tool to check its own permissions
-        let allowed = tool.check_permission(args, &self.permission_manager).await?;
+        let allowed = tool
+            .check_permission(args, &self.permission_manager)
+            .await?;
 
         if !allowed {
             anyhow::bail!("Permission denied for {} operation", tool.tool_name());
@@ -198,21 +218,21 @@ impl ToolExecutor {
     /// Create tools with the correct working directory
     pub fn create_tool_registry_with_working_dir(working_dir: std::path::PathBuf) -> ToolRegistry {
         ToolRegistry::new()
-            .with_tool(std::sync::Arc::new(
-                ReadFileTool::with_working_directory(working_dir.clone()),
-            ))
-            .with_tool(std::sync::Arc::new(
-                WriteFileTool::with_working_directory(working_dir.clone()),
-            ))
-            .with_tool(std::sync::Arc::new(
-                EditFileTool::with_working_directory(working_dir.clone()),
-            ))
+            .with_tool(std::sync::Arc::new(ReadFileTool::with_working_directory(
+                working_dir.clone(),
+            )))
+            .with_tool(std::sync::Arc::new(WriteFileTool::with_working_directory(
+                working_dir.clone(),
+            )))
+            .with_tool(std::sync::Arc::new(EditFileTool::with_working_directory(
+                working_dir.clone(),
+            )))
             .with_tool(std::sync::Arc::new(
                 ListDirectoryTool::with_working_directory(working_dir.clone()),
             ))
-            .with_tool(std::sync::Arc::new(
-                BashTool::with_working_directory(working_dir),
-            ))
+            .with_tool(std::sync::Arc::new(BashTool::with_working_directory(
+                working_dir,
+            )))
     }
 }
 
@@ -229,14 +249,10 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         tokio::fs::write(&test_file, "Hello, World!").await.unwrap();
 
-        let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(
-            temp_dir.path().to_path_buf()
-        );
+        let tool_registry =
+            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
         let permission_manager = PermissionManager::new().with_skip_permissions(true);
-        let executor = ToolExecutor::new(
-            tool_registry,
-            permission_manager,
-        );
+        let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {
             id: "call_123".to_string(),
@@ -255,14 +271,10 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_tool() {
         let temp_dir = tempdir().unwrap();
-        let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(
-            temp_dir.path().to_path_buf()
-        );
+        let tool_registry =
+            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
         let permission_manager = PermissionManager::new();
-        let executor = ToolExecutor::new(
-            tool_registry,
-            permission_manager,
-        );
+        let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {
             id: "call_123".to_string(),
@@ -275,6 +287,10 @@ mod tests {
 
         let result = executor.execute_tool_call(&tool_call).await;
         assert!(result.result.is_err());
-        assert!(result.result.unwrap_err().to_string().contains("Unknown tool"));
+        assert!(result
+            .result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown tool"));
     }
 }

@@ -1,10 +1,10 @@
+use super::{LlmBackend, LlmResponse};
+use crate::conversations::{Conversation, ConversationMessage, ToolCall};
+use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use super::{LlmBackend, LlmResponse};
-use crate::conversations::{Conversation, ConversationMessage, ToolCall};
-use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
 pub struct OpenAICompatibleConfig {
@@ -99,11 +99,7 @@ impl OpenAICompatibleBackend {
             messages: conversation.get_messages_for_api().clone(),
             max_completion_tokens: 4096,
             temperature: self.config.temperature,
-            tools: if has_tools {
-                Some(tool_schemas)
-            } else {
-                None
-            },
+            tools: if has_tools { Some(tool_schemas) } else { None },
             tool_choice: if has_tools {
                 Some("auto".to_string())
             } else {
@@ -117,14 +113,18 @@ impl OpenAICompatibleBackend {
 impl LlmBackend for OpenAICompatibleBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
         if self.config.api_key.is_empty() {
-            anyhow::bail!("{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
-                self.config.name, self.config.name);
+            anyhow::bail!(
+                "{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                self.config.name,
+                self.config.name
+            );
         }
 
         let request = self.create_request(message);
         let url = format!("{}/chat/completions", self.config.base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .json(&request)
@@ -138,10 +138,10 @@ impl LlmBackend for OpenAICompatibleBackend {
             anyhow::bail!("{} API error {}: {}", self.config.name, status, error_text);
         }
 
-        let response_data: ChatCompletionResponse = response
-            .json()
-            .await
-            .context(format!("Failed to parse response from {}", self.config.name))?;
+        let response_data: ChatCompletionResponse = response.json().await.context(format!(
+            "Failed to parse response from {}",
+            self.config.name
+        ))?;
 
         response_data
             .choices
@@ -158,15 +158,18 @@ impl LlmBackend for OpenAICompatibleBackend {
         tools: &ToolRegistry,
     ) -> Result<LlmResponse> {
         if self.config.api_key.is_empty() {
-            anyhow::bail!("{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
-                self.config.name, self.config.name);
+            anyhow::bail!(
+                "{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                self.config.name,
+                self.config.name
+            );
         }
 
         let request = self.create_request_with_tools(conversation, tools);
         let url = format!("{}/chat/completions", self.config.base_url);
 
-
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .json(&request)
@@ -180,10 +183,10 @@ impl LlmBackend for OpenAICompatibleBackend {
             anyhow::bail!("{} API error {}: {}", self.config.name, status, error_text);
         }
 
-        let response_data: ChatCompletionResponse = response
-            .json()
-            .await
-            .context(format!("Failed to parse response from {}", self.config.name))?;
+        let response_data: ChatCompletionResponse = response.json().await.context(format!(
+            "Failed to parse response from {}",
+            self.config.name
+        ))?;
 
         if let Some(choice) = response_data.choices.first() {
             if let Some(message) = &choice.message {

@@ -81,12 +81,10 @@ impl OperationType {
             | OperationType::WriteFile(path)
             | OperationType::CreateFile(path)
             | OperationType::DeleteFile(path)
-            | OperationType::ListDirectory(path) => {
-                std::path::Path::new(path)
-                    .parent()
-                    .and_then(|p| p.to_str())
-                    .map(|s| s.to_string())
-            }
+            | OperationType::ListDirectory(path) => std::path::Path::new(path)
+                .parent()
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string()),
             OperationType::ExecuteBash(_) => None,
         }
     }
@@ -130,7 +128,8 @@ pub struct PermissionManager {
     /// Event sender for sending permission requests to UI
     event_sender: Option<mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     /// Response receiver for receiving permission responses from UI
-    response_receiver: Option<Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>>,
+    response_receiver:
+        Option<Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>>,
     /// Request ID counter for generating unique permission request IDs
     request_counter: Arc<AtomicU64>,
 }
@@ -181,7 +180,11 @@ impl PermissionManager {
     }
 
     /// Get a cache key for a specific operation and scope
-    fn get_cache_key_for_scope(&self, operation: &OperationType, scope: &PermissionScope) -> String {
+    fn get_cache_key_for_scope(
+        &self,
+        operation: &OperationType,
+        scope: &PermissionScope,
+    ) -> String {
         let kind = operation.operation_kind();
         match scope {
             PermissionScope::Specific(target) => format!("{}:specific:{}", kind, target),
@@ -263,10 +266,15 @@ impl PermissionManager {
 
     /// Ask user for permission interactively
     /// Returns (allowed, optional_scope)
-    async fn ask_user_permission(&self, operation: &OperationType) -> Result<(bool, Option<PermissionScope>)> {
+    async fn ask_user_permission(
+        &self,
+        operation: &OperationType,
+    ) -> Result<(bool, Option<PermissionScope>)> {
         // If we have an event sender, use the TUI system
         if let (Some(sender), Some(receiver)) = (&self.event_sender, &self.response_receiver) {
-            return self.ask_user_permission_via_tui(operation, sender, receiver).await;
+            return self
+                .ask_user_permission_via_tui(operation, sender, receiver)
+                .await;
         }
 
         // Otherwise, fall back to CLI/println approach
@@ -281,14 +289,19 @@ impl PermissionManager {
         receiver: &Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
     ) -> Result<(bool, Option<PermissionScope>)> {
         // Generate unique request ID
-        let request_id = self.request_counter.fetch_add(1, Ordering::SeqCst).to_string();
+        let request_id = self
+            .request_counter
+            .fetch_add(1, Ordering::SeqCst)
+            .to_string();
 
         // Send permission request event
         let event = crate::conversations::AgentEvent::PermissionRequest {
             operation: operation.clone(),
             request_id: request_id.clone(),
         };
-        sender.send(event).context("Failed to send permission request event")?;
+        sender
+            .send(event)
+            .context("Failed to send permission request event")?;
 
         // Wait for response
         // Need to avoid holding lock across await by using a loop with try_recv
@@ -317,7 +330,10 @@ impl PermissionManager {
     }
 
     /// Ask user for permission via CLI (fallback for non-TUI mode)
-    async fn ask_user_permission_via_cli(&self, operation: &OperationType) -> Result<(bool, Option<PermissionScope>)> {
+    async fn ask_user_permission_via_cli(
+        &self,
+        operation: &OperationType,
+    ) -> Result<(bool, Option<PermissionScope>)> {
         println!(); // Add newline for spacing before permission prompt
 
         let warning_emoji = if operation.is_destructive() {
@@ -326,7 +342,8 @@ impl PermissionManager {
             "🔒"
         };
 
-        println!("{} Permission required to {}",
+        println!(
+            "{} Permission required to {}",
             warning_emoji,
             operation.description()
         );
@@ -354,7 +371,10 @@ impl PermissionManager {
             println!("  [d] Always for this directory ({})", dir);
         }
 
-        println!("  [A] Always for all {} operations", operation.operation_kind());
+        println!(
+            "  [A] Always for all {} operations",
+            operation.operation_kind()
+        );
 
         print!("Choice [y/N/a/d/A]: ");
         io::stdout().flush().context("Failed to flush stdout")?;
@@ -371,13 +391,19 @@ impl PermissionManager {
             }
             "a" => {
                 let target = operation.target().to_string();
-                println!("ℹ️  Permission for '{}' will be remembered for this session.", target);
+                println!(
+                    "ℹ️  Permission for '{}' will be remembered for this session.",
+                    target
+                );
                 Ok((true, Some(PermissionScope::Specific(target))))
             }
             "d" | "D" => {
                 if let Some(dir) = operation.parent_directory() {
-                    println!("ℹ️  All {} operations in '{}' will be allowed for this session.",
-                             operation.operation_kind(), dir);
+                    println!(
+                        "ℹ️  All {} operations in '{}' will be allowed for this session.",
+                        operation.operation_kind(),
+                        dir
+                    );
                     Ok((true, Some(PermissionScope::Directory(dir))))
                 } else {
                     println!("⚠️  Directory-based permission not available for this operation.");
@@ -387,8 +413,10 @@ impl PermissionManager {
                 }
             }
             "A" => {
-                println!("ℹ️  All {} operations will be allowed for this session.",
-                         operation.operation_kind());
+                println!(
+                    "ℹ️  All {} operations will be allowed for this session.",
+                    operation.operation_kind()
+                );
                 Ok((true, Some(PermissionScope::Global)))
             }
             _ => {
@@ -521,18 +549,22 @@ mod tests {
 
         // Should match for files in the same directory
         assert_eq!(
-            manager.check_cache(&OperationType::WriteFile("/path/to/dir/file1.txt".to_string())),
+            manager.check_cache(&OperationType::WriteFile(
+                "/path/to/dir/file1.txt".to_string()
+            )),
             Some(true)
         );
         assert_eq!(
-            manager.check_cache(&OperationType::WriteFile("/path/to/dir/file2.txt".to_string())),
+            manager.check_cache(&OperationType::WriteFile(
+                "/path/to/dir/file2.txt".to_string()
+            )),
             Some(true)
         );
 
         // Should NOT match for files in different directory
-        assert!(
-            manager.check_cache(&OperationType::WriteFile("/other/dir/file.txt".to_string())).is_none()
-        );
+        assert!(manager
+            .check_cache(&OperationType::WriteFile("/other/dir/file.txt".to_string()))
+            .is_none());
     }
 
     #[test]
@@ -554,9 +586,9 @@ mod tests {
         );
 
         // Should NOT match for different operation types
-        assert!(
-            manager.check_cache(&OperationType::ReadFile("/any/path/file.txt".to_string())).is_none()
-        );
+        assert!(manager
+            .check_cache(&OperationType::ReadFile("/any/path/file.txt".to_string()))
+            .is_none());
     }
 
     #[test]
@@ -611,12 +643,16 @@ mod tests {
             true,
         );
 
-        assert!(manager.check_cache(&OperationType::WriteFile("/path/file.txt".to_string())).is_some());
+        assert!(manager
+            .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
+            .is_some());
 
         // Clear cache
         manager.clear_cache();
 
         // Should no longer be cached
-        assert!(manager.check_cache(&OperationType::WriteFile("/path/file.txt".to_string())).is_none());
+        assert!(manager
+            .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
+            .is_none());
     }
 }

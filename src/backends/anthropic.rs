@@ -1,10 +1,10 @@
+use super::{LlmBackend, LlmResponse};
+use crate::conversations::{Conversation, ConversationMessage, ToolCall};
+use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use super::{LlmBackend, LlmResponse};
-use crate::conversations::{Conversation, ConversationMessage, ToolCall};
-use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
@@ -57,9 +57,18 @@ enum AnthropicContent {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ContentBlock {
-    Text { text: String },
-    ToolUse { id: String, name: String, input: Value },
-    ToolResult { tool_use_id: String, content: String },
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,7 +94,10 @@ impl AnthropicBackend {
         Ok(Self { client, config })
     }
 
-    fn convert_messages(&self, messages: &[ConversationMessage]) -> (Option<String>, Vec<AnthropicMessage>) {
+    fn convert_messages(
+        &self,
+        messages: &[ConversationMessage],
+    ) -> (Option<String>, Vec<AnthropicMessage>) {
         let mut system_prompt = None;
         let mut anthropic_messages: Vec<AnthropicMessage> = Vec::new();
 
@@ -150,7 +162,9 @@ impl AnthropicBackend {
 
                         // Convert last message content to blocks if needed
                         let mut merged_blocks = match &last_msg.content {
-                            AnthropicContent::Text(text) => vec![ContentBlock::Text { text: text.clone() }],
+                            AnthropicContent::Text(text) => {
+                                vec![ContentBlock::Text { text: text.clone() }]
+                            }
                             AnthropicContent::Blocks(blocks) => blocks.clone(),
                         };
 
@@ -160,10 +174,7 @@ impl AnthropicBackend {
                     }
                 }
 
-                anthropic_messages.push(AnthropicMessage {
-                    role,
-                    content,
-                });
+                anthropic_messages.push(AnthropicMessage { role, content });
             }
         }
 
@@ -227,7 +238,8 @@ impl AnthropicBackend {
     async fn send_request(&self, request: &MessagesRequest) -> Result<MessagesResponse> {
         let url = format!("{}/messages", self.config.base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", "2023-06-01")

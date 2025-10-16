@@ -40,18 +40,18 @@ pub trait LlmBackend: Send + Sync {
     fn model_name(&self) -> &str;
 }
 
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
 pub mod mock;
 #[cfg(feature = "openai-compatible")]
 pub mod openai_compatible;
 #[cfg(feature = "together-ai")]
 pub mod together_ai;
-#[cfg(feature = "anthropic")]
-pub mod anthropic;
 
+#[cfg(feature = "anthropic")]
+pub use anthropic::{AnthropicBackend, AnthropicConfig};
 pub use mock::MockBackend;
 #[cfg(feature = "openai-compatible")]
 pub use openai_compatible::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use together_ai::{TogetherAiBackend, TogetherAiConfig};
-#[cfg(feature = "anthropic")]
-pub use anthropic::{AnthropicBackend, AnthropicConfig};

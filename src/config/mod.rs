@@ -1,7 +1,7 @@
+use crate::console::VerbosityLevel;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
-use crate::console::VerbosityLevel;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BackendConfig {
@@ -115,7 +115,8 @@ impl AppConfig {
             "model" => config.model = Some(value),
             "base_url" => config.base_url = Some(value),
             "temperature" => {
-                let temp: f32 = value.parse()
+                let temp: f32 = value
+                    .parse()
                     .context("Temperature must be a valid number")?;
                 config.temperature = Some(temp);
             }
