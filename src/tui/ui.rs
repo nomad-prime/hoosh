@@ -14,19 +14,31 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
     let vertical = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(3),
+        Constraint::Length(1),
         Constraint::Min(0),
     ]);
-    let [status_area, input_area, _spacer] = vertical.areas(viewport_area);
+    let [status_area, input_area, mode_area, _spacer] = vertical.areas(viewport_area);
 
     render_status(frame, status_area, app);
     render_input(frame, input_area, app);
+
+    if !app.is_completing()
+        && !app.is_showing_permission_dialog()
+        && !app.is_showing_approval_dialog()
+    {
+        render_mode_indicator(frame, mode_area, app);
+    }
 
     if app.is_completing() {
         render_completion_popup(frame, input_area, app);
     }
 
     if app.is_showing_permission_dialog() {
-        render_permission_dialog(frame, input_area, app);
+        render_permission_dialog(frame, mode_area, app);
+    }
+
+    if app.is_showing_approval_dialog() {
+        render_approval_dialog(frame, mode_area, app);
     }
 }
 
@@ -71,12 +83,12 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
         }
     };
 
+    // Build status line (agent status only, no mode indicator)
     if !status_text.is_empty() {
-        let status_line = Line::from(vec![Span::styled(
+        let status_line = Line::from(Span::styled(
             status_text,
             Style::default().fg(Color::Rgb(142, 240, 204)),
-        )]);
-
+        ));
         let paragraph = Paragraph::new(status_line);
         frame.render_widget(paragraph, area);
     }
@@ -102,6 +114,39 @@ fn render_input(frame: &mut Frame, area: Rect, app: &mut AppState) {
 
     // Render the input
     frame.render_widget(input_widget, text_area);
+}
+
+fn render_mode_indicator(frame: &mut Frame, area: Rect, app: &AppState) {
+    let is_autopilot = app
+        .autopilot_enabled
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    let mode_text = if is_autopilot {
+        " ⏵⏵ Autopilot"
+    } else {
+        "  ⏸ Review"
+    };
+
+    let mode_color = if is_autopilot {
+        Color::Rgb(142, 240, 204)
+    } else {
+        Color::Magenta
+    };
+
+    let mode_line = Line::from(vec![
+        Span::styled(
+            mode_text,
+            Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " (shift+tab to toggle)",
+            Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
+        ),
+    ]);
+
+    let paragraph = Paragraph::new(mode_line);
+
+    frame.render_widget(paragraph, area);
 }
 
 fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) {
@@ -155,6 +200,12 @@ fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) 
             height: popup_height,
         };
 
+        // Clear the area first to prevent text bleed-through
+        frame.render_widget(
+            Block::default().style(Style::default().bg(Color::Black)),
+            popup_area,
+        );
+
         let block = Block::default()
             .title(" File Completion ")
             .borders(Borders::ALL)
@@ -166,7 +217,7 @@ fn render_completion_popup(frame: &mut Frame, input_area: Rect, app: &AppState) 
     }
 }
 
-fn render_permission_dialog(frame: &mut Frame, input_area: Rect, app: &AppState) {
+fn render_permission_dialog(frame: &mut Frame, mode_area: Rect, app: &AppState) {
     use super::app::PermissionOption;
 
     if let Some(dialog_state) = &app.permission_dialog_state {
@@ -234,9 +285,9 @@ fn render_permission_dialog(frame: &mut Frame, input_area: Rect, app: &AppState)
             Style::default().fg(Color::Cyan),
         )));
 
-        // Calculate dropdown dimensions - positioned below input area
+        // Calculate dropdown dimensions - positioned below mode area
         let viewport_area = frame.area();
-        let popup_start_y = input_area.y + input_area.height;
+        let popup_start_y = mode_area.y + mode_area.height;
         let viewport_bottom = viewport_area.y + viewport_area.height;
         let available_height = viewport_bottom.saturating_sub(popup_start_y);
 
@@ -251,7 +302,7 @@ fn render_permission_dialog(frame: &mut Frame, input_area: Rect, app: &AppState)
         let dialog_height = desired_height.min(available_height).max(5);
 
         let dialog_area = Rect {
-            x: input_area.x,
+            x: mode_area.x,
             y: popup_start_y,
             width: dialog_width,
             height: dialog_height,
@@ -263,10 +314,98 @@ fn render_permission_dialog(frame: &mut Frame, input_area: Rect, app: &AppState)
             Style::default().fg(Color::Cyan)
         };
 
+        // Clear the area first to prevent text bleed-through
+        frame.render_widget(
+            Block::default().style(Style::default().bg(Color::Black)),
+            dialog_area,
+        );
+
         let block = Block::default()
             .title(" Permission Required ")
             .borders(Borders::ALL)
             .border_style(border_style)
+            .style(Style::default().bg(Color::Black));
+
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false });
+
+        frame.render_widget(paragraph, dialog_area);
+    }
+}
+
+fn render_approval_dialog(frame: &mut Frame, mode_area: Rect, app: &AppState) {
+    if let Some(dialog_state) = &app.approval_dialog_state {
+        // Build the dialog content
+        let mut lines = vec![];
+
+        // Tool name header
+        lines.push(Line::from(vec![
+            Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(&dialog_state.tool_name),
+        ]));
+
+        lines.push(Line::from(""));
+
+        // Options
+        let options = [("y", "Approve"), ("n", "Reject")];
+
+        for (idx, (key, label)) in options.iter().enumerate() {
+            let is_selected = idx == dialog_state.selected_index;
+            let prefix = if is_selected { "> " } else { "  " };
+            let text = format!("{}[{}] {}", prefix, key, label);
+
+            let style = if is_selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+
+            lines.push(Line::from(Span::styled(text, style)));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "↑/↓ navigate, Enter/y approve, n/Esc reject",
+            Style::default().fg(Color::Cyan),
+        )));
+
+        // Calculate dialog dimensions - positioned below mode area
+        let viewport_area = frame.area();
+        let popup_start_y = mode_area.y + mode_area.height;
+        let viewport_bottom = viewport_area.y + viewport_area.height;
+        let available_height = viewport_bottom.saturating_sub(popup_start_y);
+
+        let max_width = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.len()).sum::<usize>())
+            .max()
+            .unwrap_or(50) as u16;
+
+        let dialog_width = (max_width + 4).min(viewport_area.width.saturating_sub(4));
+        let desired_height = lines.len() as u16 + 2;
+        let dialog_height = desired_height.min(available_height).max(5);
+
+        let dialog_area = Rect {
+            x: mode_area.x,
+            y: popup_start_y,
+            width: dialog_width,
+            height: dialog_height,
+        };
+
+        // Clear the area first to prevent text bleed-through
+        frame.render_widget(
+            Block::default().style(Style::default().bg(Color::Black)),
+            dialog_area,
+        );
+
+        let block = Block::default()
+            .title(" Approval Required ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
             .style(Style::default().bg(Color::Black));
 
         let paragraph = Paragraph::new(lines)

@@ -93,6 +93,7 @@ pub async fn run(
     // Create event channels
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
     // Configure permission manager
     let permission_manager = permission_manager
@@ -100,7 +101,9 @@ pub async fn run(
         .with_response_receiver(permission_response_rx);
 
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager)
-        .with_event_sender(event_tx.clone());
+        .with_event_sender(event_tx.clone())
+        .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled)) // Share autopilot state
+        .with_approval_receiver(approval_response_rx);
 
     // Create context
     let context = EventLoopContext {
@@ -112,6 +115,7 @@ pub async fn run(
         event_rx,
         event_tx,
         permission_response_tx,
+        approval_response_tx,
         command_registry,
         agent_manager,
         working_dir: working_dir_display,

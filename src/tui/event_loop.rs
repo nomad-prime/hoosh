@@ -10,14 +10,17 @@ use tokio::task::JoinHandle;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
-use crate::conversations::{AgentEvent, Conversation, PermissionResponse};
+use crate::conversations::{AgentEvent, ApprovalResponse, Conversation, PermissionResponse};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
 use super::actions::{execute_command, start_agent_conversation};
 use super::app::{AppState, MessageLine};
-use super::input_handlers::{handle_completion_keys, handle_normal_keys, handle_permission_keys, KeyHandlerResult};
+use super::input_handlers::{
+    handle_approval_keys, handle_completion_keys, handle_normal_keys, handle_permission_keys,
+    KeyHandlerResult,
+};
 use super::terminal::Tui;
 use super::ui;
 
@@ -30,6 +33,7 @@ pub struct EventLoopContext {
     pub event_rx: mpsc::UnboundedReceiver<AgentEvent>,
     pub event_tx: mpsc::UnboundedSender<AgentEvent>,
     pub permission_response_tx: mpsc::UnboundedSender<PermissionResponse>,
+    pub approval_response_tx: mpsc::UnboundedSender<ApprovalResponse>,
     pub command_registry: Arc<CommandRegistry>,
     pub agent_manager: Arc<AgentManager>,
     pub working_dir: String,
@@ -81,6 +85,12 @@ pub async fn run_event_loop(
                 } => {
                     app.show_permission_dialog(operation, request_id);
                 }
+                AgentEvent::ApprovalRequest {
+                    tool_call_id,
+                    tool_name,
+                } => {
+                    app.show_approval_dialog(tool_call_id, tool_name);
+                }
                 AgentEvent::Exit => {
                     app.should_quit = true;
                 }
@@ -109,7 +119,12 @@ pub async fn run_event_loop(
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 // Try permission dialog handler first
-                match handle_permission_keys(key.code, key.modifiers, app, &context.permission_response_tx) {
+                match handle_permission_keys(
+                    key.code,
+                    key.modifiers,
+                    app,
+                    &context.permission_response_tx,
+                ) {
                     KeyHandlerResult::Handled => continue,
                     KeyHandlerResult::NotHandled => {}
                     KeyHandlerResult::ShouldQuit => {
@@ -125,7 +140,43 @@ pub async fn run_event_loop(
                         if let Some(task) = agent_task.take() {
                             task.abort();
                             app.agent_state = super::events::AgentState::Idle;
-                            app.add_message("⚠️  Task cancelled by user (press Ctrl+C again to quit)\n".to_string());
+                            app.add_message(
+                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                    .to_string(),
+                            );
+                        }
+                        app.should_cancel_task = false;
+                        continue;
+                    }
+                    _ => {}
+                }
+
+                // Try approval dialog handler
+                match handle_approval_keys(
+                    key.code,
+                    key.modifiers,
+                    app,
+                    &context.approval_response_tx,
+                ) {
+                    KeyHandlerResult::Handled => continue,
+                    KeyHandlerResult::NotHandled => {}
+                    KeyHandlerResult::ShouldQuit => {
+                        app.should_quit = true;
+                        // If quitting with an active agent task, abort it immediately
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                        }
+                        break;
+                    }
+                    KeyHandlerResult::ShouldCancelTask => {
+                        // Cancel the running task but don't quit
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                            app.agent_state = super::events::AgentState::Idle;
+                            app.add_message(
+                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                    .to_string(),
+                            );
                         }
                         app.should_cancel_task = false;
                         continue;
@@ -150,7 +201,10 @@ pub async fn run_event_loop(
                         if let Some(task) = agent_task.take() {
                             task.abort();
                             app.agent_state = super::events::AgentState::Idle;
-                            app.add_message("⚠️  Task cancelled by user (press Ctrl+C again to quit)\n".to_string());
+                            app.add_message(
+                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                    .to_string(),
+                            );
                         }
                         app.should_cancel_task = false;
                         continue;
@@ -174,7 +228,10 @@ pub async fn run_event_loop(
                         if let Some(task) = agent_task.take() {
                             task.abort();
                             app.agent_state = super::events::AgentState::Idle;
-                            app.add_message("⚠️  Task cancelled by user (press Ctrl+C again to quit)\n".to_string());
+                            app.add_message(
+                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                    .to_string(),
+                            );
                         }
                         app.should_cancel_task = false;
                         continue;

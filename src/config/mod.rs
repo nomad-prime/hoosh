@@ -31,6 +31,12 @@ pub struct AppConfig {
     pub default_agent: Option<String>,
     #[serde(default)]
     pub agents: HashMap<String, AgentConfig>,
+    #[serde(default = "default_review_mode")]
+    pub review_mode: bool,
+}
+
+fn default_review_mode() -> bool {
+    true // Default to review mode (safer)
 }
 
 impl Default for AppConfig {
@@ -51,6 +57,7 @@ impl Default for AppConfig {
             verbosity: None,
             default_agent: Some("assistant".to_string()),
             agents,
+            review_mode: default_review_mode(),
         }
     }
 }
