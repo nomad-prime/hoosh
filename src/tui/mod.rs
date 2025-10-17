@@ -33,7 +33,27 @@ pub async fn run(
     permission_manager: PermissionManager,
     tool_registry: ToolRegistry,
 ) -> Result<()> {
-    let mut terminal = init_terminal()?;
+    // Calculate viewport height upfront to prevent visual shift
+    // Header height: ASCII art + borders + blank line (8-9 lines)
+    let header_height = header::calculate_header_height(None); // Initially no trusted project
+
+    // Warning line (if permissions disabled): 1 line
+    let warning_height = if !permission_manager.is_enforcing() { 1 } else { 0 };
+
+    // Blank line after header: 1 line
+    let blank_line_height = 1;
+
+    // Fixed UI elements (from ui.rs Layout):
+    // - Separator: 1 line
+    // - Status area: 1 line
+    // - Input area: 3 lines
+    // - Mode area: 1 line
+    // Total: 6 lines
+    let fixed_ui_height = 6;
+
+    let viewport_height = header_height + warning_height + blank_line_height + fixed_ui_height;
+
+    let mut terminal = init_terminal(viewport_height)?;
     let mut app = AppState::new();
 
     // Load history from file
