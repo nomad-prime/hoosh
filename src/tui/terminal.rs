@@ -7,12 +7,10 @@ use std::io;
 
 pub type Tui = Terminal<CrosstermBackend<io::Stdout>>;
 
-pub fn init_terminal() -> Result<Tui> {
+pub fn init_terminal(viewport_height: u16) -> Result<Tui> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     stdout.execute(EnableBracketedPaste)?;
-
-    let viewport_height = 18;
 
     let backend = CrosstermBackend::new(stdout);
     let terminal = Terminal::with_options(
