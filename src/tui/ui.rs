@@ -278,6 +278,10 @@ fn render_permission_dialog(frame: &mut Frame, mode_area: Rect, app: &AppState) 
                     "A",
                     format!("Always for all {}", operation.operation_kind()),
                 ),
+                PermissionOption::TrustProject(project_path) => (
+                    "T",
+                    format!("Trust entire project ({})", project_path.display()),
+                ),
             };
 
             let prefix = if is_selected { "> " } else { "  " };

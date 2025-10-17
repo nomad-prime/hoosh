@@ -37,6 +37,7 @@ pub struct EventLoopContext {
     pub command_registry: Arc<CommandRegistry>,
     pub agent_manager: Arc<AgentManager>,
     pub working_dir: String,
+    pub permission_manager: Arc<crate::permissions::PermissionManager>,
 }
 
 pub async fn run_event_loop(
@@ -98,6 +99,9 @@ pub async fn run_event_loop(
                     let mut conv = context.conversation.lock().await;
                     conv.messages.clear();
                     app.add_message("Conversation cleared.\n".to_string());
+                }
+                AgentEvent::DebugMessage(msg) => {
+                    app.add_message(format!("[DEBUG] {}\n", msg));
                 }
                 other_event => {
                     app.handle_agent_event(other_event);
@@ -242,15 +246,17 @@ pub async fn run_event_loop(
                             continue;
                         }
                         KeyHandlerResult::StartCommand(input) => {
-                            execute_command(
+                            use super::actions::CommandExecutionContext;
+                            execute_command(CommandExecutionContext {
                                 input,
-                                Arc::clone(&context.command_registry),
-                                Arc::clone(&context.conversation),
-                                Arc::clone(&context.tool_registry),
-                                Arc::clone(&context.agent_manager),
-                                context.working_dir.clone(),
-                                context.event_tx.clone(),
-                            );
+                                command_registry: Arc::clone(&context.command_registry),
+                                conversation: Arc::clone(&context.conversation),
+                                tool_registry: Arc::clone(&context.tool_registry),
+                                agent_manager: Arc::clone(&context.agent_manager),
+                                working_dir: context.working_dir.clone(),
+                                event_tx: context.event_tx.clone(),
+                                permission_manager: Arc::clone(&context.permission_manager),
+                            });
                         }
                         KeyHandlerResult::StartConversation(input) => {
                             agent_task = Some(start_agent_conversation(
