@@ -4,18 +4,7 @@
 
 **Current Status**: Development mode, running via `cargo run`, basic features working.
 
----
-
 ## 🔴 CRITICAL - Must Fix Before Any Use
-
-### 1. Security Audit - API Key Handling
-
-- **Issue**: API keys stored in plaintext in `~/.config/hoosh/config.toml`
-- **Risk**: HIGH - keys could be exposed if config file is accidentally committed or shared
-- **Recommendations**:
-    - Add warning in README about protecting config file
-    - Validate file permissions on config file (should be 0600)
-- **Priority**: CRITICAL
 
 ### 2. Error Handling - Remove Unwrap() Calls
 

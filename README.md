@@ -234,6 +234,8 @@ application including:
 - Permission defaults
 - Agent configurations
 
+> ⚠️ **Security Warning**: This configuration file contains sensitive API keys. Ensure the file permissions are set to 0600 (owner read/write only) to prevent unauthorized access. Never commit this file to version control.
+
 ## Development
 
 This project follows specific coding conventions outlined in `CLAUDE.md`, including:

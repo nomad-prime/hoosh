@@ -95,6 +95,8 @@ impl AppConfig {
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
         let mut config = if config_path.exists() {
+            Self::validate_permissions(&config_path)?;
+
             let content = fs::read_to_string(&config_path).context("Failed to read config file")?;
             toml::from_str(&content).context("Failed to parse config file")?
         } else {
@@ -125,6 +127,35 @@ impl AppConfig {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Validate that the config file has secure permissions (0600)
+    fn validate_permissions(config_path: &std::path::Path) -> Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+
+            if config_path.exists() {
+                let metadata = std::fs::metadata(config_path)
+                    .context("Failed to read config file metadata")?;
+
+                let permissions = metadata.mode() & 0o777; // Mask to get only permission bits
+
+                // Check if permissions are more permissive than 0600
+                if permissions != 0o600 {
+                    eprintln!(
+                        "⚠️  Security Warning: Config file permissions are {:o} (should be 0600)",
+                        permissions
+                    );
+                    eprintln!("Run: chmod 600 {}", config_path.display());
+                }
+            }
+        }
+
+        // On non-Unix systems, we don't perform permission validation
+        // as the permission model is different
+
         Ok(())
     }
 
