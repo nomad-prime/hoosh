@@ -86,6 +86,47 @@ The current mode is always displayed in the status bar:
 - `[Review Mode 🔍]` - You'll be prompted to approve each operation
 - `[Autopilot ✈️]` - Operations execute automatically (after permission checks)
 
+### Permission Management
+
+Hoosh includes a granular permission system to control what operations the AI can perform on your system.
+
+#### Permission Dialogs
+
+When the AI attempts a potentially risky operation (file writes, deletions, bash commands), you'll see a permission dialog with several options:
+
+- **Yes, once** - Allow this specific operation
+- **No** - Deny this operation
+- **Always for this file** - Remember your choice for this specific file
+- **Always for directory** - Allow all operations of this type in the directory
+- **Always for all [type]** - Allow all operations of this type (e.g., all writes)
+- **Trust entire project** - Grant permission for all operations within the current project directory
+
+#### Trust Project Mode
+
+The "Trust Project" option is particularly useful when working on a codebase you trust:
+
+1. When prompted for permission, select the "Trust Project" option (or press `T`)
+2. All operations within the current project directory will be automatically approved
+3. A visual indicator (`🔓 Project Trusted`) appears in the TUI header
+4. Trust is session-only and cleared when you exit Hoosh
+
+**Revoking Trust:**
+
+Use the `/untrust` command to revoke project-wide trust mid-session:
+
+```
+/untrust
+```
+
+This will re-enable permission dialogs for all operations.
+
+#### Security Considerations
+
+- Trust is limited to the current working directory and its subdirectories
+- Trust is never persisted to disk - each session starts fresh
+- Operations outside the trusted directory still require permission
+- Safe operations (reading files, listing directories) are always allowed
+
 ### Configuration
 
 Manage configuration settings:

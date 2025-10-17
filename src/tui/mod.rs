@@ -72,6 +72,7 @@ pub async fn run(
         backend.model_name(),
         &working_dir_display,
         agent_name,
+        None, // Initially no project is trusted
     ) {
         app.add_styled_line(line);
     }
@@ -101,6 +102,8 @@ pub async fn run(
         .with_event_sender(event_tx.clone())
         .with_response_receiver(permission_response_rx);
 
+    let permission_manager_arc = Arc::new(permission_manager.clone());
+
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager)
         .with_event_sender(event_tx.clone())
         .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled)) // Share autopilot state
@@ -120,6 +123,7 @@ pub async fn run(
         command_registry,
         agent_manager,
         working_dir: working_dir_display,
+        permission_manager: permission_manager_arc,
     };
 
     // Run event loop

@@ -10,6 +10,7 @@ pub fn create_header_block(
     model_name: &str,
     working_dir: &str,
     agent_name: Option<&str>,
+    trusted_project: Option<&str>,
 ) -> Vec<Line<'static>> {
     // ASCII art lines (left side)
     let ascii_lines = [
@@ -28,13 +29,18 @@ pub fn create_header_block(
         "Agent: none".to_string()
     };
 
-    let info_lines = [
+    let mut info_lines = vec![
         title,
         backend_name.to_string(),
         model_name.to_string(),
         agent_info,
         working_dir.to_string(),
     ];
+
+    // Add trust indicator if project is trusted
+    if trusted_project.is_some() {
+        info_lines.push("🔓 Project Trusted".to_string());
+    }
 
     // Calculate max width needed for the box
     let max_info_width = info_lines.iter().map(|s| s.len()).max().unwrap_or(0);
@@ -47,6 +53,7 @@ pub fn create_header_block(
     let title_color = Color::Rgb(255, 255, 255);
     let info_color = Color::Rgb(150, 150, 150);
     let border_color = Color::Rgb(100, 100, 100);
+    let trust_color = Color::Rgb(255, 200, 0); // Yellow/Orange for trust indicator
 
     let mut lines = vec![
         // Top border
@@ -57,20 +64,35 @@ pub fn create_header_block(
     ];
 
     // Content lines with borders
-    for i in 0..5 {
-        let info_text = format!(" {}", info_lines[i]);
+    let num_lines = ascii_lines.len().max(info_lines.len());
+    for i in 0..num_lines {
+        let ascii_text: String = if i < ascii_lines.len() {
+            ascii_lines[i].to_string()
+        } else {
+            " ".repeat(ascii_width)
+        };
+
+        let info_text = if i < info_lines.len() {
+            format!(" {}", info_lines[i])
+        } else {
+            String::new()
+        };
+
         let padding_needed = max_info_width + 1 - info_text.len();
         let padding = " ".repeat(padding_needed);
 
         let style = if i == 0 {
             Style::default().fg(title_color)
+        } else if i == info_lines.len() - 1 && trusted_project.is_some() {
+            // Last line is the trust indicator
+            Style::default().fg(trust_color)
         } else {
             Style::default().fg(info_color)
         };
 
         lines.push(Line::from(vec![
             Span::styled("│ ", Style::default().fg(border_color)),
-            Span::styled(ascii_lines[i], Style::default().fg(logo_color)),
+            Span::styled(ascii_text, Style::default().fg(logo_color)),
             Span::styled(info_text, style),
             Span::styled(padding, Style::default()),
             Span::styled(" │", Style::default().fg(border_color)),

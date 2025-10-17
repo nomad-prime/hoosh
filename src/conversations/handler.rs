@@ -37,6 +37,7 @@ pub enum AgentEvent {
     UserRejection,
     Exit,
     ClearConversation,
+    DebugMessage(String),
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +72,7 @@ impl ConversationHandler {
             backend,
             tool_registry,
             tool_executor,
-            max_steps: 30,
+            max_steps: 1000,
             event_sender: None,
         }
     }

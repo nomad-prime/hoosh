@@ -56,6 +56,7 @@ pub enum PermissionOption {
     AlwaysForFile,
     AlwaysForDirectory(String),
     AlwaysForType,
+    TrustProject(std::path::PathBuf),
 }
 
 impl CompletionState {
@@ -108,6 +109,7 @@ pub struct AppState {
     pub current_thinking_spinner: usize,
     pub current_executing_spinner: usize,
     pub clipboard: ClipboardManager,
+    pub trusted_project: Option<std::path::PathBuf>,
 }
 
 impl AppState {
@@ -139,6 +141,7 @@ impl AppState {
             current_thinking_spinner,
             current_executing_spinner,
             clipboard: ClipboardManager::new(),
+            trusted_project: None,
         }
     }
 
@@ -174,6 +177,10 @@ impl AppState {
             .store(!current, std::sync::atomic::Ordering::Relaxed);
     }
 
+    pub fn set_trusted_project(&mut self, path: std::path::PathBuf) {
+        self.trusted_project = Some(path);
+    }
+
     pub fn show_approval_dialog(&mut self, tool_call_id: String, tool_name: String) {
         self.approval_dialog_state = Some(ApprovalDialogState::new(tool_call_id, tool_name));
     }
@@ -195,19 +202,23 @@ impl AppState {
     }
 
     pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
-        // Build the list of options based on the operation type
         let mut options = vec![
             PermissionOption::YesOnce,
             PermissionOption::No,
             PermissionOption::AlwaysForFile,
         ];
 
-        // Add directory option if applicable
         if let Some(dir) = operation.parent_directory() {
             options.push(PermissionOption::AlwaysForDirectory(dir));
         }
 
         options.push(PermissionOption::AlwaysForType);
+
+        if !matches!(operation, OperationType::ExecuteBash(_)) {
+            if let Ok(current_dir) = std::env::current_dir() {
+                options.push(PermissionOption::TrustProject(current_dir));
+            }
+        }
 
         self.permission_dialog_state = Some(PermissionDialogState {
             operation,
@@ -345,7 +356,7 @@ impl AppState {
                 self.add_message(format!("\n{}\n", preview));
             }
             AgentEvent::ToolResult { summary, .. } => {
-                self.add_message(format!(" ⎿ {}", summary));
+                self.add_message(format!("  ⎿  {}", summary));
             }
             AgentEvent::ToolExecutionComplete => {
                 self.add_message("\n".to_string());
@@ -391,6 +402,7 @@ impl AppState {
                 // ClearConversation is handled in the event loop
                 // This variant should not reach here, but we include it for exhaustiveness
             }
+            AgentEvent::DebugMessage(_) => {}
         }
     }
 

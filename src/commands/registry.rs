@@ -20,6 +20,7 @@ pub struct CommandContext {
     pub agent_manager: Option<Arc<AgentManager>>,
     pub command_registry: Option<Arc<CommandRegistry>>,
     pub working_directory: String,
+    pub permission_manager: Option<Arc<crate::permissions::PermissionManager>>,
 }
 
 impl CommandContext {
@@ -30,6 +31,7 @@ impl CommandContext {
             agent_manager: None,
             command_registry: None,
             working_directory: String::new(),
+            permission_manager: None,
         }
     }
 
@@ -55,6 +57,14 @@ impl CommandContext {
 
     pub fn with_working_directory(mut self, dir: String) -> Self {
         self.working_directory = dir;
+        self
+    }
+
+    pub fn with_permission_manager(
+        mut self,
+        manager: Arc<crate::permissions::PermissionManager>,
+    ) -> Self {
+        self.permission_manager = Some(manager);
         self
     }
 }
