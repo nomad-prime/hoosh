@@ -63,9 +63,10 @@ pub fn handle_permission_keys(
                     (true, Some(PermissionScope::Directory(dir.clone())))
                 }
                 PermissionOption::AlwaysForType => (true, Some(PermissionScope::Global)),
-                PermissionOption::TrustProject(project_path) => {
-                    (true, Some(PermissionScope::ProjectWide(project_path.clone())))
-                }
+                PermissionOption::TrustProject(project_path) => (
+                    true,
+                    Some(PermissionScope::ProjectWide(project_path.clone())),
+                ),
             }),
             KeyCode::Char('y') | KeyCode::Char('Y') => Some((true, None)),
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some((false, None)),
@@ -97,7 +98,7 @@ pub fn handle_permission_keys(
             if let Some(PermissionScope::ProjectWide(ref path)) = scope {
                 if allowed {
                     app.set_trusted_project(path.clone());
-                    app.add_message("🔓 Project trusted for this session. All operations will be auto-approved.\n".to_string());
+                    app.add_message("Project trusted for this session. \n".to_string());
                 }
             }
 

@@ -202,23 +202,22 @@ impl AppState {
     }
 
     pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
-        // Build the list of options based on the operation type
         let mut options = vec![
             PermissionOption::YesOnce,
             PermissionOption::No,
             PermissionOption::AlwaysForFile,
         ];
 
-        // Add directory option if applicable
         if let Some(dir) = operation.parent_directory() {
             options.push(PermissionOption::AlwaysForDirectory(dir));
         }
 
         options.push(PermissionOption::AlwaysForType);
 
-        // Add Trust Project option with current working directory
-        if let Ok(current_dir) = std::env::current_dir() {
-            options.push(PermissionOption::TrustProject(current_dir));
+        if !matches!(operation, OperationType::ExecuteBash(_)) {
+            if let Ok(current_dir) = std::env::current_dir() {
+                options.push(PermissionOption::TrustProject(current_dir));
+            }
         }
 
         self.permission_dialog_state = Some(PermissionDialogState {
@@ -357,7 +356,7 @@ impl AppState {
                 self.add_message(format!("\n{}\n", preview));
             }
             AgentEvent::ToolResult { summary, .. } => {
-                self.add_message(format!(" ⎿ {}", summary));
+                self.add_message(format!("  ⎿  {}", summary));
             }
             AgentEvent::ToolExecutionComplete => {
                 self.add_message("\n".to_string());
@@ -403,6 +402,7 @@ impl AppState {
                 // ClearConversation is handled in the event loop
                 // This variant should not reach here, but we include it for exhaustiveness
             }
+            AgentEvent::DebugMessage(_) => {}
         }
     }
 

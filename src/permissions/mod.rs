@@ -277,13 +277,28 @@ impl PermissionManager {
         let kind = operation.operation_kind();
         let target = operation.target();
 
+        self.send_debug(&format!(
+            "Checking cache for operation: {} ({})",
+            kind, target
+        ));
+        self.send_debug("Cache contents:");
+        for (key, &value) in cache.iter() {
+            self.send_debug(&format!("  {} => {}", key, value));
+        }
+
         // 0. Check project-wide permissions first (highest priority)
         for (key, &decision) in cache.iter() {
             if key.starts_with("project:") {
                 // Extract project path from key
-                if let Some(project_path_str) = key.strip_prefix("project:").and_then(|s| s.strip_suffix(":*")) {
-                    if let Ok(project_path) = std::path::PathBuf::from(project_path_str).canonicalize() {
+                if let Some(project_path_str) = key
+                    .strip_prefix("project:")
+                    .and_then(|s| s.strip_suffix(":*"))
+                {
+                    if let Ok(project_path) =
+                        std::path::PathBuf::from(project_path_str).canonicalize()
+                    {
                         if Self::is_within_project(target, &project_path) {
+                            self.send_debug(&format!("Found project-wide permission: {}", key));
                             return Some(decision);
                         }
                     }
@@ -294,6 +309,7 @@ impl PermissionManager {
         // 1. Check specific file/command permission
         let specific_key = format!("{}:specific:{}", kind, target);
         if let Some(&decision) = cache.get(&specific_key) {
+            self.send_debug(&format!("Found specific permission: {}", specific_key));
             return Some(decision);
         }
 
@@ -301,6 +317,7 @@ impl PermissionManager {
         if let Some(dir) = operation.parent_directory() {
             let dir_key = format!("{}:dir:{}", kind, dir);
             if let Some(&decision) = cache.get(&dir_key) {
+                self.send_debug(&format!("Found directory permission: {}", dir_key));
                 return Some(decision);
             }
         }
@@ -308,9 +325,11 @@ impl PermissionManager {
         // 3. Check global permission for this operation type
         let global_key = format!("{}:*", kind);
         if let Some(&decision) = cache.get(&global_key) {
+            self.send_debug(&format!("Found global permission: {}", global_key));
             return Some(decision);
         }
 
+        self.send_debug("No cached permission found");
         None
     }
 
@@ -326,8 +345,21 @@ impl PermissionManager {
         }
 
         let key = self.get_cache_key_for_scope(operation, &scope);
+        self.send_debug(&format!(
+            "Caching decision: {} => {} (scope: {:?})",
+            key, allowed, scope
+        ));
         if let Ok(mut cache) = self.session_cache.lock() {
             cache.insert(key, allowed);
+        }
+    }
+
+    /// Send a debug message via the event sender if available
+    fn send_debug(&self, message: &str) {
+        if let Some(sender) = &self.event_sender {
+            let _ = sender.send(crate::conversations::AgentEvent::DebugMessage(
+                message.to_string(),
+            ));
         }
     }
 
@@ -782,7 +814,8 @@ mod tests {
 
         // Create a file path outside the project
         let file_outside = std::env::temp_dir().join("outside_file.txt");
-        let operation_outside = OperationType::WriteFile(file_outside.to_string_lossy().to_string());
+        let operation_outside =
+            OperationType::WriteFile(file_outside.to_string_lossy().to_string());
 
         // Operation outside trusted project should check cache (will return None since not cached)
         // We can't test the full flow without mocking user input, but we can verify the cache check

@@ -10,37 +10,41 @@ use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
-pub fn execute_command(
-    input: String,
-    command_registry: Arc<CommandRegistry>,
-    conversation: Arc<Mutex<Conversation>>,
-    tool_registry: Arc<ToolRegistry>,
-    agent_manager: Arc<AgentManager>,
-    working_dir: String,
-    event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
-    permission_manager: Arc<crate::permissions::PermissionManager>,
-) {
+pub struct CommandExecutionContext {
+    pub input: String,
+    pub command_registry: Arc<CommandRegistry>,
+    pub conversation: Arc<Mutex<Conversation>>,
+    pub tool_registry: Arc<ToolRegistry>,
+    pub agent_manager: Arc<AgentManager>,
+    pub working_dir: String,
+    pub event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+    pub permission_manager: Arc<crate::permissions::PermissionManager>,
+}
+
+pub fn execute_command(ctx: CommandExecutionContext) {
     tokio::spawn(async move {
         let mut context = CommandContext::new()
-            .with_conversation(conversation)
-            .with_tool_registry(tool_registry)
-            .with_agent_manager(agent_manager)
-            .with_command_registry(Arc::clone(&command_registry))
-            .with_working_directory(working_dir)
-            .with_permission_manager(permission_manager);
+            .with_conversation(ctx.conversation)
+            .with_tool_registry(ctx.tool_registry)
+            .with_agent_manager(ctx.agent_manager)
+            .with_command_registry(Arc::clone(&ctx.command_registry))
+            .with_working_directory(ctx.working_dir)
+            .with_permission_manager(ctx.permission_manager);
 
-        match command_registry.execute(&input, &mut context).await {
+        match ctx.command_registry.execute(&ctx.input, &mut context).await {
             Ok(CommandResult::Success(msg)) => {
-                let _ = event_tx.send(AgentEvent::FinalResponse(msg));
+                let _ = ctx.event_tx.send(AgentEvent::FinalResponse(msg));
             }
             Ok(CommandResult::Exit) => {
-                let _ = event_tx.send(AgentEvent::Exit);
+                let _ = ctx.event_tx.send(AgentEvent::Exit);
             }
             Ok(CommandResult::ClearConversation) => {
-                let _ = event_tx.send(AgentEvent::ClearConversation);
+                let _ = ctx.event_tx.send(AgentEvent::ClearConversation);
             }
             Err(e) => {
-                let _ = event_tx.send(AgentEvent::Error(format!("Command error: {}", e)));
+                let _ = ctx
+                    .event_tx
+                    .send(AgentEvent::Error(format!("Command error: {}", e)));
             }
         }
     });
