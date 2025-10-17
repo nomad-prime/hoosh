@@ -8,19 +8,16 @@
 
 ## 🔴 CRITICAL - Must Fix Before Any Use
 
-### 2. Security Audit - API Key Handling
+### 1. Security Audit - API Key Handling
 
 - **Issue**: API keys stored in plaintext in `~/.config/hoosh/config.toml`
 - **Risk**: HIGH - keys could be exposed if config file is accidentally committed or shared
 - **Recommendations**:
     - Add warning in README about protecting config file
-    - Consider using system keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-    - Add `.config/hoosh/config.toml` to example `.gitignore` patterns in documentation
     - Validate file permissions on config file (should be 0600)
 - **Priority**: CRITICAL
-- **Effort**: 2-4 hours for keychain integration, 30 minutes for documentation
 
-### 3. Error Handling - Remove Unwrap() Calls
+### 2. Error Handling - Remove Unwrap() Calls
 
 - **Issue**: 26 instances of `.unwrap()` found in codebase
 - **Risk**: MEDIUM - potential panics in production
@@ -33,17 +30,27 @@
 
 ## 🟡 HIGH PRIORITY - MVP Blockers
 
+### 3. Graceful LLM Error Handling & Recovery
+
+- **Issue**: No graceful handling of downstream LLM errors (rate limits, API failures, timeouts)
+- **Risk**: HIGH - Poor user experience when LLM backends fail mid-conversation
+- **Required**:
+    - Detect and handle HTTP 429 (rate limit) errors with automatic retry logic
+    - Detect and handle 5xx server errors with exponential backoff
+    - Offer user option to switch model mid-flight (e.g., from gpt-4 to gpt-3.5-turbo)
+    - Offer user option to switch backend mid-flight (e.g., from OpenAI to Anthropic)
+    - Display clear, actionable error messages (e.g., "Rate limit hit. Retry in 20s or switch model?")
+    - Implement `/switch-model <model>` and `/switch-backend <backend>` commands
+    - Preserve conversation context when switching backends/models
+- **Priority**: HIGH
+- **Effort**: 4-5 hours
+- **Why MVP**: Essential for production reliability and user experience
+
 ### 4. Installation & Distribution
 
-- **Missing**:
-    - No install script or binary distribution
-    - No `cargo install` support
-    - No homebrew/package manager support
-- **Required for MVP**:
-    - Document `cargo install --path .` for local installation
-    - Add binary to PATH instructions
-    - Create release build instructions
-    - Consider GitHub releases with pre-built binaries
+- **Issue**: Currently requires `cargo run` to execute
+- **Required**: use `cargo-dist` to create distributable binaries for major platforms (Linux, macOS, Windows)
+- **Documentation**: Add installation instructions to README.md
 - **Priority**: HIGH
 - **Effort**: 2-3 hours
 
@@ -130,24 +137,11 @@
 - **Priority**: MEDIUM
 - **Effort**: 1-2 hours
 
-### 12. Performance Optimization
-
-- **Issues**:
-    - No caching of backend responses
-    - File operations could be optimized
-    - Large file handling not optimized
-- **Required**:
-    - Response caching (with TTL)
-    - Stream large files instead of loading entirely
-    - Lazy loading of agents
-- **Priority**: MEDIUM
-- **Effort**: 4-6 hours
-
 ---
 
 ## 🔵 LOW PRIORITY - Nice to Have
 
-### 13. Testing Coverage
+### 12. Testing Coverage
 
 - **Current**: 57 tests, good coverage
 - **Improvements**:
@@ -158,7 +152,7 @@
 - **Priority**: LOW (but important for long-term)
 - **Effort**: 8-10 hours
 
-### 14. Code Quality Improvements
+### 13. Code Quality Improvements
 
 - **Issues**:
     - Some functions are too long (e.g., `create_backend` in main.rs)
@@ -172,7 +166,7 @@
 - **Priority**: LOW
 - **Effort**: 4-6 hours
 
-### 15. Better Agent System
+### 14. Better Agent System
 
 - **Current**: Basic agent loading from files
 - **Improvements**:
@@ -180,10 +174,11 @@
     - Agent validation on load
     - Better error messages when agent file missing
     - `/agent reload` command
+    - cycle between agents in TUI
 - **Priority**: LOW
 - **Effort**: 2-3 hours
 
-### 16. Bash Tool Improvements
+### 15. Bash Tool Improvements
 
 - **Current**: Good security checks
 - **Improvements**:
@@ -208,157 +203,3 @@ These are explicitly mentioned in ROADMAP as post-v1:
 6. **Screenshot Tool** - Platform-specific, not critical
 7. **Markdown Rendering in TUI** - Nice-to-have UI enhancement
 8. **Multi-file Operations** - Can be done with multiple commands for MVP
-
----
-
-## 📋 Recommended MVP Release Checklist
-
-### Phase 1: Critical Fixes (Day 1)
-
-- [ ] Fix clippy warning (1 min)
-- [ ] Audit and fix unwrap() calls (2-3 hours)
-- [ ] Add API key security documentation (30 min)
-- [ ] Validate config file permissions (1 hour)
-
-### Phase 2: Essential Features (Days 2-3)
-
-- [ ] Implement conversation persistence (/save, /load, /list, /delete) (4-6 hours)
-- [ ] Add installation documentation (2 hours)
-- [ ] Improve error messages (3-4 hours)
-- [ ] Add config validation (2-3 hours)
-
-### Phase 3: Documentation & Polish (Day 4)
-
-- [ ] Write QUICKSTART.md (2 hours)
-- [ ] Write TROUBLESHOOTING.md (1 hour)
-- [ ] Update README with examples (1 hour)
-- [ ] Add command reference (1 hour)
-
-### Phase 4: Quality Improvements (Day 5)
-
-- [ ] Add logging system (2-3 hours)
-- [ ] Implement graceful shutdown (1-2 hours)
-- [ ] Command history persistence (1-2 hours)
-- [ ] Performance optimization (basic) (2-3 hours)
-
-### Phase 5: Final Testing (Day 6)
-
-- [ ] Manual testing of all features
-- [ ] Test on clean system (fresh install)
-- [ ] Verify all documentation
-- [ ] Create release build
-- [ ] Tag release (v0.1.0)
-
----
-
-## 🎯 Definition of "MVP Ready"
-
-The MVP is ready when:
-
-1. ✅ All clippy warnings resolved
-2. ✅ All tests passing
-3. ✅ No unwrap() calls that could panic in normal usage
-4. ✅ API keys properly secured (or documented risks)
-5. ✅ Conversation persistence working
-6. ✅ Can install and run without `cargo run`
-7. ✅ Documentation covers basic usage
-8. ✅ Error messages are helpful
-9. ✅ Config validation prevents common mistakes
-10. ✅ Graceful handling of missing backends/agents
-
----
-
-## 📊 Estimated Total Effort
-
-- **Critical Fixes**: 3-5 hours
-- **High Priority**: 15-20 hours
-- **Medium Priority**: 10-15 hours
-- **Total for MVP**: ~30-40 hours (1 week of focused work)
-
----
-
-## 🔒 Security Considerations
-
-### Current Security Posture
-
-- ✅ Bash command sanitization (good)
-- ✅ Permission system for file operations (good)
-- ✅ Dangerous command blocking (good)
-- ⚠️ API keys in plaintext (needs documentation/improvement)
-- ⚠️ No audit logging (consider adding)
-- ⚠️ No rate limiting on API calls (could cause unexpected costs)
-
-### Recommendations
-
-1. Add rate limiting for backend API calls
-2. Track token usage and costs
-3. Add audit log for sensitive operations
-4. Consider sandboxing bash execution (chroot/containers)
-5. Add SECURITY.md with responsible disclosure policy
-
----
-
-## 🐛 Known Technical Debt
-
-1. **Config path handling**: Repeated code in multiple places
-2. **Backend creation**: Large match statement in main.rs
-3. **Error types**: Mix of anyhow and thiserror
-4. **Agent loading**: Synchronous file I/O in async context
-5. **TUI state management**: Could be more modular
-6. **Test coverage**: Missing integration tests
-7. **Documentation**: Missing rustdoc on public APIs
-
----
-
-## 🔄 Backward Compatibility
-
-### Config File
-
-- Current format is simple TOML
-- Changes needed:
-    - Add version field to config
-    - Implement migration system for future changes
-    - Validate config schema on load
-
-### Conversation Format
-
-- Not yet implemented, so no compatibility concerns
-- Recommend JSON format with version field
-
-### Agent Files
-
-- Current format is plain text
-- Consider adding metadata header (YAML front matter?)
-
----
-
-## 📝 Notes
-
-- Focus on stability and usability over features
-- Keep scope minimal - v1.0 can add more features
-- Prioritize user experience (error messages, documentation)
-- Ensure clean upgrade path for future versions
-- Consider user feedback loop (GitHub issues, discussions)
-
----
-
-## 🚀 Post-MVP (v0.2.0 and beyond)
-
-After MVP release and gathering user feedback:
-
-1. Web search integration
-2. Enhanced multi-file operations
-3. Better performance monitoring
-4. MCP support
-5. LSP integration
-6. Project indexing
-7. ACE orchestration system
-8. Cost tracking and budgets
-9. Plugin system
-10. Cloud sync for conversations
-
----
-
-**Last Updated**: 2024-10-17
-**Version**: 0.1.0-pre-release
-**Status**: Development → MVP Preparation
