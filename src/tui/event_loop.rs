@@ -100,8 +100,9 @@ pub async fn run_event_loop(
                     conv.messages.clear();
                     app.add_message("Conversation cleared.\n".to_string());
                 }
-                AgentEvent::DebugMessage(msg) => {
-                    app.add_message(format!("[DEBUG] {}\n", msg));
+                AgentEvent::DebugMessage(_msg) => {
+                    // Debug messages are currently suppressed
+                    // app.add_message(format!("[DEBUG] {}\n", _msg));
                 }
                 other_event => {
                     app.handle_agent_event(other_event);
