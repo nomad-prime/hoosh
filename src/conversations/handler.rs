@@ -37,6 +37,7 @@ pub enum AgentEvent {
     UserRejection,
     Exit,
     ClearConversation,
+    DebugMessage(String),
 }
 
 #[derive(Debug, Clone)]
