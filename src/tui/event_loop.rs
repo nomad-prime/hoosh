@@ -143,7 +143,7 @@ pub async fn run_event_loop(
                             task.abort();
                             app.agent_state = super::events::AgentState::Idle;
                             app.add_message(
-                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                "  ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
                                     .to_string(),
                             );
                         }

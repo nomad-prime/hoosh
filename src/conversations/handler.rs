@@ -38,6 +38,13 @@ pub enum AgentEvent {
     Exit,
     ClearConversation,
     DebugMessage(String),
+    RetryEvent {
+        operation_name: String,
+        attempt: u32,
+        max_attempts: u32,
+        message: String,
+        is_success: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -97,10 +104,15 @@ impl ConversationHandler {
         self.send_event(AgentEvent::Thinking);
 
         for step in 0..self.max_steps {
-            let response = self
-                .backend
-                .send_message_with_tools(conversation, &self.tool_registry)
-                .await?;
+            let response = if let Some(ref event_sender) = self.event_sender {
+                self.backend
+                    .send_message_with_tools_and_events(conversation, &self.tool_registry, event_sender.clone())
+                    .await?
+            } else {
+                self.backend
+                    .send_message_with_tools(conversation, &self.tool_registry)
+                    .await?
+            };
 
             match self.process_response(conversation, response, step).await? {
                 TurnStatus::Continue => continue,
