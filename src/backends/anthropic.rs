@@ -1,10 +1,13 @@
 use super::{LlmBackend, LlmResponse};
-use crate::conversations::{Conversation, ConversationMessage, ToolCall};
+use crate::backends::llm_error::LlmError;
+use crate::backends::retry::retry_with_backoff;
+use crate::conversations::{AgentEvent, Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
@@ -239,7 +242,38 @@ impl AnthropicBackend {
         }
     }
 
-    async fn send_request(&self, request: &MessagesRequest) -> Result<MessagesResponse> {
+    fn http_error_to_llm_error(status: reqwest::StatusCode, error_text: String) -> LlmError {
+        let status_code = status.as_u16();
+        
+        match status_code {
+            429 => {
+                // Try to parse retry-after header
+                // We can't access the header here, but we'll handle it in the request method
+                LlmError::RateLimit { 
+                    retry_after: None,
+                    message: error_text
+                }
+            },
+            500..=599 => {
+                LlmError::ServerError { 
+                    status: status_code, 
+                    message: error_text 
+                }
+            },
+            401 | 403 => {
+                LlmError::AuthenticationError { 
+                    message: error_text 
+                }
+            },
+            _ => {
+                LlmError::Other { 
+                    message: format!("API error {}: {}", status_code, error_text) 
+                }
+            }
+        }
+    }
+
+    async fn send_request_with_error_handling(&self, request: &MessagesRequest) -> Result<MessagesResponse, LlmError> {
         let url = format!("{}/messages", self.config.base_url);
 
         let response = self
@@ -251,20 +285,66 @@ impl AnthropicBackend {
             .json(request)
             .send()
             .await
-            .context("Failed to send request to Anthropic")?;
+            .map_err(|e| LlmError::NetworkError { message: e.to_string() })?;
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
+            // Clone response before consuming it to get headers
+            let headers = response.headers().clone();
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Anthropic API error {}: {}", status, error_text);
+            
+            // Handle rate limit with retry-after header
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after = headers
+                    .get("retry-after")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+                return Err(LlmError::RateLimit { 
+                    retry_after,
+                    message: error_text
+                });
+            }
+            
+            return Err(Self::http_error_to_llm_error(status, error_text));
         }
 
         let response_data: MessagesResponse = response
             .json()
             .await
-            .context("Failed to parse response from Anthropic")?;
+            .map_err(|e| LlmError::Other { message: format!("Failed to parse response: {}", e) })?;
 
         Ok(response_data)
+    }
+
+    async fn send_message_attempt(&self, message: &str) -> Result<String, LlmError> {
+        if self.config.api_key.is_empty() {
+            return Err(LlmError::AuthenticationError {
+                message: "Anthropic API key not configured. Set it with: hoosh config set anthropic_api_key <your_key>".to_string()
+            });
+        }
+
+        let request = self.create_request(message);
+        let response = self.send_request_with_error_handling(&request).await?;
+
+        self.extract_text_from_response(response)
+            .ok_or_else(|| LlmError::Other { message: "No text content in response from Anthropic".to_string() })
+    }
+
+    async fn send_message_with_tools_attempt(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+    ) -> Result<LlmResponse, LlmError> {
+        if self.config.api_key.is_empty() {
+            return Err(LlmError::AuthenticationError {
+                message: "Anthropic API key not configured. Set it with: hoosh config set anthropic_api_key <your_key>".to_string()
+            });
+        }
+
+        let request = self.create_request_with_tools(conversation, tools);
+        let response = self.send_request_with_error_handling(&request).await?;
+
+        Ok(self.extract_llm_response(response))
     }
 
     fn extract_text_from_response(&self, response: MessagesResponse) -> Option<String> {
@@ -321,15 +401,8 @@ impl AnthropicBackend {
 #[async_trait]
 impl LlmBackend for AnthropicBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
-        if self.config.api_key.is_empty() {
-            anyhow::bail!("Anthropic API key not configured. Set it with: hoosh config set anthropic_api_key <your_key>");
-        }
-
-        let request = self.create_request(message);
-        let response = self.send_request(&request).await?;
-
-        self.extract_text_from_response(response)
-            .ok_or_else(|| anyhow::anyhow!("No text content in response from Anthropic"))
+        self.send_message_attempt(message).await
+            .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     async fn send_message_with_tools(
@@ -337,14 +410,39 @@ impl LlmBackend for AnthropicBackend {
         conversation: &Conversation,
         tools: &ToolRegistry,
     ) -> Result<LlmResponse> {
-        if self.config.api_key.is_empty() {
-            anyhow::bail!("Anthropic API key not configured. Set it with: hoosh config set anthropic_api_key <your_key>");
-        }
+        self.send_message_with_tools_attempt(conversation, tools).await
+            .map_err(|e| anyhow::anyhow!(e.user_message()))
+    }
 
-        let request = self.create_request_with_tools(conversation, tools);
-        let response = self.send_request(&request).await?;
+    async fn send_message_with_events(
+        &self,
+        message: &str,
+        event_tx: UnboundedSender<AgentEvent>,
+    ) -> Result<String> {
+        let retry_result = retry_with_backoff(
+            || self.send_message_attempt(message),
+            3,
+            "Anthropic API request",
+            event_tx.clone(),
+        ).await;
+        
+        retry_result.result.map_err(|e| anyhow::anyhow!(e.user_message()))
+    }
 
-        Ok(self.extract_llm_response(response))
+    async fn send_message_with_tools_and_events(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: UnboundedSender<AgentEvent>,
+    ) -> Result<LlmResponse> {
+        let retry_result = retry_with_backoff(
+            || self.send_message_with_tools_attempt(conversation, tools),
+            3,
+            "Anthropic API request",
+            event_tx.clone(),
+        ).await;
+        
+        retry_result.result.map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     fn backend_name(&self) -> &str {
