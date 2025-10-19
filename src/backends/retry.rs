@@ -28,11 +28,17 @@ where
             Ok(result) => {
                 if attempts > 0 {
                     let success_message = format!(
-                        "✅ {} succeeded after {} attempts",
+                        "{} succeeded after {} attempts",
                         operation_name,
                         attempts + 1
                     );
-                    let event = AgentEvent::DebugMessage(success_message.clone());
+                    let event = AgentEvent::RetryEvent {
+                        operation_name: operation_name.to_string(),
+                        attempt: attempts + 1,
+                        max_attempts: max_retries + 1,
+                        message: success_message.clone(),
+                        is_success: true,
+                    };
                     let _ = event_sender.send(event.clone());
                     retry_events.push(event);
                 }
@@ -64,7 +70,13 @@ where
                     actual_delay
                 );
 
-                let event = AgentEvent::DebugMessage(retry_message.clone());
+                let event = AgentEvent::RetryEvent {
+                    operation_name: operation_name.to_string(),
+                    attempt: attempts,
+                    max_attempts: max_retries + 1,
+                    message: retry_message.clone(),
+                    is_success: false,
+                };
                 let _ = event_sender.send(event.clone());
                 retry_events.push(event);
 
@@ -83,7 +95,13 @@ where
                     format!("❌ {}: {}", operation_name, e.user_message())
                 };
 
-                let event = AgentEvent::Error(final_message.clone());
+                let event = AgentEvent::RetryEvent {
+                    operation_name: operation_name.to_string(),
+                    attempt: attempts + 1,
+                    max_attempts: max_retries + 1,
+                    message: final_message.clone(),
+                    is_success: false,
+                };
                 let _ = event_sender.send(event.clone());
                 retry_events.push(event);
 
@@ -148,8 +166,8 @@ mod tests {
         assert_eq!(events.len(), 3);
         // Check that events contain expected messages
         for event in &events {
-            if let AgentEvent::DebugMessage(msg) = event {
-                assert!(msg.contains("Attempt") || msg.contains("succeeded"));
+            if let AgentEvent::RetryEvent { message, .. } = event {
+                assert!(message.contains("Attempt") || message.contains("succeeded"));
             }
         }
     }
@@ -186,7 +204,8 @@ mod tests {
 
         // Should have 1 error event
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], AgentEvent::Error(_)));
+        // Now we expect a RetryEvent instead of Error
+        assert!(matches!(events[0], AgentEvent::RetryEvent { .. }));
     }
 
     #[tokio::test]
@@ -224,14 +243,14 @@ mod tests {
         assert_eq!(events.len(), 3);
         // First two should be retry attempts
         for i in 0..2 {
-            if let AgentEvent::DebugMessage(msg) = &events[i] {
-                assert!(msg.contains("Attempt"));
+            if let AgentEvent::RetryEvent { message, .. } = &events[i] {
+                assert!(message.contains("Attempt"));
             } else {
-                panic!("Expected DebugMessage event");
+                panic!("Expected RetryEvent event");
             }
         }
-        // Last should be error
-        assert!(matches!(events[2], AgentEvent::Error(_)));
+        // Last should be error (now a RetryEvent)
+        assert!(matches!(events[2], AgentEvent::RetryEvent { .. }));
     }
 
     #[tokio::test]
@@ -280,10 +299,10 @@ mod tests {
         // Should have 1 retry event and 1 success event
         assert_eq!(events.len(), 2);
         // First should be retry attempt with correct delay info
-        if let AgentEvent::DebugMessage(msg) = &events[0] {
-            assert!(msg.contains("Retrying in") && msg.contains("1s"));
+        if let AgentEvent::RetryEvent { message, .. } = &events[0] {
+            assert!(message.contains("Retrying in") && message.contains("1s"));
         }
         // Second should be success
-        assert!(matches!(events[1], AgentEvent::DebugMessage(_)));
+        assert!(matches!(events[1], AgentEvent::RetryEvent { .. }));
     }
 }

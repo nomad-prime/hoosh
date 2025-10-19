@@ -403,6 +403,10 @@ impl AppState {
                 // This variant should not reach here, but we include it for exhaustiveness
             }
             AgentEvent::DebugMessage(_) => {}
+            AgentEvent::RetryEvent { message, .. } => {
+                // Display retry events as debug messages for now
+                self.add_message(format!("  ⎿  {}", message));
+            }
         }
     }
 
