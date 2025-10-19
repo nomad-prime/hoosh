@@ -1,6 +1,6 @@
 use rand::Rng;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::Line;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
@@ -110,6 +110,7 @@ pub struct AppState {
     pub current_executing_spinner: usize,
     pub clipboard: ClipboardManager,
     pub trusted_project: Option<std::path::PathBuf>,
+    pub current_retry_status: Option<String>,
 }
 
 impl AppState {
@@ -142,6 +143,7 @@ impl AppState {
             current_executing_spinner,
             clipboard: ClipboardManager::new(),
             trusted_project: None,
+            current_retry_status: None,
         }
     }
 
@@ -298,23 +300,19 @@ impl AppState {
 
     pub fn add_message(&mut self, message: String) {
         let msg_line = MessageLine::Plain(message);
-        // Add to messages for history
         self.messages.push_back(msg_line.clone());
         if self.messages.len() > self.max_messages {
             self.messages.pop_front();
         }
-        // Queue for insertion above viewport
         self.pending_messages.push_back(msg_line);
     }
 
     pub fn add_styled_line(&mut self, line: Line<'static>) {
         let msg_line = MessageLine::Styled(line);
-        // Add to messages for history
         self.messages.push_back(msg_line.clone());
         if self.messages.len() > self.max_messages {
             self.messages.pop_front();
         }
-        // Queue for insertion above viewport
         self.pending_messages.push_back(msg_line);
     }
 
@@ -330,7 +328,6 @@ impl AppState {
         match event {
             AgentEvent::Thinking => {
                 self.agent_state = AgentState::Thinking;
-                // Select a new spinner for this thinking session
                 let mut rng = rand::thread_rng();
                 self.current_thinking_spinner = rng.gen_range(0..7);
             }
@@ -341,7 +338,6 @@ impl AppState {
             }
             AgentEvent::ToolCalls(tool_call_displays) => {
                 self.agent_state = AgentState::ExecutingTools;
-                // Select a new spinner for this execution session
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
                 for display_name in tool_call_displays {
@@ -352,7 +348,6 @@ impl AppState {
                 tool_name: _,
                 preview,
             } => {
-                // Display the diff preview with syntax highlighting
                 self.add_message(format!("\n{}\n", preview));
             }
             AgentEvent::ToolResult { summary, .. } => {
@@ -373,7 +368,7 @@ impl AppState {
             }
             AgentEvent::Error(error) => {
                 self.agent_state = AgentState::Idle;
-                self.add_message(format!("❌ Error: {}", error));
+                self.add_message(format!("  Error: {}", error));
             }
             AgentEvent::MaxStepsReached(max_steps) => {
                 self.agent_state = AgentState::Idle;
@@ -382,30 +377,37 @@ impl AppState {
                     max_steps
                 ));
             }
-            AgentEvent::PermissionRequest { .. } => {
-                // Permission requests are handled separately in the TUI event loop
-                // This variant should not reach here, but we include it for exhaustiveness
-            }
-            AgentEvent::ApprovalRequest { .. } => {
-                // Approval requests are handled separately in the TUI event loop
-                // This variant should not reach here, but we include it for exhaustiveness
-            }
+            AgentEvent::PermissionRequest { .. } => {}
+            AgentEvent::ApprovalRequest { .. } => {}
             AgentEvent::UserRejection => {
-                // User rejected operation, agent will stop and wait for user input
                 self.agent_state = AgentState::Idle;
             }
-            AgentEvent::Exit => {
-                // Exit is handled in the event loop
-                // This variant should not reach here, but we include it for exhaustiveness
-            }
-            AgentEvent::ClearConversation => {
-                // ClearConversation is handled in the event loop
-                // This variant should not reach here, but we include it for exhaustiveness
-            }
+            AgentEvent::Exit => {}
+            AgentEvent::ClearConversation => {}
             AgentEvent::DebugMessage(_) => {}
-            AgentEvent::RetryEvent { message, .. } => {
-                // Display retry events as debug messages for now
-                self.add_message(format!("  ⎿  {}", message));
+            AgentEvent::RetryEvent {
+                message,
+                is_success,
+                attempt,
+                max_attempts,
+                ..
+            } => {
+                if is_success {
+                    self.current_retry_status = None;
+                    self.add_message(format!("  ⎿  {}", message));
+                } else if attempt < max_attempts {
+                    self.current_retry_status = Some(message.clone());
+                } else {
+                    self.current_retry_status = None;
+                    self.agent_state = AgentState::Idle;
+                    let styled_line = Line::from(Span::styled(
+                        format!("  ⎿  {}", message),
+                        Style::default()
+                            .fg(Color::Red)
+                            .add_modifier(Modifier::ITALIC),
+                    ));
+                    self.add_styled_line(styled_line);
+                }
             }
         }
     }
