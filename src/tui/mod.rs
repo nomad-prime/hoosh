@@ -4,9 +4,11 @@ mod clipboard;
 pub mod completion;
 mod event_loop;
 mod events;
+mod handler_result;
+pub mod handlers;
 mod header;
 pub mod history;
-mod input_handlers;
+mod input_handler;
 mod terminal;
 mod ui;
 
@@ -38,7 +40,11 @@ pub async fn run(
     let header_height = header::calculate_header_height(None); // Initially no trusted project
 
     // Warning line (if permissions disabled): 1 line
-    let warning_height = if !permission_manager.is_enforcing() { 1 } else { 0 };
+    let warning_height = if !permission_manager.is_enforcing() {
+        1
+    } else {
+        0
+    };
 
     // Blank line after header: 1 line
     let blank_line_height = 1;
@@ -65,7 +71,10 @@ pub async fn run(
 
     // Setup working directory
     let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let working_dir_display = working_dir.to_str().map(|s| s.to_string()).unwrap_or_else(|| ".".to_string());
+    let working_dir_display = working_dir
+        .to_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| ".".to_string());
 
     // Register completers
     let file_completer = FileCompleter::new(working_dir.clone());
@@ -129,6 +138,22 @@ pub async fn run(
         .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled)) // Share autopilot state
         .with_approval_receiver(approval_response_rx);
 
+    // Create and register input handlers in priority order
+    let input_handlers: Vec<Box<dyn input_handler::InputHandler + Send>> = vec![
+        // High priority: dialogs
+        Box::new(handlers::PermissionHandler::new(
+            permission_response_tx.clone(),
+        )),
+        Box::new(handlers::ApprovalHandler::new(approval_response_tx.clone())),
+        Box::new(handlers::CompletionHandler::new()),
+        // Medium priority: special keys
+        Box::new(handlers::QuitHandler::new()),
+        Box::new(handlers::SubmitHandler::new()),
+        // Low priority: paste and text input (fallbacks)
+        Box::new(handlers::PasteHandler::new()),
+        Box::new(handlers::TextInputHandler::new()),
+    ];
+
     // Create context
     let context = EventLoopContext {
         backend,
@@ -138,12 +163,11 @@ pub async fn run(
         conversation,
         event_rx,
         event_tx,
-        permission_response_tx,
-        approval_response_tx,
         command_registry,
         agent_manager,
         working_dir: working_dir_display,
         permission_manager: permission_manager_arc,
+        input_handlers,
     };
 
     // Run event loop

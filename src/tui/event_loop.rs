@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event};
+use crossterm::event;
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Paragraph, Widget};
 use std::sync::Arc;
@@ -10,17 +10,14 @@ use tokio::task::JoinHandle;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
-use crate::conversations::{AgentEvent, ApprovalResponse, Conversation, PermissionResponse};
+use crate::conversations::{AgentEvent, Conversation};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
 use super::actions::{execute_command, start_agent_conversation};
 use super::app::{AppState, MessageLine};
-use super::input_handlers::{
-    handle_approval_keys, handle_completion_keys, handle_normal_keys, handle_paste,
-    handle_permission_keys, KeyHandlerResult,
-};
+use super::input_handler::InputHandler;
 use super::terminal::Tui;
 use super::ui;
 
@@ -32,12 +29,11 @@ pub struct EventLoopContext {
     pub conversation: Arc<Mutex<Conversation>>,
     pub event_rx: mpsc::UnboundedReceiver<AgentEvent>,
     pub event_tx: mpsc::UnboundedSender<AgentEvent>,
-    pub permission_response_tx: mpsc::UnboundedSender<PermissionResponse>,
-    pub approval_response_tx: mpsc::UnboundedSender<ApprovalResponse>,
     pub command_registry: Arc<CommandRegistry>,
     pub agent_manager: Arc<AgentManager>,
     pub working_dir: String,
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
+    pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
 }
 
 pub async fn run_event_loop(
@@ -122,158 +118,69 @@ pub async fn run_event_loop(
 
         // Poll for keyboard and mouse events
         if event::poll(Duration::from_millis(100))? {
-            match event::read()? {
-                Event::Paste(text) => {
-                    handle_paste(text, app);
+            let event = event::read()?;
+            let agent_task_active = agent_task.is_some();
+
+            // Iterate through handlers in order until one handles the event
+            for handler in &mut context.input_handlers {
+                if !handler.should_handle(&event, app) {
+                    continue;
                 }
-                Event::Key(key) => {
-                    // Try permission dialog handler first
-                    match handle_permission_keys(
-                        key.code,
-                        key.modifiers,
-                        app,
-                        &context.permission_response_tx,
-                    ) {
-                        KeyHandlerResult::Handled => continue,
-                        KeyHandlerResult::NotHandled => {}
-                        KeyHandlerResult::ShouldQuit => {
-                            app.should_quit = true;
-                            // If quitting with an active agent task, abort it immediately
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                            }
-                            break;
-                        }
-                        KeyHandlerResult::ShouldCancelTask => {
-                            // Cancel the running task but don't quit
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                                app.agent_state = super::events::AgentState::Idle;
-                                app.add_message(
-                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                        .to_string(),
-                                );
-                            }
-                            app.should_cancel_task = false;
-                            continue;
-                        }
-                        _ => {}
-                    }
 
-                    // Try approval dialog handler
-                    match handle_approval_keys(
-                        key.code,
-                        key.modifiers,
-                        app,
-                        &context.approval_response_tx,
-                    ) {
-                        KeyHandlerResult::Handled => continue,
-                        KeyHandlerResult::NotHandled => {}
-                        KeyHandlerResult::ShouldQuit => {
-                            app.should_quit = true;
-                            // If quitting with an active agent task, abort it immediately
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                            }
-                            break;
-                        }
-                        KeyHandlerResult::ShouldCancelTask => {
-                            // Cancel the running task but don't quit
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                                app.agent_state = super::events::AgentState::Idle;
-                                app.add_message(
-                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                        .to_string(),
-                                );
-                            }
-                            app.should_cancel_task = false;
-                            continue;
-                        }
-                        _ => {}
+                match handler.handle_event(&event, app, agent_task_active).await {
+                    Ok(super::handler_result::KeyHandlerResult::Handled) => {
+                        break;
                     }
-
-                    // Try completion handler
-                    match handle_completion_keys(key.code, app).await {
-                        KeyHandlerResult::Handled => continue,
-                        KeyHandlerResult::NotHandled => {}
-                        KeyHandlerResult::ShouldQuit => {
-                            app.should_quit = true;
-                            // If quitting with an active agent task, abort it immediately
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                            }
-                            break;
+                    Ok(super::handler_result::KeyHandlerResult::ShouldQuit) => {
+                        app.should_quit = true;
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
                         }
-                        KeyHandlerResult::ShouldCancelTask => {
-                            // Cancel the running task but don't quit
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                                app.agent_state = super::events::AgentState::Idle;
-                                app.add_message(
-                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                        .to_string(),
-                                );
-                            }
-                            app.should_cancel_task = false;
-                            continue;
-                        }
-                        _ => {}
+                        break;
                     }
-
-                    // Normal key handling
-                    let agent_task_active = agent_task.is_some();
-                    match handle_normal_keys(key.code, key.modifiers, app, agent_task_active).await
-                    {
-                        KeyHandlerResult::ShouldQuit => {
-                            app.should_quit = true;
-                            // If quitting with an active agent task, abort it immediately
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                            }
-                            break;
+                    Ok(super::handler_result::KeyHandlerResult::ShouldCancelTask) => {
+                        if let Some(task) = agent_task.take() {
+                            task.abort();
+                            app.agent_state = super::events::AgentState::Idle;
+                            app.add_message(
+                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                    .to_string(),
+                            );
                         }
-                        KeyHandlerResult::ShouldCancelTask => {
-                            // Cancel the running task but don't quit
-                            if let Some(task) = agent_task.take() {
-                                task.abort();
-                                app.agent_state = super::events::AgentState::Idle;
-                                app.add_message(
-                                    " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
-                                        .to_string(),
-                                );
-                            }
-                            app.should_cancel_task = false;
-                            continue;
-                        }
-                        KeyHandlerResult::StartCommand(input) => {
-                            use super::actions::CommandExecutionContext;
-                            execute_command(CommandExecutionContext {
-                                input,
-                                command_registry: Arc::clone(&context.command_registry),
-                                conversation: Arc::clone(&context.conversation),
-                                tool_registry: Arc::clone(&context.tool_registry),
-                                agent_manager: Arc::clone(&context.agent_manager),
-                                working_dir: context.working_dir.clone(),
-                                event_tx: context.event_tx.clone(),
-                                permission_manager: Arc::clone(&context.permission_manager),
-                            });
-                        }
-                        KeyHandlerResult::StartConversation(input) => {
-                            agent_task = Some(start_agent_conversation(
-                                input,
-                                Arc::clone(&context.parser),
-                                Arc::clone(&context.conversation),
-                                Arc::clone(&context.backend),
-                                Arc::clone(&context.tool_registry),
-                                Arc::clone(&context.tool_executor),
-                                context.event_tx.clone(),
-                            ));
-                        }
-                        _ => {}
+                        app.should_cancel_task = false;
+                        break;
+                    }
+                    Ok(super::handler_result::KeyHandlerResult::StartCommand(input)) => {
+                        use super::actions::CommandExecutionContext;
+                        execute_command(CommandExecutionContext {
+                            input,
+                            command_registry: Arc::clone(&context.command_registry),
+                            conversation: Arc::clone(&context.conversation),
+                            tool_registry: Arc::clone(&context.tool_registry),
+                            agent_manager: Arc::clone(&context.agent_manager),
+                            working_dir: context.working_dir.clone(),
+                            event_tx: context.event_tx.clone(),
+                            permission_manager: Arc::clone(&context.permission_manager),
+                        });
+                        break;
+                    }
+                    Ok(super::handler_result::KeyHandlerResult::StartConversation(input)) => {
+                        agent_task = Some(start_agent_conversation(
+                            input,
+                            Arc::clone(&context.parser),
+                            Arc::clone(&context.conversation),
+                            Arc::clone(&context.backend),
+                            Arc::clone(&context.tool_registry),
+                            Arc::clone(&context.tool_executor),
+                            context.event_tx.clone(),
+                        ));
+                        break;
+                    }
+                    Err(_) => {
+                        // Log error but continue to next handler
+                        continue;
                     }
                 }
-                _ => {}
             }
         }
 

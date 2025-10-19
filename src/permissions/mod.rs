@@ -447,7 +447,9 @@ impl PermissionManager {
         let response = loop {
             // Try to receive in a block that drops the lock immediately
             let maybe_response = {
-                let mut rx = receiver_clone.lock().map_err(|e| anyhow::anyhow!("Failed to lock receiver: {}", e))?;
+                let mut rx = receiver_clone
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Failed to lock receiver: {}", e))?;
                 rx.try_recv().ok()
             };
 
