@@ -12,6 +12,12 @@ impl SubmitHandler {
     }
 }
 
+impl Default for SubmitHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl InputHandler for SubmitHandler {
     fn should_handle(&self, event: &Event, _app: &AppState) -> bool {

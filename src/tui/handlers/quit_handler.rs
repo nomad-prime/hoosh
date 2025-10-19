@@ -12,6 +12,12 @@ impl QuitHandler {
     }
 }
 
+impl Default for QuitHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl InputHandler for QuitHandler {
     fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
