@@ -72,7 +72,7 @@ impl Tool for WriteFileTool {
             let canonical_parent = parent.canonicalize().with_context(|| {
                 format!("Failed to resolve parent directory: {}", parent.display())
             })?;
-            canonical_parent.join(file_path.file_name().unwrap())
+            canonical_parent.join(file_path.file_name().ok_or_else(|| anyhow::anyhow!("Invalid file path: no file name"))?)
         } else {
             anyhow::bail!("Invalid file path: {}", file_path.display());
         };

@@ -229,7 +229,7 @@ mod tests {
         // Check that we have pending tool calls
         assert!(conversation.has_pending_tool_calls());
 
-        let pending_calls = conversation.get_pending_tool_calls().unwrap();
+        let pending_calls = conversation.get_pending_tool_calls().expect("Should have pending tool calls");
         assert_eq!(pending_calls.len(), 1);
         assert_eq!(pending_calls[0].function.name, "read_file");
 

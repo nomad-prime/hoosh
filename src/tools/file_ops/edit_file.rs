@@ -315,11 +315,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_edit_file_tool_basic() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
         let test_file = temp_dir.path().join("test.txt");
         let content = "Hello, World!\nThis is a test.";
 
-        fs::write(&test_file, content).await.unwrap();
+        fs::write(&test_file, content).await.expect("Failed to write test file");
 
         let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
         let args = serde_json::json!({
@@ -328,21 +328,21 @@ mod tests {
             "new_string": "Rust"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let result = tool.execute(&args).await.expect("Failed to execute tool");
         assert!(result.contains("Successfully edited"));
         assert!(result.contains("replaced 1 occurrence"));
 
-        let modified_content = fs::read_to_string(&test_file).await.unwrap();
+        let modified_content = fs::read_to_string(&test_file).await.expect("Failed to read modified file");
         assert_eq!(modified_content, "Hello, Rust!\nThis is a test.");
     }
 
     #[tokio::test]
     async fn test_edit_file_tool_replace_all() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
         let test_file = temp_dir.path().join("test.txt");
         let content = "foo bar foo baz foo";
 
-        fs::write(&test_file, content).await.unwrap();
+        fs::write(&test_file, content).await.expect("Failed to write test file");
 
         let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
         let args = serde_json::json!({
@@ -352,21 +352,21 @@ mod tests {
             "replace_all": true
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let result = tool.execute(&args).await.expect("Failed to execute tool");
         assert!(result.contains("Successfully edited"));
         assert!(result.contains("replaced 3 occurrences"));
 
-        let modified_content = fs::read_to_string(&test_file).await.unwrap();
+        let modified_content = fs::read_to_string(&test_file).await.expect("Failed to read modified file");
         assert_eq!(modified_content, "qux bar qux baz qux");
     }
 
     #[tokio::test]
     async fn test_edit_file_tool_not_unique() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
         let test_file = temp_dir.path().join("test.txt");
         let content = "foo bar foo baz";
 
-        fs::write(&test_file, content).await.unwrap();
+        fs::write(&test_file, content).await.expect("Failed to write test file");
 
         let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
         let args = serde_json::json!({
@@ -377,7 +377,7 @@ mod tests {
 
         let result = tool.execute(&args).await;
         assert!(result.is_err());
-        let error = result.unwrap_err();
+        let error = result.expect_err("Expected error but got success");
         assert!(error.to_string().contains("appears 2 times"));
         assert!(error.to_string().contains("replace_all=true"));
     }

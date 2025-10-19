@@ -65,7 +65,7 @@ pub async fn run(
 
     // Setup working directory
     let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let working_dir_display = working_dir.to_str().unwrap_or(".").to_string();
+    let working_dir_display = working_dir.to_str().map(|s| s.to_string()).unwrap_or_else(|| ".".to_string());
 
     // Register completers
     let file_completer = FileCompleter::new(working_dir.clone());
