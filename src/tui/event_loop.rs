@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crossterm::event;
 use ratatui::text::{Line, Text};
-use ratatui::widgets::{Paragraph, Widget};
+use ratatui::widgets::{Paragraph, Widget, Wrap};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -49,22 +49,59 @@ pub async fn run_event_loop(
             for msg in app.drain_pending_messages() {
                 match msg {
                     MessageLine::Plain(text) => {
-                        let lines: Vec<Line> = if text.is_empty() {
-                            vec![Line::from("")]
-                        } else {
-                            text.lines()
-                                .map(|line| Line::from(line.to_string()))
-                                .collect()
-                        };
+                        // Pre-wrap text with indentation preserved for continuation lines
+                        let terminal_width = terminal.size()?.width as usize;
+                        let mut wrapped_lines = Vec::new();
 
-                        let line_count = lines.len() as u16;
+                        if text.is_empty() {
+                            wrapped_lines.push(Line::from(""));
+                        } else {
+                            for line in text.lines() {
+                                if line.is_empty() {
+                                    wrapped_lines.push(Line::from(""));
+                                    continue;
+                                }
+
+                                // Detect leading whitespace for indentation
+                                let indent_len = line.len() - line.trim_start().len();
+                                let indent = " ".repeat(indent_len);
+
+                                // Wrap with preserved indentation for continuation lines
+                                let options = textwrap::Options::new(terminal_width)
+                                    .initial_indent("")
+                                    .subsequent_indent(&indent);
+
+                                let wrapped = textwrap::wrap(line, &options);
+                                for wrapped_line in wrapped {
+                                    wrapped_lines.push(Line::from(wrapped_line.to_string()));
+                                }
+                            }
+                        }
+
+                        let line_count = wrapped_lines.len() as u16;
                         terminal.insert_before(line_count, |buf| {
-                            Paragraph::new(Text::from(lines)).render(buf.area, buf);
+                            Paragraph::new(Text::from(wrapped_lines)).render(buf.area, buf);
                         })?;
                     }
                     MessageLine::Styled(styled_line) => {
-                        terminal.insert_before(1, |buf| {
-                            Paragraph::new(styled_line).render(buf.area, buf);
+                        // For styled lines, we'll use ratatui's wrap since preserving
+                        // style across wrapped lines is complex. Just calculate line count.
+                        let terminal_width = terminal.size()?.width as usize;
+                        let line_text: String = styled_line
+                            .spans
+                            .iter()
+                            .map(|s| s.content.as_ref())
+                            .collect();
+                        let wrapped_line_count = if line_text.is_empty() {
+                            1
+                        } else {
+                            textwrap::wrap(&line_text, terminal_width).len()
+                        };
+
+                        terminal.insert_before(wrapped_line_count as u16, |buf| {
+                            Paragraph::new(styled_line)
+                                .wrap(Wrap { trim: false })
+                                .render(buf.area, buf);
                         })?;
                     }
                 }
@@ -143,7 +180,7 @@ pub async fn run_event_loop(
                             task.abort();
                             app.agent_state = super::events::AgentState::Idle;
                             app.add_message(
-                                " ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
+                                "  ⎿ Task cancelled by user (press Ctrl+C again to quit)\n"
                                     .to_string(),
                             );
                         }

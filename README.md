@@ -18,6 +18,7 @@ development environment.
 - **Permission System**: Control what actions the AI can perform on your system
 - **Review/Autopilot Modes**: Toggle between reviewing every operation or running on autopilot (Shift+Tab)
 - **Configurable**: Customize behavior through TOML configuration files
+- **Graceful Error Handling**: Automatic retry with exponential backoff for transient errors (rate limits, server errors) with real-time user feedback through the event system
 - **CLI Interface**: Intuitive command-line interface with subcommands
 
 ## Installation

@@ -74,8 +74,6 @@ pub fn start_agent_conversation(
         let handler = ConversationHandler::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx);
 
-        if let Err(e) = handler.handle_turn(&mut conv).await {
-            eprintln!("Error handling turn: {}", e);
-        }
+        let _ = handler.handle_turn(&mut conv).await;
     })
 }
