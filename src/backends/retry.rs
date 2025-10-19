@@ -248,8 +248,8 @@ mod tests {
         // Should have 2 retry events and 1 final error event
         assert_eq!(events.len(), 3);
         // First two should be retry attempts
-        for i in 0..2 {
-            if let AgentEvent::RetryEvent { message, .. } = &events[i] {
+        for event in events.iter().take(2) {
+            if let AgentEvent::RetryEvent { message, .. } = &event {
                 assert!(message.contains("Attempt"));
             } else {
                 panic!("Expected RetryEvent event");
