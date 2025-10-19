@@ -93,9 +93,25 @@ struct Usage {
 
 impl AnthropicBackend {
     pub fn new(config: AnthropicConfig) -> Result<Self> {
-        let client = reqwest::Client::builder()
+        let mut client_builder = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(30));
+
+        // Configure HTTP proxy if environment variables are set
+        if let Ok(http_proxy) = std::env::var("HTTP_PROXY") {
+            if let Ok(proxy) = reqwest::Proxy::http(&http_proxy) {
+                client_builder = client_builder.proxy(proxy);
+            }
+        }
+
+        // Configure HTTPS proxy if environment variables are set
+        if let Ok(https_proxy) = std::env::var("HTTPS_PROXY") {
+            if let Ok(proxy) = reqwest::Proxy::https(&https_proxy) {
+                client_builder = client_builder.proxy(proxy);
+            }
+        }
+
+        let client = client_builder
             .build()
             .context("Failed to build HTTP client")?;
         Ok(Self { client, config })
@@ -244,36 +260,33 @@ impl AnthropicBackend {
 
     fn http_error_to_llm_error(status: reqwest::StatusCode, error_text: String) -> LlmError {
         let status_code = status.as_u16();
-        
+
         match status_code {
             429 => {
                 // Try to parse retry-after header
                 // We can't access the header here, but we'll handle it in the request method
-                LlmError::RateLimit { 
+                LlmError::RateLimit {
                     retry_after: None,
-                    message: error_text
-                }
-            },
-            500..=599 => {
-                LlmError::ServerError { 
-                    status: status_code, 
-                    message: error_text 
-                }
-            },
-            401 | 403 => {
-                LlmError::AuthenticationError { 
-                    message: error_text 
-                }
-            },
-            _ => {
-                LlmError::Other { 
-                    message: format!("API error {}: {}", status_code, error_text) 
+                    message: error_text,
                 }
             }
+            500..=599 => LlmError::ServerError {
+                status: status_code,
+                message: error_text,
+            },
+            401 | 403 => LlmError::AuthenticationError {
+                message: error_text,
+            },
+            _ => LlmError::Other {
+                message: format!("API error {}: {}", status_code, error_text),
+            },
         }
     }
 
-    async fn send_request_with_error_handling(&self, request: &MessagesRequest) -> Result<MessagesResponse, LlmError> {
+    async fn send_request_with_error_handling(
+        &self,
+        request: &MessagesRequest,
+    ) -> Result<MessagesResponse, LlmError> {
         let url = format!("{}/messages", self.config.base_url);
 
         let response = self
@@ -285,33 +298,35 @@ impl AnthropicBackend {
             .json(request)
             .send()
             .await
-            .map_err(|e| LlmError::NetworkError { message: e.to_string() })?;
+            .map_err(|e| LlmError::NetworkError {
+                message: e.to_string(),
+            })?;
 
         let status = response.status();
         if !status.is_success() {
             // Clone response before consuming it to get headers
             let headers = response.headers().clone();
             let error_text = response.text().await.unwrap_or_default();
-            
+
             // Handle rate limit with retry-after header
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 let retry_after = headers
                     .get("retry-after")
                     .and_then(|h| h.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok());
-                return Err(LlmError::RateLimit { 
+                return Err(LlmError::RateLimit {
                     retry_after,
-                    message: error_text
+                    message: error_text,
                 });
             }
-            
+
             return Err(Self::http_error_to_llm_error(status, error_text));
         }
 
-        let response_data: MessagesResponse = response
-            .json()
-            .await
-            .map_err(|e| LlmError::Other { message: format!("Failed to parse response: {}", e) })?;
+        let response_data: MessagesResponse =
+            response.json().await.map_err(|e| LlmError::Other {
+                message: format!("Failed to parse response: {}", e),
+            })?;
 
         Ok(response_data)
     }
@@ -327,7 +342,9 @@ impl AnthropicBackend {
         let response = self.send_request_with_error_handling(&request).await?;
 
         self.extract_text_from_response(response)
-            .ok_or_else(|| LlmError::Other { message: "No text content in response from Anthropic".to_string() })
+            .ok_or_else(|| LlmError::Other {
+                message: "No text content in response from Anthropic".to_string(),
+            })
     }
 
     async fn send_message_with_tools_attempt(
@@ -401,7 +418,8 @@ impl AnthropicBackend {
 #[async_trait]
 impl LlmBackend for AnthropicBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
-        self.send_message_attempt(message).await
+        self.send_message_attempt(message)
+            .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
@@ -410,7 +428,8 @@ impl LlmBackend for AnthropicBackend {
         conversation: &Conversation,
         tools: &ToolRegistry,
     ) -> Result<LlmResponse> {
-        self.send_message_with_tools_attempt(conversation, tools).await
+        self.send_message_with_tools_attempt(conversation, tools)
+            .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
@@ -424,9 +443,12 @@ impl LlmBackend for AnthropicBackend {
             3,
             "Anthropic API request",
             event_tx.clone(),
-        ).await;
-        
-        retry_result.result.map_err(|e| anyhow::anyhow!(e.user_message()))
+        )
+        .await;
+
+        retry_result
+            .result
+            .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     async fn send_message_with_tools_and_events(
@@ -440,9 +462,12 @@ impl LlmBackend for AnthropicBackend {
             3,
             "Anthropic API request",
             event_tx.clone(),
-        ).await;
-        
-        retry_result.result.map_err(|e| anyhow::anyhow!(e.user_message()))
+        )
+        .await;
+
+        retry_result
+            .result
+            .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     fn backend_name(&self) -> &str {

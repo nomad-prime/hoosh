@@ -16,9 +16,8 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
         Constraint::Length(1),
         Constraint::Length(3),
         Constraint::Length(1),
-        Constraint::Min(0),
     ]);
-    let [_, status_area, input_area, mode_area, _spacer] = vertical.areas(viewport_area);
+    let [_, status_area, input_area, mode_area] = vertical.areas(viewport_area);
 
     render_status(frame, status_area, app);
     render_input(frame, input_area, app);
@@ -68,21 +67,18 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
 
     let waiting_spinners = ["⠄", "⠂", "⠁", "⠂"];
 
-    // Check if we're showing dialogs (permission or approval) and show "waiting for your input" instead
-    let (status_text, status_color) = if app.is_showing_permission_dialog()
-        || app.is_showing_approval_dialog()
-    {
-        // Show waiting for input when dialogs are displayed
+    let retry_spinners = ["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"];
+
+    let (status_text, status_color) = if let Some(retry_status) = &app.current_retry_status {
+        let retry_spinner = retry_spinners[app.animation_frame % retry_spinners.len()];
+        (format!(" {} {}", retry_spinner, retry_status), Color::Red)
+    } else if app.is_showing_permission_dialog() || app.is_showing_approval_dialog() {
         let waiting_spinner = waiting_spinners[app.animation_frame % waiting_spinners.len()];
-        (
-            format!(" {} Waiting for your input", waiting_spinner),
-            Color::Yellow,
-        )
+        (format!(" {} Your turn", waiting_spinner), Color::Yellow)
     } else {
         match app.agent_state {
             AgentState::Idle => (String::new(), Color::Rgb(142, 240, 204)),
             AgentState::Thinking => {
-                // Use the fixed spinner sequence for this thinking session
                 let spinner = thinking_spinners[app.current_thinking_spinner]
                     [app.animation_frame % thinking_spinners[app.current_thinking_spinner].len()];
                 (
@@ -91,7 +87,6 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
                 )
             }
             AgentState::ExecutingTools => {
-                // Use the fixed spinner sequence for this execution session
                 let spinner = executing_spinners[app.current_executing_spinner]
                     [app.animation_frame % executing_spinners[app.current_executing_spinner].len()];
                 (
@@ -102,7 +97,6 @@ fn render_status(frame: &mut Frame, area: Rect, app: &AppState) {
         }
     };
 
-    // Build status line (agent status only, no mode indicator)
     if !status_text.is_empty() {
         let status_line = Line::from(Span::styled(status_text, Style::default().fg(status_color)));
         let paragraph = Paragraph::new(status_line);

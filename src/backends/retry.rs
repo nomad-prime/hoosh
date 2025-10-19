@@ -63,7 +63,7 @@ where
                 };
 
                 let retry_message = format!(
-                    "⏳ Attempt {}/{} failed: {}. Retrying in {:?}...",
+                    "Attempt {}/{} failed: {}. Retrying in {:?}...",
                     attempts,
                     max_retries + 1,
                     e.short_message(),
@@ -86,13 +86,13 @@ where
             Err(e) => {
                 let final_message = if attempts > 0 {
                     format!(
-                        "❌ {} failed after {} attempts: {}",
+                        "{} failed after {} attempts: {}",
                         operation_name,
                         attempts + 1,
-                        e.user_message()
+                        e.short_message()
                     )
                 } else {
-                    format!("❌ {}: {}", operation_name, e.user_message())
+                    e.user_message()
                 };
 
                 let event = AgentEvent::RetryEvent {
@@ -165,10 +165,16 @@ mod tests {
         // Should have 2 retry events and 1 success event
         assert_eq!(events.len(), 3);
         // Check that events contain expected messages
-        for event in &events {
-            if let AgentEvent::RetryEvent { message, .. } = event {
-                assert!(message.contains("Attempt") || message.contains("succeeded"));
-            }
+        // First two should be retries with correct inline_update flags
+        if let AgentEvent::RetryEvent { message, .. } = &events[0] {
+            assert!(message.contains("Attempt"));
+        }
+        if let AgentEvent::RetryEvent { message, .. } = &events[1] {
+            assert!(message.contains("Attempt"));
+        }
+        // Last should be success
+        if let AgentEvent::RetryEvent { message, .. } = &events[2] {
+            assert!(message.contains("succeeded"));
         }
     }
 

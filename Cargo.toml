@@ -31,6 +31,7 @@ dirs = "5.0"
 similar = "2.6"
 rand = "0.8"
 arboard = "3.4"
+textwrap = "0.16"
 
 # Use ureq instead of reqwest for simpler HTTP client that doesn't pull in ICU deps
 reqwest = { version = "0.12", features = ["json", "stream"], optional = true }

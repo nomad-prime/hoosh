@@ -63,9 +63,25 @@ struct ResponseMessage {
 
 impl TogetherAiBackend {
     pub fn new(config: TogetherAiConfig) -> Result<Self> {
-        let client = reqwest::Client::builder()
+        let mut client_builder = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(30));
+
+        // Configure HTTP proxy if environment variables are set
+        if let Ok(http_proxy) = std::env::var("HTTP_PROXY") {
+            if let Ok(proxy) = reqwest::Proxy::http(&http_proxy) {
+                client_builder = client_builder.proxy(proxy);
+            }
+        }
+
+        // Configure HTTPS proxy if environment variables are set
+        if let Ok(https_proxy) = std::env::var("HTTPS_PROXY") {
+            if let Ok(proxy) = reqwest::Proxy::https(&https_proxy) {
+                client_builder = client_builder.proxy(proxy);
+            }
+        }
+
+        let client = client_builder
             .build()
             .context("Failed to build HTTP client")?;
         Ok(Self { client, config })

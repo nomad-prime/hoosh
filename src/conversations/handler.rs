@@ -106,7 +106,11 @@ impl ConversationHandler {
         for step in 0..self.max_steps {
             let response = if let Some(ref event_sender) = self.event_sender {
                 self.backend
-                    .send_message_with_tools_and_events(conversation, &self.tool_registry, event_sender.clone())
+                    .send_message_with_tools_and_events(
+                        conversation,
+                        &self.tool_registry,
+                        event_sender.clone(),
+                    )
                     .await?
             } else {
                 self.backend
