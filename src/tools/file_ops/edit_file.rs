@@ -319,7 +319,9 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         let content = "Hello, World!\nThis is a test.";
 
-        fs::write(&test_file, content).await.expect("Failed to write test file");
+        fs::write(&test_file, content)
+            .await
+            .expect("Failed to write test file");
 
         let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
         let args = serde_json::json!({
@@ -332,7 +334,9 @@ mod tests {
         assert!(result.contains("Successfully edited"));
         assert!(result.contains("replaced 1 occurrence"));
 
-        let modified_content = fs::read_to_string(&test_file).await.expect("Failed to read modified file");
+        let modified_content = fs::read_to_string(&test_file)
+            .await
+            .expect("Failed to read modified file");
         assert_eq!(modified_content, "Hello, Rust!\nThis is a test.");
     }
 
@@ -342,7 +346,9 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         let content = "foo bar foo baz foo";
 
-        fs::write(&test_file, content).await.expect("Failed to write test file");
+        fs::write(&test_file, content)
+            .await
+            .expect("Failed to write test file");
 
         let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
         let args = serde_json::json!({
@@ -356,7 +362,9 @@ mod tests {
         assert!(result.contains("Successfully edited"));
         assert!(result.contains("replaced 3 occurrences"));
 
-        let modified_content = fs::read_to_string(&test_file).await.expect("Failed to read modified file");
+        let modified_content = fs::read_to_string(&test_file)
+            .await
+            .expect("Failed to read modified file");
         assert_eq!(modified_content, "qux bar qux baz qux");
     }
 
@@ -366,7 +374,9 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         let content = "foo bar foo baz";
 
-        fs::write(&test_file, content).await.expect("Failed to write test file");
+        fs::write(&test_file, content)
+            .await
+            .expect("Failed to write test file");
 
         let tool = EditFileTool::with_working_directory(temp_dir.path().to_path_buf());
         let args = serde_json::json!({

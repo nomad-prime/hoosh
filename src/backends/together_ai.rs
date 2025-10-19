@@ -60,7 +60,11 @@ struct ResponseMessage {
 
 impl TogetherAiBackend {
     pub fn new(config: TogetherAiConfig) -> Result<Self> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .context("Failed to build HTTP client")?;
         Ok(Self { client, config })
     }
 

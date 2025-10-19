@@ -259,7 +259,8 @@ mod tests {
 
         // Create history and add some entries
         {
-            let mut history = PromptHistory::with_file(100, path).expect("Failed to create history with file");
+            let mut history =
+                PromptHistory::with_file(100, path).expect("Failed to create history with file");
             history.add("command 1".to_string());
             history.add("command 2".to_string());
             history.add("command 3".to_string());
@@ -267,7 +268,8 @@ mod tests {
         }
 
         // Load history in a new instance
-        let mut history = PromptHistory::with_file(100, path).expect("Failed to create history with file");
+        let mut history =
+            PromptHistory::with_file(100, path).expect("Failed to create history with file");
         assert_eq!(history.entries.len(), 3);
         assert_eq!(history.prev(""), Some("command 3".to_string()));
         assert_eq!(history.prev(""), Some("command 2".to_string()));
@@ -290,7 +292,8 @@ mod tests {
         }
 
         // Load with max_size of 5
-        let history = PromptHistory::with_file(5, path).expect("Failed to create history with file");
+        let history =
+            PromptHistory::with_file(5, path).expect("Failed to create history with file");
         assert_eq!(history.entries.len(), 5);
         assert_eq!(history.entries[0], "command 6");
         assert_eq!(history.entries[4], "command 10");
