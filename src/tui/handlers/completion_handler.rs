@@ -12,6 +12,12 @@ impl CompletionHandler {
     }
 }
 
+impl Default for CompletionHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl InputHandler for CompletionHandler {
     fn should_handle(&self, event: &Event, app: &AppState) -> bool {

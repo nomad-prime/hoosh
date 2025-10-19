@@ -12,6 +12,12 @@ impl PasteHandler {
     }
 }
 
+impl Default for PasteHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl InputHandler for PasteHandler {
     fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
