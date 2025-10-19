@@ -23,7 +23,7 @@ impl LlmError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            LlmError::RateLimit { .. } | LlmError::ServerError { .. }
+            LlmError::RateLimit { .. } | LlmError::ServerError { .. } | LlmError::NetworkError { .. }
         )
     }
 
