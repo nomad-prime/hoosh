@@ -22,7 +22,13 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Load config to get configured verbosity level
-    let config = AppConfig::load().unwrap_or_default();
+    let config = match AppConfig::load() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Warning: Failed to load config: {}. Using default config.", e);
+            AppConfig::default()
+        }
+    };
 
     // Initialize console with effective verbosity (CLI takes precedence over config)
     let effective_verbosity = cli.get_effective_verbosity(config.get_verbosity());
@@ -47,7 +53,7 @@ async fn handle_chat(
     skip_permissions: bool,
     config: &AppConfig,
 ) -> Result<()> {
-    let backend_name = backend_name.unwrap_or(config.default_backend.clone());
+    let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
 
     let backend: Box<dyn LlmBackend> = create_backend(&backend_name, config)?;
 

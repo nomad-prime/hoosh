@@ -254,20 +254,20 @@ mod tests {
         use tempfile::NamedTempFile;
 
         // Create a temporary file
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("Failed to create temporary file");
         let path = temp_file.path();
 
         // Create history and add some entries
         {
-            let mut history = PromptHistory::with_file(100, path).unwrap();
+            let mut history = PromptHistory::with_file(100, path).expect("Failed to create history with file");
             history.add("command 1".to_string());
             history.add("command 2".to_string());
             history.add("command 3".to_string());
-            history.save().unwrap();
+            history.save().expect("Failed to save history");
         }
 
         // Load history in a new instance
-        let mut history = PromptHistory::with_file(100, path).unwrap();
+        let mut history = PromptHistory::with_file(100, path).expect("Failed to create history with file");
         assert_eq!(history.entries.len(), 3);
         assert_eq!(history.prev(""), Some("command 3".to_string()));
         assert_eq!(history.prev(""), Some("command 2".to_string()));
@@ -278,19 +278,19 @@ mod tests {
     fn test_persistence_with_max_size() {
         use tempfile::NamedTempFile;
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("Failed to create temporary file");
         let path = temp_file.path();
 
         // Write more entries than max_size
         {
-            let mut file = fs::File::create(path).unwrap();
+            let mut file = fs::File::create(path).expect("Failed to create file");
             for i in 1..=10 {
-                writeln!(file, "command {}", i).unwrap();
+                writeln!(file, "command {}", i).expect("Failed to write to file");
             }
         }
 
         // Load with max_size of 5
-        let history = PromptHistory::with_file(5, path).unwrap();
+        let history = PromptHistory::with_file(5, path).expect("Failed to create history with file");
         assert_eq!(history.entries.len(), 5);
         assert_eq!(history.entries[0], "command 6");
         assert_eq!(history.entries[4], "command 10");

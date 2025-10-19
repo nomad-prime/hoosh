@@ -140,7 +140,10 @@ impl ConversationHandler {
         response: LlmResponse,
         _step: usize,
     ) -> Result<TurnStatus> {
-        let tool_calls = response.tool_calls.clone().unwrap();
+        let tool_calls = response
+            .tool_calls
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Expected tool calls but none found"))?;
 
         conversation.add_assistant_message(response.content.clone(), Some(tool_calls.clone()));
 
@@ -267,7 +270,7 @@ mod tests {
             _conversation: &Conversation,
             _tools: &ToolRegistry,
         ) -> Result<LlmResponse> {
-            let mut index = self.current_index.lock().unwrap();
+            let mut index = self.current_index.lock().map_err(|e| anyhow::anyhow!("Failed to lock current_index: {}", e))?;
             let response = self.responses.get(*index).cloned();
             *index += 1;
             response.ok_or_else(|| anyhow::anyhow!("No more responses"))

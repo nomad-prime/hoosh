@@ -40,7 +40,7 @@ impl MessageParser {
         let mut references = Vec::new();
 
         for captures in re.captures_iter(message) {
-            let full_match_obj = captures.get(0).unwrap();
+            let full_match_obj = captures.get(0).expect("Regex match should have full match");
             let full_match = full_match_obj.as_str();
             let match_start = full_match_obj.start();
 
@@ -54,7 +54,7 @@ impl MessageParser {
                 }
             }
 
-            let file_path = captures.get(1).unwrap().as_str();
+            let file_path = captures.get(1).expect("Regex match should have file path group").as_str();
             let line_spec = captures.get(2).map(|m| m.as_str());
 
             let line_range = if let Some(line_spec) = line_spec {
@@ -235,7 +235,7 @@ mod tests {
         let parser = MessageParser::new();
 
         let message = "Please review @src/main.rs and also check @config.toml:10-20";
-        let refs = parser.find_file_references(message).unwrap();
+        let refs = parser.find_file_references(message).expect("Should find file references");
 
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].file_path, "src/main.rs");
@@ -246,13 +246,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_line_range() {
-        assert_eq!(MessageParser::parse_line_range("").unwrap(), None);
+        assert_eq!(MessageParser::parse_line_range("").expect("Should parse empty range"), None);
         assert_eq!(
-            MessageParser::parse_line_range("10").unwrap(),
+            MessageParser::parse_line_range("10").expect("Should parse single line"),
             Some((10, 10))
         );
         assert_eq!(
-            MessageParser::parse_line_range("10-20").unwrap(),
+            MessageParser::parse_line_range("10-20").expect("Should parse line range"),
             Some((10, 20))
         );
 
