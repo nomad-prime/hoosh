@@ -12,7 +12,7 @@ use crate::tools::ToolRegistry;
 pub enum AgentEvent {
     Thinking,
     AssistantThought(String),
-    ToolCalls(Vec<String>), // Display names for each tool call
+    ToolCalls(Vec<String>),
     ToolPreview {
         tool_name: String,
         preview: String,
@@ -270,7 +270,10 @@ mod tests {
             _conversation: &Conversation,
             _tools: &ToolRegistry,
         ) -> Result<LlmResponse> {
-            let mut index = self.current_index.lock().map_err(|e| anyhow::anyhow!("Failed to lock current_index: {}", e))?;
+            let mut index = self
+                .current_index
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Failed to lock current_index: {}", e))?;
             let response = self.responses.get(*index).cloned();
             *index += 1;
             response.ok_or_else(|| anyhow::anyhow!("No more responses"))
