@@ -25,7 +25,10 @@ async fn main() -> Result<()> {
     let config = match AppConfig::load() {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Warning: Failed to load config: {}. Using default config.", e);
+            eprintln!(
+                "Warning: Failed to load config: {}. Using default config.",
+                e
+            );
             AppConfig::default()
         }
     };
