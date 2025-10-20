@@ -149,7 +149,7 @@ impl Tool for ReadFileTool {
 
     async fn check_permission(
         &self,
-        args: &serde_json::Value,
+        args: &Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
         let args: ReadFileArgs =
