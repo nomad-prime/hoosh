@@ -32,7 +32,7 @@ impl InputHandler for SubmitHandler {
     ) -> anyhow::Result<KeyHandlerResult> {
         let input_text = app.get_input_text();
         if !input_text.trim().is_empty() && !agent_task_active {
-            app.add_message(format!("> {}", input_text));
+            app.add_message(format!("\n> {}", input_text));
 
             app.prompt_history.add(input_text.clone());
             app.clear_input();

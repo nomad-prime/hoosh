@@ -5,6 +5,7 @@ mod help_command;
 mod register;
 mod registry;
 mod status_command;
+mod switch_agent_command;
 mod tools_command;
 mod untrust_command;
 

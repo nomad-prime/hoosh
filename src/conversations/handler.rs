@@ -45,6 +45,9 @@ pub enum AgentEvent {
         message: String,
         is_success: bool,
     },
+    AgentSwitched {
+        new_agent_name: String,
+    },
 }
 
 #[derive(Debug, Clone)]

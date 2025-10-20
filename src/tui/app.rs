@@ -409,6 +409,10 @@ impl AppState {
                     self.add_styled_line(styled_line);
                 }
             }
+            AgentEvent::AgentSwitched { .. } => {
+                // The event is handled in the event loop, but we might want to show a message
+                // or update UI elements here if needed
+            }
         }
     }
 
