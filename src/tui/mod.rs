@@ -18,6 +18,7 @@ use std::sync::Arc;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::{register_default_commands, CommandRegistry};
+use crate::config::AppConfig;
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
@@ -34,6 +35,7 @@ pub async fn run(
     parser: MessageParser,
     permission_manager: PermissionManager,
     tool_registry: ToolRegistry,
+    config: AppConfig,
 ) -> Result<()> {
     // Calculate viewport height upfront to prevent visual shift
     // Header height: ASCII art + borders + blank line (8-9 lines)
@@ -115,8 +117,8 @@ pub async fn run(
     // Setup conversation
     let conversation = Arc::new(tokio::sync::Mutex::new({
         let mut conv = crate::conversations::Conversation::new();
-        if let Some(agent) = default_agent {
-            conv.add_system_message(agent.content);
+        if let Some(ref agent) = default_agent {
+            conv.add_system_message(agent.content.clone());
         }
         conv
     }));
@@ -168,6 +170,11 @@ pub async fn run(
         working_dir: working_dir_display,
         permission_manager: permission_manager_arc,
         input_handlers,
+        current_agent_name: default_agent
+            .as_ref()
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| "assistant".to_string()),
+        config,
     };
 
     // Run event loop

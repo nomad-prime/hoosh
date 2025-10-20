@@ -5,6 +5,7 @@ use tokio::task::JoinHandle;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::{CommandContext, CommandRegistry, CommandResult};
+use crate::config::AppConfig;
 use crate::conversations::{AgentEvent, Conversation, ConversationHandler};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
@@ -19,6 +20,8 @@ pub struct CommandExecutionContext {
     pub working_dir: String,
     pub event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
+    pub current_agent_name: String,
+    pub config: AppConfig,
 }
 
 pub fn execute_command(ctx: CommandExecutionContext) {
@@ -29,7 +32,10 @@ pub fn execute_command(ctx: CommandExecutionContext) {
             .with_agent_manager(ctx.agent_manager)
             .with_command_registry(Arc::clone(&ctx.command_registry))
             .with_working_directory(ctx.working_dir)
-            .with_permission_manager(ctx.permission_manager);
+            .with_permission_manager(ctx.permission_manager)
+            .with_current_agent_name(ctx.current_agent_name)
+            .with_event_sender(ctx.event_tx.clone())
+            .with_config(ctx.config);
 
         match ctx.command_registry.execute(&ctx.input, &mut context).await {
             Ok(CommandResult::Success(msg)) => {

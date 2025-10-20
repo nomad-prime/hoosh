@@ -10,6 +10,7 @@ use tokio::task::JoinHandle;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
+use crate::config::AppConfig;
 use crate::conversations::{AgentEvent, Conversation};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
@@ -34,6 +35,8 @@ pub struct EventLoopContext {
     pub working_dir: String,
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
     pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
+    pub current_agent_name: String,
+    pub config: AppConfig,
 }
 
 pub async fn run_event_loop(
@@ -137,6 +140,10 @@ pub async fn run_event_loop(
                     // Debug messages are currently suppressed
                     // app.add_message(format!("[DEBUG] {}\n", _msg));
                 }
+                AgentEvent::AgentSwitched { new_agent_name } => {
+                    context.current_agent_name = new_agent_name;
+                    // The header will be updated on next render
+                }
                 other_event => {
                     app.handle_agent_event(other_event);
                 }
@@ -198,6 +205,8 @@ pub async fn run_event_loop(
                             working_dir: context.working_dir.clone(),
                             event_tx: context.event_tx.clone(),
                             permission_manager: Arc::clone(&context.permission_manager),
+                            current_agent_name: context.current_agent_name.clone(),
+                            config: context.config.clone(),
                         });
                         break;
                     }
