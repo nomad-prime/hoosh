@@ -28,7 +28,7 @@ impl Command for StatusCommand {
         _args: Vec<String>,
         context: &mut CommandContext,
     ) -> Result<CommandResult> {
-        let mut status = String::from("📊 Session Status\n\n");
+        let mut status = String::from("Session Status\n\n");
 
         status.push_str(&format!(
             "Working Directory: {}\n",
@@ -46,10 +46,9 @@ impl Command for StatusCommand {
             status.push_str(&format!("Available Tools: {}\n", tool_count));
         }
 
-        if let Some(agent_manager) = &context.agent_manager {
-            if let Some(default_agent) = agent_manager.get_default_agent() {
-                status.push_str(&format!("Current Agent: {}\n", default_agent.name));
-            }
+        // Show current agent instead of default agent
+        if let Some(current_agent) = &context.current_agent_name {
+            status.push_str(&format!("Current Agent: {}\n", current_agent));
         }
 
         Ok(CommandResult::Success(status))
