@@ -21,7 +21,6 @@ impl Default for TextInputHandler {
 #[async_trait]
 impl InputHandler for TextInputHandler {
     fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
-        // This is the fallback handler for all remaining key events
         matches!(event, Event::Key(_))
     }
 
