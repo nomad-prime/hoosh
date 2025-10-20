@@ -112,7 +112,7 @@ impl Console {
             MessageType::ToolExecution => println!("{}", "↘ Executing tools...".dimmed()),
             MessageType::AssistantThought => {
                 if !content.is_empty() {
-                    println!("{} {}", "•".dimmed(), content);
+                    println!("\n{} {}", "•".dimmed(), content);
                 }
             }
             MessageType::ToolResult => {

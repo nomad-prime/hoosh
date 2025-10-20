@@ -333,7 +333,7 @@ impl AppState {
             }
             AgentEvent::AssistantThought(content) => {
                 if !content.is_empty() {
-                    self.add_message(format!("• {}", content));
+                    self.add_message(format!("\n• {}", content));
                 }
             }
             AgentEvent::ToolCalls(tool_call_displays) => {
@@ -373,7 +373,7 @@ impl AppState {
             AgentEvent::MaxStepsReached(max_steps) => {
                 self.agent_state = AgentState::Idle;
                 self.add_message(format!(
-                    "⚠️ Maximum conversation steps ({}) reached, stopping.",
+                    "   Maximum conversation steps ({}) reached, stopping.",
                     max_steps
                 ));
             }
@@ -394,14 +394,14 @@ impl AppState {
             } => {
                 if is_success {
                     self.current_retry_status = None;
-                    self.add_message(format!("  ⎿  {}", message));
+                    self.add_message(format!("  ⎿  {} \n", message));
                 } else if attempt < max_attempts {
                     self.current_retry_status = Some(message.clone());
                 } else {
                     self.current_retry_status = None;
                     self.agent_state = AgentState::Idle;
                     let styled_line = Line::from(Span::styled(
-                        format!("  ⎿  {}", message),
+                        format!("  ⎿  {} \n", message),
                         Style::default()
                             .fg(Color::Red)
                             .add_modifier(Modifier::ITALIC),
