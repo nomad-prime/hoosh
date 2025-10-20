@@ -48,6 +48,16 @@ pub enum AgentEvent {
     AgentSwitched {
         new_agent_name: String,
     },
+    Summarizing {
+        message_count: usize,
+    },
+    SummaryComplete {
+        message_count: usize,
+        summary: String,
+    },
+    SummaryError {
+        error: String,
+    },
 }
 
 #[derive(Debug, Clone)]

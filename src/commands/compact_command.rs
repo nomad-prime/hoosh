@@ -1,7 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use super::{Command, CommandContext, CommandResult};
+use crate::conversations::AgentEvent;
+use crate::Command;
+use crate::CommandContext;
+use crate::CommandResult;
+
 
 pub struct CompactCommand;
 
@@ -62,8 +66,34 @@ impl Command for CompactCommand {
             let messages = conv.get_messages_for_api();
             let old_messages = &messages[..messages.len() - keep_recent];
 
+            // Send summarizing event
+            if let Some(event_tx) = &context.event_tx {
+                let _ = event_tx.send(AgentEvent::Summarizing {
+                    message_count: old_messages.len(),
+                });
+            }
+
             // Use MessageSummarizer from context
-            summarizer.summarize(old_messages, None).await?
+            let result = summarizer.summarize(old_messages, None).await;
+            
+            // Send appropriate event based on result
+            if let Some(event_tx) = &context.event_tx {
+                match &result {
+                    Ok(summary) => {
+                        let _ = event_tx.send(AgentEvent::SummaryComplete {
+                            message_count: old_messages.len(),
+                            summary: summary.clone(),
+                        });
+                    }
+                    Err(e) => {
+                        let _ = event_tx.send(AgentEvent::SummaryError {
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            }
+            
+            result?
         };
 
         // Replace in conversation
