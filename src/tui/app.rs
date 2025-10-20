@@ -341,14 +341,14 @@ impl AppState {
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
                 for display_name in tool_call_displays {
-                    self.add_message(format!("● {}", display_name));
+                    self.add_message(format!("\n● {}", display_name));
                 }
             }
             AgentEvent::ToolPreview {
                 tool_name: _,
                 preview,
             } => {
-                self.add_message(format!("\n{}\n", preview));
+                self.add_message(format!("\n{}", preview));
             }
             AgentEvent::ToolResult { summary, .. } => {
                 self.add_message(format!("  ⎿  {}", summary));
@@ -394,14 +394,14 @@ impl AppState {
             } => {
                 if is_success {
                     self.current_retry_status = None;
-                    self.add_message(format!("  ⎿  {} \n", message));
+                    self.add_message(format!("  ⎿  {}", message));
                 } else if attempt < max_attempts {
                     self.current_retry_status = Some(message.clone());
                 } else {
                     self.current_retry_status = None;
                     self.agent_state = AgentState::Idle;
                     let styled_line = Line::from(Span::styled(
-                        format!("  ⎿  {} \n", message),
+                        format!("  ⎿  {}", message),
                         Style::default()
                             .fg(Color::Red)
                             .add_modifier(Modifier::ITALIC),

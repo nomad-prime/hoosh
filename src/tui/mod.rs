@@ -11,6 +11,7 @@ pub mod history;
 mod input_handler;
 mod terminal;
 mod ui;
+pub mod components;
 
 use anyhow::Result;
 use std::sync::Arc;
