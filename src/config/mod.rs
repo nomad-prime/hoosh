@@ -266,6 +266,11 @@ impl AppConfig {
         self.verbosity = Some(verbosity.to_string());
     }
 
+    /// Set the default agent in configuration
+    pub fn set_default_agent(&mut self, agent_name: String) {
+        self.default_agent = Some(agent_name);
+    }
+
     fn config_path() -> Result<PathBuf> {
         let path = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
