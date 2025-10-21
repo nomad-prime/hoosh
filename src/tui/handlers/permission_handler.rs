@@ -134,7 +134,7 @@ impl InputHandler for PermissionHandler {
                 if let Some(crate::permissions::PermissionScope::ProjectWide(ref path)) = scope {
                     if allowed {
                         app.set_trusted_project(path.clone());
-                        app.add_message("Project trusted for this session. \n".to_string());
+                        app.add_status_message("Project trusted for this session.");
                     }
                 }
 

@@ -208,9 +208,8 @@ pub async fn run_event_loop(
                         if let Some(task) = agent_task.take() {
                             task.abort();
                             app.agent_state = super::events::AgentState::Idle;
-                            app.add_message(
-                                "  ⎿  Task cancelled by user (press Ctrl+C again to quit)\n"
-                                    .to_string(),
+                            app.add_status_message(
+                                "Task cancelled by user (press Ctrl+C again to quit)\n"
                             );
                         }
                         app.should_cancel_task = false;

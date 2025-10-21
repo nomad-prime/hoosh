@@ -332,42 +332,35 @@ impl AppState {
                 self.current_thinking_spinner = rng.gen_range(0..7);
             }
             AgentEvent::AssistantThought(content) => {
-                if !content.is_empty() {
-                    self.add_message(format!("\n• {}", content));
-                }
+                self.add_thought(&content);
             }
             AgentEvent::ToolCalls(tool_call_displays) => {
                 self.agent_state = AgentState::ExecutingTools;
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
                 for display_name in tool_call_displays {
-                    self.add_message(format!("● {}\n", display_name));
+                    self.add_tool_call(&display_name);
                 }
             }
             AgentEvent::ToolPreview {
                 tool_name: _,
                 preview,
             } => {
-                self.add_message(format!("\n{}", preview));
+                self.add_tool_preview(&preview);
             }
             AgentEvent::ToolResult { summary, .. } => {
-                self.add_message(format!("  ⎿  {}", summary));
+                self.add_status_message(&summary);
             }
             AgentEvent::ToolExecutionComplete => {
                 self.add_message("\n".to_string());
             }
             AgentEvent::FinalResponse(content) => {
                 self.agent_state = AgentState::Idle;
-                let indented_content = content
-                    .lines()
-                    .map(|line| format!("  {}", line))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                self.add_message(indented_content);
+                self.add_final_response(&content);
             }
             AgentEvent::Error(error) => {
                 self.agent_state = AgentState::Idle;
-                self.add_message(format!("  Error: {}", error));
+                self.add_error(&error);
             }
             AgentEvent::MaxStepsReached(max_steps) => {
                 self.agent_state = AgentState::Idle;
@@ -393,19 +386,13 @@ impl AppState {
             } => {
                 if is_success {
                     self.current_retry_status = None;
-                    self.add_message(format!("  ⎿  {}", message));
+                    self.add_status_message(&message);
                 } else if attempt < max_attempts {
                     self.current_retry_status = Some(message.clone());
                 } else {
                     self.current_retry_status = None;
                     self.agent_state = AgentState::Idle;
-                    let styled_line = Line::from(Span::styled(
-                        format!("  ⎿  {}", message),
-                        Style::default()
-                            .fg(Color::Red)
-                            .add_modifier(Modifier::ITALIC),
-                    ));
-                    self.add_styled_line(styled_line);
+                    self.add_retry_failure(&message);
                 }
             }
             AgentEvent::AgentSwitched { .. } => {
@@ -423,6 +410,52 @@ impl AppState {
                 self.add_message(format!("Error summarizing conversation: {}", error));
             }
         }
+    }
+
+    pub fn add_thought(&mut self, content: &str) {
+        if !content.is_empty() {
+            self.add_message(format!("\n• {}", content));
+        }
+    }
+
+    pub fn add_tool_call(&mut self, name: &str) {
+        self.add_message(format!("● {}\n", name));
+    }
+
+    pub fn add_status_message(&mut self, message: &str) {
+        self.add_message(format!("  ⎿  {}", message));
+    }
+
+    pub fn add_error(&mut self, error: &str) {
+        self.add_message(format!("  Error: {}", error));
+    }
+
+    pub fn add_final_response(&mut self, content: &str) {
+        let indented_content = content
+            .lines()
+            .map(|line| format!("  {}", line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.add_message(indented_content);
+    }
+
+    pub fn add_user_input(&mut self, input: &str) {
+        self.add_message(format!("\n> {}", input));
+        self.add_message("\n".to_string());
+    }
+
+    pub fn add_tool_preview(&mut self, preview: &str) {
+        self.add_message(format!("\n{}", preview));
+    }
+
+    pub fn add_retry_failure(&mut self, message: &str) {
+        let styled_line = Line::from(Span::styled(
+            format!("  ⎿  {}", message),
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::ITALIC),
+        ));
+        self.add_styled_line(styled_line);
     }
 
     pub fn get_input_text(&self) -> String {
