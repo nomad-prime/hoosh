@@ -39,9 +39,9 @@ pub async fn run(
     tool_registry: ToolRegistry,
     config: AppConfig,
 ) -> Result<()> {
-    let fixed_ui_height = 6;
+    let base_ui_height = 6;
 
-    let mut terminal = init_terminal(fixed_ui_height)?;
+    let terminal = init_terminal(base_ui_height)?;
     let mut app = AppState::new();
 
     // Load history from file
@@ -162,11 +162,11 @@ pub async fn run(
     };
 
     // Run event loop
-    let result = run_event_loop(&mut terminal, &mut app, context).await;
+    let terminal = run_event_loop(terminal, &mut app, context).await?;
 
     // Save history before exiting
     let _ = app.prompt_history.save();
 
     restore_terminal(terminal)?;
-    result
+    Ok(())
 }
