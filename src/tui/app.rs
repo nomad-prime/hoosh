@@ -419,7 +419,7 @@ impl AppState {
     }
 
     pub fn add_tool_call(&mut self, name: &str) {
-        self.add_message(format!("● {}\n", name));
+        self.add_message(format!("\n● {}", name));
     }
 
     pub fn add_status_message(&mut self, message: &str) {

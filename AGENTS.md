@@ -3,22 +3,26 @@
 ## Coding Style
 
 ### Comments
+
 - Only use comments when necessary and add them where they provide clarity or context
+- try to avoid redundant comments that state the obvious
 
 e.g.
 BAD: the comment does not provide any value
 /// This function calculates the sum of two numbers
 fn add(a: i32, b: i32) -> i32 {
-    a + b
+a + b
 }
 
 ### Module Organization
+
 - Use `mod.rs` files for module declarations
 - Group related functionality in modules (e.g., `backends/`, `cli/`, `config/`)
 - Re-export public APIs through `lib.rs`
 - Keep `main.rs` minimal - just CLI entry point
 
 ### Naming Conventions
+
 - **Structs**: PascalCase (e.g., `LlmBackend`, `ChatMessage`)
 - **Traits**: PascalCase with descriptive behavior (e.g., `MessageSender`, `ConfigProvider`)
 - **Functions**: snake_case with descriptive verbs (e.g., `create_client`, `parse_response`)
@@ -26,6 +30,7 @@ fn add(a: i32, b: i32) -> i32 {
 - **Constants**: SCREAMING_SNAKE_CASE (e.g., `DEFAULT_MODEL`, `API_VERSION`)
 
 ### Error Handling
+
 ```rust
 use anyhow::{Context, Result};
 
@@ -47,6 +52,7 @@ pub enum BackendError {
 ```
 
 ### Trait Design
+
 ```rust
 #[async_trait::async_trait]
 pub trait LlmBackend: Send + Sync {
@@ -58,7 +64,7 @@ pub trait LlmBackend: Send + Sync {
 // Factory pattern for backend creation
 pub fn create_backend(config: &BackendConfig) -> Result<Box<dyn LlmBackend>> {
     match config.backend_type {
-        BackendType:TogetherAi => Ok(Box::new(TogetherAIBackend::new(config)?)),
+        BackendType: TogetherAi => Ok(Box::new(TogetherAIBackend::new(config)?)),
         BackendType::Anthropic => Ok(Box::new(AnthropicBackend::new(config)?)),
         BackendType::OpenAI => Ok(Box::new(OpenAIBackend::new(config)?)),
     }
@@ -66,6 +72,7 @@ pub fn create_backend(config: &BackendConfig) -> Result<Box<dyn LlmBackend>> {
 ```
 
 ### Configuration Pattern
+
 ```rust
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppConfig {
@@ -87,6 +94,7 @@ impl AppConfig {
 ```
 
 ### CLI Structure
+
 ```rust
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -110,6 +118,7 @@ pub enum Commands {
 ```
 
 ### Testing
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -135,25 +144,30 @@ mod tests {
 ```
 
 ### Async Patterns
+
 - Use `tokio::main` for async main function
 - Prefer `async fn` over `-> impl Future`
 - Use `Arc` for shared state across async contexts
 - Handle cancellation with `tokio::select!` when appropriate
 
 ### Memory Management
+
 - Use `Box<dyn Trait>` for trait objects
 - Prefer `Arc<T>` over `Rc<T>` for multi-threaded contexts
 - Use `String` for owned strings, `&str` for borrowed
 - Clone cheaply with `Arc::clone()` rather than `thing.clone()`
 
 ### Refactoring
+
 When refactoring, create new modules alongside existing ones:
+
 - For example, if refactoring `client.rs`, create `client_v2.rs`
 - Update imports gradually, ensuring tests pass at each step
 - Remove old implementation only after complete migration
 - Use feature flags if gradual rollout is needed
 
 ## Commands
+
 - `cargo run` - Run the CLI application
 - `cargo build --release` - Build optimized binary
 - `cargo test` - Run all tests
@@ -162,12 +176,14 @@ When refactoring, create new modules alongside existing ones:
 - `cargo doc --open` - Generate and open documentation
 
 ## Dependencies Management
+
 - Keep dependencies minimal and well-maintained
 - Pin major versions in Cargo.toml
 - Use `cargo audit` to check for security vulnerabilities
 - Document why each dependency is needed
 
 ## Performance Notes
+
 - Use `tokio::spawn` for CPU-intensive tasks to avoid blocking
 - Consider `rayon` for parallel processing of large datasets
 - Profile with `cargo bench` for performance-critical paths
