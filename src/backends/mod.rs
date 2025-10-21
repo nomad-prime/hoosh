@@ -1,8 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
+use crate::conversations::AgentEvent;
 use crate::conversations::{Conversation, ToolCall};
 use crate::tools::ToolRegistry;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
@@ -38,6 +40,25 @@ pub trait LlmBackend: Send + Sync {
 
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
+
+    async fn send_message_with_events(
+        &self,
+        message: &str,
+        event_tx: Option<UnboundedSender<AgentEvent>>,
+    ) -> Result<String> {
+        let _ = event_tx;
+        self.send_message(message).await
+    }
+
+    async fn send_message_with_tools_and_events(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: Option<UnboundedSender<AgentEvent>>,
+    ) -> Result<LlmResponse> {
+        let _ = event_tx;
+        self.send_message_with_tools(conversation, tools).await
+    }
 }
 
 #[cfg(feature = "anthropic")]

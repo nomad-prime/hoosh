@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::backends::{LlmBackend, LlmResponse, RequestExecutor};
+use crate::backends::{LlmBackend, LlmResponse};
 use crate::conversations::Conversation;
 use crate::permissions::{OperationType, PermissionScope};
 use crate::tool_executor::ToolExecutor;
@@ -117,20 +117,14 @@ impl ConversationHandler {
         self.send_event(AgentEvent::Thinking);
 
         for step in 0..self.max_steps {
-            let executor =
-                RequestExecutor::new(3, "LLM API request".to_string(), self.event_sender.clone());
-
-            let response = executor
-                .execute(|| async {
-                    self.backend
-                        .send_message_with_tools(conversation, &self.tool_registry)
-                        .await
-                        .map_err(|e| crate::backends::LlmError::Other {
-                            message: e.to_string(),
-                        })
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!(e.user_message()))?;
+            let response = self
+                .backend
+                .send_message_with_tools_and_events(
+                    conversation,
+                    &self.tool_registry,
+                    self.event_sender.clone(),
+                )
+                .await?;
 
             match self.process_response(conversation, response, step).await? {
                 TurnStatus::Continue => continue,

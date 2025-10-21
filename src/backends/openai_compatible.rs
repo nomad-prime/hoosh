@@ -1,4 +1,4 @@
-use super::{LlmBackend, LlmResponse};
+use super::{LlmBackend, LlmResponse, RequestExecutor};
 use crate::backends::llm_error::LlmError;
 use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
@@ -31,6 +31,7 @@ impl Default for OpenAICompatibleConfig {
 pub struct OpenAICompatibleBackend {
     client: reqwest::Client,
     config: OpenAICompatibleConfig,
+    default_executor: RequestExecutor,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,7 +88,14 @@ impl OpenAICompatibleBackend {
         let client = client_builder
             .build()
             .context("Failed to build HTTP client")?;
-        Ok(Self { client, config })
+        
+        let default_executor = RequestExecutor::new(3, "OpenAI-compatible API request".to_string());
+        
+        Ok(Self {
+            client,
+            config,
+            default_executor,
+        })
     }
 
     fn http_error_to_llm_error(status: reqwest::StatusCode, error_text: String) -> LlmError {
@@ -289,7 +297,11 @@ impl OpenAICompatibleBackend {
 #[async_trait]
 impl LlmBackend for OpenAICompatibleBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
-        self.send_message_attempt(message)
+        self.default_executor
+            .execute(
+                || async { self.send_message_attempt(message).await },
+                None,
+            )
             .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
@@ -299,7 +311,40 @@ impl LlmBackend for OpenAICompatibleBackend {
         conversation: &Conversation,
         tools: &ToolRegistry,
     ) -> Result<LlmResponse> {
-        self.send_message_with_tools_attempt(conversation, tools)
+        self.default_executor
+            .execute(
+                || async { self.send_message_with_tools_attempt(conversation, tools).await },
+                None,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!(e.user_message()))
+    }
+
+    async fn send_message_with_events(
+        &self,
+        message: &str,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+    ) -> Result<String> {
+        self.default_executor
+            .execute(
+                || async { self.send_message_attempt(message).await },
+                event_tx,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!(e.user_message()))
+    }
+
+    async fn send_message_with_tools_and_events(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+    ) -> Result<LlmResponse> {
+        self.default_executor
+            .execute(
+                || async { self.send_message_with_tools_attempt(conversation, tools).await },
+                event_tx,
+            )
             .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
