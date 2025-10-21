@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::conversations::{AgentEvent, Conversation, ToolCall};
+use crate::conversations::{Conversation, ToolCall};
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,6 @@ impl LlmResponse {
 
 #[async_trait]
 pub trait LlmBackend: Send + Sync {
-    // Keep existing methods but add new ones with event support
     async fn send_message(&self, message: &str) -> Result<String>;
 
     async fn send_message_with_tools(
@@ -36,33 +35,6 @@ pub trait LlmBackend: Send + Sync {
         conversation: &Conversation,
         tools: &ToolRegistry,
     ) -> Result<LlmResponse>;
-
-    async fn send_message_with_events(
-        &self,
-        message: &str,
-        event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
-    ) -> Result<String> {
-        // Default implementation - backends should override for better experience
-        let result = self.send_message(message).await;
-        if let Err(ref e) = result {
-            let _ = event_tx.send(AgentEvent::Error(format!("Error: {}", e)));
-        }
-        result
-    }
-
-    async fn send_message_with_tools_and_events(
-        &self,
-        conversation: &Conversation,
-        tools: &ToolRegistry,
-        event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
-    ) -> Result<LlmResponse> {
-        // Default implementation - backends should override for better experience
-        let result = self.send_message_with_tools(conversation, tools).await;
-        if let Err(ref e) = result {
-            let _ = event_tx.send(AgentEvent::Error(format!("Error: {}", e)));
-        }
-        result
-    }
 
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
@@ -88,3 +60,9 @@ pub use mock::MockBackend;
 pub use openai_compatible::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use together_ai::{TogetherAiBackend, TogetherAiConfig};
+
+pub mod executor;
+pub use executor::RequestExecutor;
+
+pub mod strategy;
+pub use strategy::RetryStrategy;
