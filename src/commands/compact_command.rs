@@ -6,7 +6,6 @@ use crate::Command;
 use crate::CommandContext;
 use crate::CommandResult;
 
-
 pub struct CompactCommand;
 
 #[async_trait]
@@ -75,7 +74,7 @@ impl Command for CompactCommand {
 
             // Use MessageSummarizer from context
             let result = summarizer.summarize(old_messages, None).await;
-            
+
             // Send appropriate event based on result
             if let Some(event_tx) = &context.event_tx {
                 match &result {
@@ -92,7 +91,7 @@ impl Command for CompactCommand {
                     }
                 }
             }
-            
+
             result?
         };
 

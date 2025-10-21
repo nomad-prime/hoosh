@@ -109,15 +109,15 @@ impl Command for SwitchAgentCommand {
                 // Load the current config from file to ensure we have the latest version
                 let mut file_config = crate::config::AppConfig::load()
                     .map_err(|e| anyhow!("Failed to load config: {}", e))?;
-                
+
                 // Update the default agent
                 file_config.set_default_agent(new_agent_name.clone());
-                
+
                 // Save the config
                 file_config
                     .save()
                     .map_err(|e| anyhow!("Failed to save config: {}", e))?;
-                
+
                 message.push_str(" (set as default)");
             } else {
                 message.push_str(" (warning: could not update default config)");
