@@ -1,13 +1,11 @@
 use super::{LlmBackend, LlmResponse};
 use crate::backends::llm_error::LlmError;
-use crate::backends::retry::retry_with_backoff;
-use crate::conversations::{AgentEvent, Conversation, ConversationMessage, ToolCall};
+use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
@@ -430,43 +428,6 @@ impl LlmBackend for AnthropicBackend {
     ) -> Result<LlmResponse> {
         self.send_message_with_tools_attempt(conversation, tools)
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
-    }
-
-    async fn send_message_with_events(
-        &self,
-        message: &str,
-        event_tx: UnboundedSender<AgentEvent>,
-    ) -> Result<String> {
-        let retry_result = retry_with_backoff(
-            || self.send_message_attempt(message),
-            3,
-            "Anthropic API request",
-            event_tx.clone(),
-        )
-        .await;
-
-        retry_result
-            .result
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
-    }
-
-    async fn send_message_with_tools_and_events(
-        &self,
-        conversation: &Conversation,
-        tools: &ToolRegistry,
-        event_tx: UnboundedSender<AgentEvent>,
-    ) -> Result<LlmResponse> {
-        let retry_result = retry_with_backoff(
-            || self.send_message_with_tools_attempt(conversation, tools),
-            3,
-            "Anthropic API request",
-            event_tx.clone(),
-        )
-        .await;
-
-        retry_result
-            .result
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
