@@ -351,9 +351,7 @@ impl AppState {
             AgentEvent::ToolResult { summary, .. } => {
                 self.add_status_message(&summary);
             }
-            AgentEvent::ToolExecutionComplete => {
-                self.add_message("\n".to_string());
-            }
+            AgentEvent::ToolExecutionComplete => {}
             AgentEvent::FinalResponse(content) => {
                 self.agent_state = AgentState::Idle;
                 self.add_final_response(&content);
@@ -441,7 +439,6 @@ impl AppState {
 
     pub fn add_user_input(&mut self, input: &str) {
         self.add_message(format!("\n> {}", input));
-        self.add_message("\n".to_string());
     }
 
     pub fn add_tool_preview(&mut self, preview: &str) {

@@ -18,8 +18,9 @@ use super::actions::{execute_command, start_agent_conversation};
 use super::app::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
-use super::terminal::{resize_terminal, Tui};
+use super::terminal::Tui;
 use super::ui;
+use super::viewport_manager::ViewportManager;
 
 pub struct EventLoopContext {
     pub backend: Arc<dyn LlmBackend>,
@@ -45,30 +46,14 @@ pub async fn run_event_loop(
     mut context: EventLoopContext,
 ) -> Result<Tui> {
     let mut agent_task: Option<JoinHandle<()>> = None;
-    let base_height = 6u16;
-    let mut current_viewport_height = base_height;
+    let mut viewport = ViewportManager::with_default_height();
 
     let message_renderer = MessageRenderer::new();
 
     loop {
         message_renderer.render_pending_messages(app, &mut terminal)?;
 
-        let dialog_height = if app.is_showing_permission_dialog() {
-            15 // Height needed for permission dialog
-        } else if app.is_showing_approval_dialog() {
-            10 // Height needed for approval dialog
-        } else if app.is_completing() {
-            12 // Height needed for completion popup
-        } else {
-            0 // No dialog, use base height
-        };
-
-        let desired_viewport_height = base_height + dialog_height;
-
-        if desired_viewport_height != current_viewport_height {
-            terminal = resize_terminal(terminal, desired_viewport_height)?;
-            current_viewport_height = desired_viewport_height;
-        }
+        (terminal, _) = viewport.update_and_resize(app, terminal)?;
 
         terminal.draw(|f| ui::render(f, app))?;
 

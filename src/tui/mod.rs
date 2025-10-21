@@ -13,6 +13,7 @@ mod input_handler;
 mod message_renderer;
 mod terminal;
 mod ui;
+mod viewport_manager;
 
 pub use message_renderer::MessageRenderer;
 
