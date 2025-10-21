@@ -10,8 +10,11 @@ pub mod handlers;
 mod header;
 pub mod history;
 mod input_handler;
+mod message_renderer;
 mod terminal;
 mod ui;
+
+pub use message_renderer::MessageRenderer;
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -103,12 +106,10 @@ pub async fn run(
         conv
     }));
 
-    // Create event channels
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
     let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    // Configure permission manager
     let permission_manager = permission_manager
         .with_event_sender(event_tx.clone())
         .with_response_receiver(permission_response_rx);
@@ -120,7 +121,6 @@ pub async fn run(
         .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled)) // Share autopilot state
         .with_approval_receiver(approval_response_rx);
 
-    // Create and register input handlers in priority order
     let input_handlers: Vec<Box<dyn input_handler::InputHandler + Send>> = vec![
         // High priority: dialogs
         Box::new(handlers::PermissionHandler::new(
@@ -136,10 +136,8 @@ pub async fn run(
         Box::new(handlers::TextInputHandler::new()),
     ];
 
-    // Create summarizer
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
 
-    // Create context
     let context = EventLoopContext {
         backend,
         parser: Arc::new(parser),
@@ -161,10 +159,8 @@ pub async fn run(
         config,
     };
 
-    // Run event loop
     let terminal = run_event_loop(terminal, &mut app, context).await?;
 
-    // Save history before exiting
     let _ = app.prompt_history.save();
 
     restore_terminal(terminal)?;
