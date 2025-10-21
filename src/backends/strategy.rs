@@ -1,8 +1,8 @@
 use crate::backends::llm_error::LlmError;
 use crate::conversations::AgentEvent;
 use std::time::Duration;
-use tokio::time::sleep;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::time::sleep;
 
 pub struct RetryStrategy {
     pub max_attempts: u32,

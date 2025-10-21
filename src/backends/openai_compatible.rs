@@ -88,9 +88,9 @@ impl OpenAICompatibleBackend {
         let client = client_builder
             .build()
             .context("Failed to build HTTP client")?;
-        
+
         let default_executor = RequestExecutor::new(3, "OpenAI-compatible API request".to_string());
-        
+
         Ok(Self {
             client,
             config,
@@ -298,10 +298,7 @@ impl OpenAICompatibleBackend {
 impl LlmBackend for OpenAICompatibleBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
         self.default_executor
-            .execute(
-                || async { self.send_message_attempt(message).await },
-                None,
-            )
+            .execute(|| async { self.send_message_attempt(message).await }, None)
             .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
@@ -313,7 +310,10 @@ impl LlmBackend for OpenAICompatibleBackend {
     ) -> Result<LlmResponse> {
         self.default_executor
             .execute(
-                || async { self.send_message_with_tools_attempt(conversation, tools).await },
+                || async {
+                    self.send_message_with_tools_attempt(conversation, tools)
+                        .await
+                },
                 None,
             )
             .await
@@ -342,7 +342,10 @@ impl LlmBackend for OpenAICompatibleBackend {
     ) -> Result<LlmResponse> {
         self.default_executor
             .execute(
-                || async { self.send_message_with_tools_attempt(conversation, tools).await },
+                || async {
+                    self.send_message_with_tools_attempt(conversation, tools)
+                        .await
+                },
                 event_tx,
             )
             .await

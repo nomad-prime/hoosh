@@ -1,7 +1,7 @@
 use super::strategy::RetryStrategy;
 use crate::backends::llm_error::LlmError;
-use tokio::sync::mpsc::UnboundedSender;
 use crate::conversations::AgentEvent;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Clone)]
 pub struct RequestExecutor {
