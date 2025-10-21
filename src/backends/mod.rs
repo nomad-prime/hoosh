@@ -1,8 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::conversations::{AgentEvent, Conversation, ToolCall};
+use crate::conversations::AgentEvent;
+use crate::conversations::{Conversation, ToolCall};
 use crate::tools::ToolRegistry;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
@@ -28,7 +30,6 @@ impl LlmResponse {
 
 #[async_trait]
 pub trait LlmBackend: Send + Sync {
-    // Keep existing methods but add new ones with event support
     async fn send_message(&self, message: &str) -> Result<String>;
 
     async fn send_message_with_tools(
@@ -37,54 +38,59 @@ pub trait LlmBackend: Send + Sync {
         tools: &ToolRegistry,
     ) -> Result<LlmResponse>;
 
+    fn backend_name(&self) -> &str;
+    fn model_name(&self) -> &str;
+
     async fn send_message_with_events(
         &self,
         message: &str,
-        event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        event_tx: Option<UnboundedSender<AgentEvent>>,
     ) -> Result<String> {
-        // Default implementation - backends should override for better experience
-        let result = self.send_message(message).await;
-        if let Err(ref e) = result {
-            let _ = event_tx.send(AgentEvent::Error(format!("Error: {}", e)));
-        }
-        result
+        let _ = event_tx;
+        self.send_message(message).await
     }
 
     async fn send_message_with_tools_and_events(
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-        event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+        event_tx: Option<UnboundedSender<AgentEvent>>,
     ) -> Result<LlmResponse> {
-        // Default implementation - backends should override for better experience
-        let result = self.send_message_with_tools(conversation, tools).await;
-        if let Err(ref e) = result {
-            let _ = event_tx.send(AgentEvent::Error(format!("Error: {}", e)));
-        }
-        result
+        let _ = event_tx;
+        self.send_message_with_tools(conversation, tools).await
     }
-
-    fn backend_name(&self) -> &str;
-    fn model_name(&self) -> &str;
 }
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
+#[cfg(feature = "anthropic")]
+pub mod backend_factory;
 pub mod llm_error;
 pub mod mock;
 #[cfg(feature = "openai-compatible")]
 pub mod openai_compatible;
-pub mod retry;
 #[cfg(feature = "together-ai")]
 pub mod together_ai;
 
+#[cfg(feature = "anthropic")]
+pub use self::anthropic::AnthropicBackend;
+#[cfg(feature = "openai-compatible")]
+pub use self::openai_compatible::OpenAICompatibleBackend;
+#[cfg(feature = "together-ai")]
+pub use self::together_ai::TogetherAiBackend;
+
 pub use llm_error::LlmError;
-pub use retry::retry_with_backoff;
 
 #[cfg(feature = "anthropic")]
-pub use anthropic::{AnthropicBackend, AnthropicConfig};
+pub use anthropic::AnthropicConfig;
 pub use mock::MockBackend;
 #[cfg(feature = "openai-compatible")]
-pub use openai_compatible::{OpenAICompatibleBackend, OpenAICompatibleConfig};
+pub use openai_compatible::OpenAICompatibleConfig;
 #[cfg(feature = "together-ai")]
-pub use together_ai::{TogetherAiBackend, TogetherAiConfig};
+pub use together_ai::TogetherAiConfig;
+
+pub mod executor;
+pub use executor::RequestExecutor;
+
+pub mod strategy;
+pub use strategy::RetryStrategy;
