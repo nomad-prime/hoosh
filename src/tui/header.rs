@@ -5,18 +5,6 @@ use ratatui::{
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Calculate the number of lines the header block will take up
-pub fn calculate_header_height(trusted_project: Option<&str>) -> u16 {
-    // ASCII art has 5 lines
-    // Info lines: title, backend, model, agent, working_dir (5 lines)
-    // If trusted_project is Some, add 1 more info line (6 total)
-    let info_line_count = if trusted_project.is_some() { 6 } else { 5 };
-
-    // max(5 ascii lines, info_line_count) + 2 borders + 1 blank line
-    let content_lines = 5.max(info_line_count);
-    content_lines + 2 + 1
-}
-
 pub fn create_header_block(
     backend_name: &str,
     model_name: &str,
