@@ -63,24 +63,31 @@ pub trait LlmBackend: Send + Sync {
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
+#[cfg(feature = "anthropic")]
+pub mod backend_factory;
 pub mod llm_error;
 pub mod mock;
 #[cfg(feature = "openai-compatible")]
 pub mod openai_compatible;
-pub mod retry;
 #[cfg(feature = "together-ai")]
 pub mod together_ai;
 
+#[cfg(feature = "anthropic")]
+pub use self::anthropic::AnthropicBackend;
+#[cfg(feature = "openai-compatible")]
+pub use self::openai_compatible::OpenAICompatibleBackend;
+#[cfg(feature = "together-ai")]
+pub use self::together_ai::TogetherAiBackend;
+
 pub use llm_error::LlmError;
-pub use retry::retry_with_backoff;
 
 #[cfg(feature = "anthropic")]
-pub use anthropic::{AnthropicBackend, AnthropicConfig};
+pub use anthropic::AnthropicConfig;
 pub use mock::MockBackend;
 #[cfg(feature = "openai-compatible")]
-pub use openai_compatible::{OpenAICompatibleBackend, OpenAICompatibleConfig};
+pub use openai_compatible::OpenAICompatibleConfig;
 #[cfg(feature = "together-ai")]
-pub use together_ai::{TogetherAiBackend, TogetherAiConfig};
+pub use together_ai::TogetherAiConfig;
 
 pub mod executor;
 pub use executor::RequestExecutor;
