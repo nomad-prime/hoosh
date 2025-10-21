@@ -33,6 +33,7 @@ impl InputHandler for SubmitHandler {
         let input_text = app.get_input_text();
         if !input_text.trim().is_empty() && !agent_task_active {
             app.add_message(format!("\n> {}", input_text));
+            app.add_message("\n".to_string());
 
             app.prompt_history.add(input_text.clone());
             app.clear_input();
