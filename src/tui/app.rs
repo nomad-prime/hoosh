@@ -351,7 +351,9 @@ impl AppState {
             AgentEvent::ToolResult { summary, .. } => {
                 self.add_status_message(&summary);
             }
-            AgentEvent::ToolExecutionComplete => {}
+            AgentEvent::ToolExecutionComplete => {
+                self.agent_state = AgentState::Thinking;
+            }
             AgentEvent::FinalResponse(content) => {
                 self.agent_state = AgentState::Idle;
                 self.add_final_response(&content);

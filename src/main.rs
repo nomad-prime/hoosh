@@ -1,13 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
-#[cfg(feature = "anthropic")]
-use hoosh::backends::{AnthropicBackend, AnthropicConfig};
-#[cfg(feature = "openai-compatible")]
-use hoosh::backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
-#[cfg(feature = "together-ai")]
-use hoosh::backends::{TogetherAiBackend, TogetherAiConfig};
+use hoosh::backends::backend_factory::BackendFactory;
+use hoosh::backends::{AnthropicBackend, OpenAICompatibleBackend, TogetherAiBackend};
+use hoosh::backends::{LlmBackend, MockBackend};
 use hoosh::{
-    backends::{LlmBackend, MockBackend},
     cli::{Cli, Commands, ConfigAction},
     config::AppConfig,
     console::{console, init_console},
@@ -80,92 +76,19 @@ async fn handle_chat(
     Ok(())
 }
 fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
+    let backend_config = config
+        .get_backend_config(backend_name)
+        .ok_or_else(|| anyhow::anyhow!("Backend '{}' not found in config", backend_name))?;
+
     match backend_name {
-        "mock" => {
-            let _ = config; // Suppress unused warning when features are disabled
-            Ok(Box::new(MockBackend::new()))
-        }
+        "mock" => Ok(Box::new(MockBackend::new())),
         #[cfg(feature = "together-ai")]
-        "together_ai" => {
-            let backend_config = config.get_backend_config("together_ai");
-            let api_key = backend_config
-                .and_then(|c| c.api_key.clone())
-                .unwrap_or_default();
-            let model = backend_config
-                .and_then(|c| c.model.clone())
-                .unwrap_or_else(|| "meta-llama/Llama-2-7b-chat-hf".to_string());
-            let base_url = backend_config
-                .and_then(|c| c.base_url.clone())
-                .unwrap_or_else(|| "https://api.together.xyz/v1".to_string());
-
-            let together_config = TogetherAiConfig {
-                api_key,
-                model,
-                base_url,
-            };
-
-            Ok(Box::new(TogetherAiBackend::new(together_config)?))
-        }
+        "together_ai" => TogetherAiBackend::create(backend_config, backend_name),
         #[cfg(feature = "anthropic")]
-        "anthropic" => {
-            let backend_config = config.get_backend_config("anthropic");
-            let api_key = backend_config
-                .and_then(|c| c.api_key.clone())
-                .unwrap_or_default();
-            let model = backend_config
-                .and_then(|c| c.model.clone())
-                .unwrap_or_else(|| "claude-sonnet-4.5".to_string());
-            let base_url = backend_config
-                .and_then(|c| c.base_url.clone())
-                .unwrap_or_else(|| "https://api.anthropic.com/v1".to_string());
-
-            let anthropic_config = AnthropicConfig {
-                api_key,
-                model,
-                base_url,
-            };
-
-            Ok(Box::new(AnthropicBackend::new(anthropic_config)?))
-        }
+        "anthropic" => AnthropicBackend::create(backend_config, backend_name),
         #[cfg(feature = "openai-compatible")]
-        // Truly OpenAI-compatible providers (use max_completion_tokens): openai, groq, ollama
         name if matches!(name, "openai" | "ollama" | "groq") => {
-            let backend_config = config.get_backend_config(name);
-
-            // Get provider-specific defaults
-            let (default_model, default_base_url) = match name {
-                "openai" => ("gpt-4", "https://api.openai.com/v1"),
-                "ollama" => ("llama3", "http://localhost:11434/v1"),
-                "groq" => ("mixtral-8x7b-32768", "https://api.groq.com/openai/v1"),
-                _ => ("", ""),
-            };
-
-            let api_key = backend_config
-                .and_then(|c| c.api_key.clone())
-                .unwrap_or_else(|| {
-                    if name == "ollama" {
-                        "ollama".to_string()
-                    } else {
-                        String::new()
-                    }
-                });
-            let model = backend_config
-                .and_then(|c| c.model.clone())
-                .unwrap_or_else(|| default_model.to_string());
-            let base_url = backend_config
-                .and_then(|c| c.base_url.clone())
-                .unwrap_or_else(|| default_base_url.to_string());
-            let temperature = backend_config.and_then(|c| c.temperature);
-
-            let openai_config = OpenAICompatibleConfig {
-                name: name.to_string(),
-                api_key,
-                model,
-                base_url,
-                temperature,
-            };
-
-            Ok(Box::new(OpenAICompatibleBackend::new(openai_config)?))
+            OpenAICompatibleBackend::create(backend_config, name)
         }
         _ => {
             let mut available = vec!["mock"];

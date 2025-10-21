@@ -1,13 +1,11 @@
-use super::{LlmBackend, LlmResponse};
+use super::{LlmBackend, LlmResponse, RequestExecutor};
 use crate::backends::llm_error::LlmError;
-use crate::backends::retry::retry_with_backoff;
-use crate::conversations::{AgentEvent, Conversation, ConversationMessage, ToolCall};
+use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
@@ -29,6 +27,7 @@ impl Default for AnthropicConfig {
 pub struct AnthropicBackend {
     client: reqwest::Client,
     config: AnthropicConfig,
+    default_executor: RequestExecutor,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,7 +113,14 @@ impl AnthropicBackend {
         let client = client_builder
             .build()
             .context("Failed to build HTTP client")?;
-        Ok(Self { client, config })
+
+        let default_executor = RequestExecutor::new(3, "Anthropic API request".to_string());
+
+        Ok(Self {
+            client,
+            config,
+            default_executor,
+        })
     }
 
     fn convert_messages(
@@ -418,7 +424,8 @@ impl AnthropicBackend {
 #[async_trait]
 impl LlmBackend for AnthropicBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
-        self.send_message_attempt(message)
+        self.default_executor
+            .execute(|| async { self.send_message_attempt(message).await }, None)
             .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
@@ -428,7 +435,14 @@ impl LlmBackend for AnthropicBackend {
         conversation: &Conversation,
         tools: &ToolRegistry,
     ) -> Result<LlmResponse> {
-        self.send_message_with_tools_attempt(conversation, tools)
+        self.default_executor
+            .execute(
+                || async {
+                    self.send_message_with_tools_attempt(conversation, tools)
+                        .await
+                },
+                None,
+            )
             .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
@@ -436,18 +450,14 @@ impl LlmBackend for AnthropicBackend {
     async fn send_message_with_events(
         &self,
         message: &str,
-        event_tx: UnboundedSender<AgentEvent>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     ) -> Result<String> {
-        let retry_result = retry_with_backoff(
-            || self.send_message_attempt(message),
-            3,
-            "Anthropic API request",
-            event_tx.clone(),
-        )
-        .await;
-
-        retry_result
-            .result
+        self.default_executor
+            .execute(
+                || async { self.send_message_attempt(message).await },
+                event_tx,
+            )
+            .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
@@ -455,18 +465,17 @@ impl LlmBackend for AnthropicBackend {
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-        event_tx: UnboundedSender<AgentEvent>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     ) -> Result<LlmResponse> {
-        let retry_result = retry_with_backoff(
-            || self.send_message_with_tools_attempt(conversation, tools),
-            3,
-            "Anthropic API request",
-            event_tx.clone(),
-        )
-        .await;
-
-        retry_result
-            .result
+        self.default_executor
+            .execute(
+                || async {
+                    self.send_message_with_tools_attempt(conversation, tools)
+                        .await
+                },
+                event_tx,
+            )
+            .await
             .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
