@@ -91,13 +91,6 @@ mod tests {
     use crate::backends::mock::MockBackend;
 
     #[tokio::test]
-    async fn test_summarizer_creation() {
-        let mock_backend = Arc::new(MockBackend::new());
-        let _summarizer = MessageSummarizer::new(mock_backend);
-        assert!(true); // Just testing creation works
-    }
-
-    #[tokio::test]
     async fn test_build_summary_request_without_focus_areas() {
         let mock_backend = Arc::new(MockBackend::new());
         let summarizer = MessageSummarizer::new(mock_backend);
