@@ -154,6 +154,59 @@ impl Conversation {
         }
         None
     }
+
+    /// Compact the conversation by replacing old messages with a summary
+    /// while preserving recent messages and system context
+    pub fn compact_with_summary(&mut self, summary: String, keep_recent: usize) {
+        let total = self.messages.len();
+
+        if total <= keep_recent {
+            return; // Nothing to compact
+        }
+
+        // Keep system message if present
+        let system_msg = self.messages.iter().find(|m| m.role == "system").cloned();
+
+        // Get recent messages
+        let recent: Vec<_> = self
+            .messages
+            .iter()
+            .skip(total - keep_recent)
+            .cloned()
+            .collect();
+
+        // Create summary message
+        let summary_msg = ConversationMessage {
+            role: "user".to_string(),
+            content: Some(format!(
+                "[CONVERSATION HISTORY SUMMARY - {} messages]\n\n{}\n\n[END SUMMARY - Recent conversation continues below]",
+                total - keep_recent,
+                summary
+            )),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        };
+
+        // Rebuild messages: system + summary + recent
+        self.messages.clear();
+        if let Some(sys) = system_msg {
+            self.messages.push(sys);
+        }
+        self.messages.push(summary_msg);
+        self.messages.extend(recent);
+    }
+
+    /// Check if the conversation has been compacted
+    pub fn is_compacted(&self) -> bool {
+        self.messages.iter().any(|m| {
+            if let Some(content) = &m.content {
+                content.starts_with("[CONVERSATION HISTORY SUMMARY")
+            } else {
+                false
+            }
+        })
+    }
 }
 
 impl Default for Conversation {

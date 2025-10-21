@@ -341,7 +341,7 @@ impl AppState {
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
                 for display_name in tool_call_displays {
-                    self.add_message(format!("\n● {}", display_name));
+                    self.add_message(format!("● {}\n", display_name));
                 }
             }
             AgentEvent::ToolPreview {
@@ -364,7 +364,6 @@ impl AppState {
                     .collect::<Vec<_>>()
                     .join("\n");
                 self.add_message(indented_content);
-                self.add_message("\n".to_string());
             }
             AgentEvent::Error(error) => {
                 self.agent_state = AgentState::Idle;
@@ -412,6 +411,16 @@ impl AppState {
             AgentEvent::AgentSwitched { .. } => {
                 // The event is handled in the event loop, but we might want to show a message
                 // or update UI elements here if needed
+            }
+            AgentEvent::Summarizing { .. } => {
+                self.agent_state = AgentState::Summarizing;
+            }
+            AgentEvent::SummaryComplete { .. } => {
+                self.agent_state = AgentState::Idle;
+            }
+            AgentEvent::SummaryError { error } => {
+                self.agent_state = AgentState::Idle;
+                self.add_message(format!("Error summarizing conversation: {}", error));
             }
         }
     }

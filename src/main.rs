@@ -71,7 +71,14 @@ async fn handle_chat(
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    hoosh::tui::run(backend, parser, permission_manager, tool_registry, config.clone()).await?;
+    hoosh::tui::run(
+        backend,
+        parser,
+        permission_manager,
+        tool_registry,
+        config.clone(),
+    )
+    .await?;
 
     Ok(())
 }

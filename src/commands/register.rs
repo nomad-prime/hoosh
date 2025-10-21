@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::agents_command::AgentsCommand;
 use super::clear_command::ClearCommand;
+use super::compact_command::CompactCommand;
 use super::exit_command::ExitCommand;
 use super::help_command::HelpCommand;
 use super::registry::CommandRegistry;
@@ -20,5 +21,6 @@ pub fn register_default_commands(registry: &mut CommandRegistry) -> Result<()> {
     registry.register(Arc::new(ExitCommand))?;
     registry.register(Arc::new(UntrustCommand))?;
     registry.register(Arc::new(SwitchAgentCommand))?;
+    registry.register(Arc::new(CompactCommand))?;
     Ok(())
 }

@@ -2,6 +2,7 @@ mod actions;
 mod app;
 mod clipboard;
 pub mod completion;
+pub mod components;
 mod event_loop;
 mod events;
 mod handler_result;
@@ -11,7 +12,6 @@ pub mod history;
 mod input_handler;
 mod terminal;
 mod ui;
-pub mod components;
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -20,6 +20,7 @@ use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
+use crate::conversations::MessageSummarizer;
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
@@ -157,6 +158,9 @@ pub async fn run(
         Box::new(handlers::TextInputHandler::new()),
     ];
 
+    // Create summarizer
+    let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
+
     // Create context
     let context = EventLoopContext {
         backend,
@@ -170,6 +174,7 @@ pub async fn run(
         agent_manager,
         working_dir: working_dir_display,
         permission_manager: permission_manager_arc,
+        summarizer,
         input_handlers,
         current_agent_name: default_agent
             .as_ref()

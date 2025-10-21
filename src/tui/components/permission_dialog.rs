@@ -1,3 +1,5 @@
+use crate::permissions::OperationType;
+use crate::tui::app::{AppState, PermissionOption};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -5,8 +7,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
 };
-use crate::tui::app::{AppState, PermissionOption};
-use crate::permissions::OperationType;
 
 /// Permission dialog widget that shows permission requests
 pub struct PermissionDialogWidget<'a> {
@@ -16,7 +16,10 @@ pub struct PermissionDialogWidget<'a> {
 
 impl<'a> PermissionDialogWidget<'a> {
     pub fn new(app_state: &'a AppState, anchor_area: Rect) -> Self {
-        Self { app_state, anchor_area }
+        Self {
+            app_state,
+            anchor_area,
+        }
     }
 }
 
