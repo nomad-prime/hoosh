@@ -3,4 +3,5 @@ pub enum AgentState {
     Idle,
     Thinking,
     ExecutingTools,
+    Summarizing,
 }

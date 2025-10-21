@@ -1,3 +1,4 @@
+use crate::tui::app::AppState;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -5,7 +6,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
-use crate::tui::app::AppState;
 
 /// Mode indicator widget that shows whether autopilot is enabled
 pub struct ModeIndicatorWidget<'a> {
@@ -20,7 +20,8 @@ impl<'a> ModeIndicatorWidget<'a> {
 
 impl<'a> Widget for ModeIndicatorWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let is_autopilot = self.app_state
+        let is_autopilot = self
+            .app_state
             .autopilot_enabled
             .load(std::sync::atomic::Ordering::Relaxed);
 

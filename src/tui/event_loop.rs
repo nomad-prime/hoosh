@@ -11,7 +11,7 @@ use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
-use crate::conversations::{AgentEvent, Conversation};
+use crate::conversations::{AgentEvent, Conversation, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -34,6 +34,7 @@ pub struct EventLoopContext {
     pub agent_manager: Arc<AgentManager>,
     pub working_dir: String,
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
+    pub summarizer: Arc<MessageSummarizer>,
     pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
     pub current_agent_name: String,
     pub config: AppConfig,
@@ -205,8 +206,10 @@ pub async fn run_event_loop(
                             working_dir: context.working_dir.clone(),
                             event_tx: context.event_tx.clone(),
                             permission_manager: Arc::clone(&context.permission_manager),
+                            summarizer: Arc::clone(&context.summarizer),
                             current_agent_name: context.current_agent_name.clone(),
                             config: context.config.clone(),
+                            backend: Arc::clone(&context.backend),
                         });
                         break;
                     }

@@ -1,3 +1,4 @@
+use crate::tui::app::AppState;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -5,7 +6,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
 };
-use crate::tui::app::AppState;
 
 /// Approval dialog widget that shows tool approval requests
 pub struct ApprovalDialogWidget<'a> {
@@ -15,7 +15,10 @@ pub struct ApprovalDialogWidget<'a> {
 
 impl<'a> ApprovalDialogWidget<'a> {
     pub fn new(app_state: &'a AppState, anchor_area: Rect) -> Self {
-        Self { app_state, anchor_area }
+        Self {
+            app_state,
+            anchor_area,
+        }
     }
 }
 

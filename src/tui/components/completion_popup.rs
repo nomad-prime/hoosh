@@ -1,10 +1,10 @@
+use crate::tui::app::AppState;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Widget},
 };
-use crate::tui::app::AppState;
 
 /// Completion popup widget that shows file/command completion options
 pub struct CompletionPopupWidget<'a> {
@@ -14,7 +14,10 @@ pub struct CompletionPopupWidget<'a> {
 
 impl<'a> CompletionPopupWidget<'a> {
     pub fn new(app_state: &'a AppState, anchor_area: Rect) -> Self {
-        Self { app_state, anchor_area }
+        Self {
+            app_state,
+            anchor_area,
+        }
     }
 }
 
@@ -26,8 +29,8 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
             }
 
             let max_items = 10;
-            let visible_candidates = &completion_state.candidates
-                [..completion_state.candidates.len().min(max_items)];
+            let visible_candidates =
+                &completion_state.candidates[..completion_state.candidates.len().min(max_items)];
 
             let items: Vec<ListItem> = visible_candidates
                 .iter()

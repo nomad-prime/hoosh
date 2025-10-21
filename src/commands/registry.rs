@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::config::AppConfig;
-use crate::conversations::Conversation;
+use crate::conversations::{Conversation, MessageSummarizer};
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
@@ -22,9 +22,11 @@ pub struct CommandContext {
     pub command_registry: Option<Arc<CommandRegistry>>,
     pub working_directory: String,
     pub permission_manager: Option<Arc<crate::permissions::PermissionManager>>,
+    pub summarizer: Option<Arc<MessageSummarizer>>,
     pub current_agent_name: Option<String>,
     pub event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     pub config: Option<AppConfig>,
+    pub backend: Option<Arc<dyn crate::backends::LlmBackend>>,
 }
 
 impl CommandContext {
@@ -36,9 +38,11 @@ impl CommandContext {
             command_registry: None,
             working_directory: String::new(),
             permission_manager: None,
+            summarizer: None,
             current_agent_name: None,
             event_tx: None,
             config: None,
+            backend: None,
         }
     }
 
@@ -75,6 +79,11 @@ impl CommandContext {
         self
     }
 
+    pub fn with_summarizer(mut self, summarizer: Arc<MessageSummarizer>) -> Self {
+        self.summarizer = Some(summarizer);
+        self
+    }
+
     pub fn with_current_agent_name(mut self, name: String) -> Self {
         self.current_agent_name = Some(name);
         self
@@ -90,6 +99,11 @@ impl CommandContext {
 
     pub fn with_config(mut self, config: AppConfig) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    pub fn with_backend(mut self, backend: Arc<dyn crate::backends::LlmBackend>) -> Self {
+        self.backend = Some(backend);
         self
     }
 }

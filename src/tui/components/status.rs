@@ -57,6 +57,15 @@ impl<'a> Widget for StatusWidget<'a> {
                 (format!(" {} Your turn", waiting_spinner), Color::Yellow)
             } else {
                 match self.app_state.agent_state {
+                    AgentState::Summarizing => {
+                        let spinner = thinking_spinners[self.app_state.current_thinking_spinner]
+                            [self.app_state.animation_frame
+                                % thinking_spinners[self.app_state.current_thinking_spinner].len()];
+                        (
+                            format!(" {} Summarizing", spinner),
+                            Color::Rgb(142, 240, 204),
+                        )
+                    }
                     AgentState::Idle => (String::new(), Color::Rgb(142, 240, 204)),
                     AgentState::Thinking => {
                         let spinner = thinking_spinners[self.app_state.current_thinking_spinner]

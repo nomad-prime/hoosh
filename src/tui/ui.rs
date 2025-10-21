@@ -5,12 +5,9 @@ use ratatui::{
 
 use super::app::AppState;
 use super::components::{
-    status::StatusWidget,
-    input::InputWidget,
-    mode_indicator::ModeIndicatorWidget,
-    completion_popup::CompletionPopupWidget,
-    permission_dialog::PermissionDialogWidget,
-    approval_dialog::ApprovalDialogWidget,
+    approval_dialog::ApprovalDialogWidget, completion_popup::CompletionPopupWidget,
+    input::InputWidget, mode_indicator::ModeIndicatorWidget,
+    permission_dialog::PermissionDialogWidget, status::StatusWidget,
 };
 
 pub fn render(frame: &mut Frame, app: &mut AppState) {
@@ -26,7 +23,7 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
 
     // Render status component
     frame.render_widget(StatusWidget::new(app), status_area);
-    
+
     // Render input component
     frame.render_widget(InputWidget::new(&app.input), input_area);
 
@@ -40,23 +37,14 @@ pub fn render(frame: &mut Frame, app: &mut AppState) {
 
     // Conditional rendering of popups
     if app.is_completing() {
-        frame.render_widget(
-            CompletionPopupWidget::new(app, input_area), 
-            frame.area()
-        );
+        frame.render_widget(CompletionPopupWidget::new(app, input_area), frame.area());
     }
 
     if app.is_showing_permission_dialog() {
-        frame.render_widget(
-            PermissionDialogWidget::new(app, mode_area), 
-            frame.area()
-        );
+        frame.render_widget(PermissionDialogWidget::new(app, mode_area), frame.area());
     }
 
     if app.is_showing_approval_dialog() {
-        frame.render_widget(
-            ApprovalDialogWidget::new(app, mode_area), 
-            frame.area()
-        );
+        frame.render_widget(ApprovalDialogWidget::new(app, mode_area), frame.area());
     }
 }
