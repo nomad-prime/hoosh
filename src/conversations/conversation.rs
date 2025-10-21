@@ -165,12 +165,11 @@ impl Conversation {
         }
 
         // Keep system message if present
-        let system_msg = self.messages.iter()
-            .find(|m| m.role == "system")
-            .cloned();
+        let system_msg = self.messages.iter().find(|m| m.role == "system").cloned();
 
         // Get recent messages
-        let recent: Vec<_> = self.messages
+        let recent: Vec<_> = self
+            .messages
             .iter()
             .skip(total - keep_recent)
             .cloned()

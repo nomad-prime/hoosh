@@ -79,10 +79,7 @@ impl CommandContext {
         self
     }
 
-    pub fn with_summarizer(
-        mut self,
-        summarizer: Arc<MessageSummarizer>,
-    ) -> Self {
+    pub fn with_summarizer(mut self, summarizer: Arc<MessageSummarizer>) -> Self {
         self.summarizer = Some(summarizer);
         self
     }
