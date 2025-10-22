@@ -1,4 +1,5 @@
 use crate::permissions::{OperationType, PermissionManager};
+use crate::security::PathValidator;
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -9,22 +10,21 @@ use similar::{ChangeTag, TextDiff};
 use std::path::PathBuf;
 use tokio::fs;
 
-use super::common::resolve_path;
-
 pub struct EditFileTool {
-    working_directory: PathBuf,
+    path_validator: PathValidator,
 }
 
 impl EditFileTool {
     pub fn new() -> Self {
+        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
-            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            path_validator: PathValidator::new(working_directory),
         }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            working_directory: working_dir,
+            path_validator: PathValidator::new(working_dir),
         }
     }
 }
@@ -49,27 +49,12 @@ impl Tool for EditFileTool {
             anyhow::bail!("old_string and new_string must be different");
         }
 
-        let file_path = resolve_path(&args.path, &self.working_directory);
-
-        // Security check: ensure we're not editing outside the working directory
-        let canonical_file = file_path
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?;
-        let canonical_working = self.working_directory.canonicalize().with_context(|| {
-            format!(
-                "Failed to resolve working directory: {}",
-                self.working_directory.display()
-            )
-        })?;
-
-        if !canonical_file.starts_with(&canonical_working) {
-            anyhow::bail!("Access denied: cannot edit files outside working directory");
-        }
+        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
 
         // Read the file
-        let content = fs::read_to_string(&canonical_file)
+        let content = fs::read_to_string(&file_path)
             .await
-            .with_context(|| format!("Failed to read file: {}", canonical_file.display()))?;
+            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
 
         // Perform the replacement
         let new_content = if args.replace_all {
@@ -111,13 +96,13 @@ impl Tool for EditFileTool {
         };
 
         // Write the modified content back
-        fs::write(&canonical_file, &new_content.0)
+        fs::write(&file_path, &new_content.0)
             .await
-            .with_context(|| format!("Failed to write file: {}", canonical_file.display()))?;
+            .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
 
         Ok(format!(
             "Successfully edited {} (replaced {} occurrence{})",
-            canonical_file.display(),
+            file_path.display(),
             new_content.1,
             if new_content.1 == 1 { "" } else { "s" }
         ))
@@ -187,14 +172,12 @@ impl Tool for EditFileTool {
         let args: EditFileArgs =
             serde_json::from_value(args.clone()).context("Invalid arguments for edit_file tool")?;
 
-        // Normalize the path for consistent caching
-        let file_path = resolve_path(&args.path, &self.working_directory);
+        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
         let normalized_path = file_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
             .to_string();
 
-        // Editing is essentially writing to a file
         let operation = OperationType::WriteFile(normalized_path);
         permission_manager.check_permission(&operation).await
     }
@@ -202,7 +185,7 @@ impl Tool for EditFileTool {
     async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
         let args: EditFileArgs = serde_json::from_value(args.clone()).ok()?;
 
-        let file_path = resolve_path(&args.path, &self.working_directory);
+        let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
         let content = fs::read_to_string(&file_path).await.ok()?;
 
         // Generate unified diff

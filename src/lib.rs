@@ -7,6 +7,7 @@ pub mod console;
 pub mod conversations;
 pub mod parser;
 pub mod permissions;
+pub mod security;
 pub mod tool_executor;
 pub mod tools;
 pub mod tui;
@@ -30,5 +31,6 @@ pub use conversations::{
 };
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;
+pub use security::PathValidator;
 pub use tool_executor::ToolExecutor;
 pub use tools::{Tool, ToolRegistry};

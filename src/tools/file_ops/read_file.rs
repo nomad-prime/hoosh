@@ -1,4 +1,5 @@
 use crate::permissions::{OperationType, PermissionManager};
+use crate::security::PathValidator;
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -7,22 +8,21 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
-use super::common::resolve_path;
-
 pub struct ReadFileTool {
-    working_directory: PathBuf,
+    path_validator: PathValidator,
 }
 
 impl ReadFileTool {
     pub fn new() -> Self {
+        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
-            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            path_validator: PathValidator::new(working_directory),
         }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            working_directory: working_dir,
+            path_validator: PathValidator::new(working_dir),
         }
     }
 }
@@ -42,27 +42,11 @@ impl Tool for ReadFileTool {
         let args: ReadFileArgs =
             serde_json::from_value(args.clone()).context("Invalid arguments for read_file tool")?;
 
-        let file_path = resolve_path(&args.path, &self.working_directory);
+        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
 
-        // Security check: ensure we're not reading outside the working directory
-        // Use canonicalize to resolve symlinks and prevent path traversal attacks
-        let canonical_file = file_path
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?;
-        let canonical_working = self.working_directory.canonicalize().with_context(|| {
-            format!(
-                "Failed to resolve working directory: {}",
-                self.working_directory.display()
-            )
-        })?;
-
-        if !canonical_file.starts_with(&canonical_working) {
-            anyhow::bail!("Access denied: cannot read files outside working directory");
-        }
-
-        let content = fs::read_to_string(&canonical_file)
+        let content = fs::read_to_string(&file_path)
             .await
-            .with_context(|| format!("Failed to read file: {}", canonical_file.display()))?;
+            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
 
         // Handle line-based reading if specified
         if let (Some(start), Some(end)) = (args.start_line, args.end_line) {
@@ -155,9 +139,7 @@ impl Tool for ReadFileTool {
         let args: ReadFileArgs =
             serde_json::from_value(args.clone()).context("Invalid arguments for read_file tool")?;
 
-        // Normalize the path for consistent caching
-        // Use the same resolved path that will be used in execute()
-        let file_path = resolve_path(&args.path, &self.working_directory);
+        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
         let normalized_path = file_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?

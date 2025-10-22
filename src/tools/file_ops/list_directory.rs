@@ -1,40 +1,42 @@
 use crate::permissions::{OperationType, PermissionManager};
+use crate::security::PathValidator;
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 
 pub struct ListDirectoryTool {
-    working_directory: PathBuf,
+    path_validator: PathValidator,
 }
 
 impl ListDirectoryTool {
     pub fn new() -> Self {
+        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
-            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            path_validator: PathValidator::new(working_directory),
         }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            working_directory: working_dir,
+            path_validator: PathValidator::new(working_dir),
         }
     }
 
     fn resolve_path(&self, dir_path: &str) -> PathBuf {
         if dir_path.is_empty() || dir_path == "." {
-            return self.working_directory.clone();
+            return self
+                .path_validator
+                .validate_and_resolve(".")
+                .unwrap_or_else(|_| PathBuf::from("."));
         }
 
-        let path = Path::new(dir_path);
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            self.working_directory.join(path)
-        }
+        self.path_validator
+            .validate_and_resolve(dir_path)
+            .unwrap_or_else(|_| PathBuf::from("."))
     }
 }
 
@@ -62,25 +64,9 @@ impl Tool for ListDirectoryTool {
 
         let dir_path = self.resolve_path(&args.path);
 
-        // Security check: ensure we're not accessing outside the working directory
-        // Use canonicalize to resolve symlinks and prevent path traversal attacks
-        let canonical_dir = dir_path
-            .canonicalize()
-            .with_context(|| format!("Failed to resolve path: {}", dir_path.display()))?;
-        let canonical_working = self.working_directory.canonicalize().with_context(|| {
-            format!(
-                "Failed to resolve working directory: {}",
-                self.working_directory.display()
-            )
-        })?;
-
-        if !canonical_dir.starts_with(&canonical_working) {
-            anyhow::bail!("Access denied: cannot access directories outside working directory");
-        }
-
-        let mut entries = fs::read_dir(&canonical_dir)
+        let mut entries = fs::read_dir(&dir_path)
             .await
-            .with_context(|| format!("Failed to read directory: {}", canonical_dir.display()))?;
+            .with_context(|| format!("Failed to read directory: {}", dir_path.display()))?;
 
         let mut directory_entries = Vec::new();
 
@@ -113,7 +99,7 @@ impl Tool for ListDirectoryTool {
         });
 
         // Format output
-        let mut result = format!("Contents of {}:\n", canonical_dir.display());
+        let mut result = format!("Contents of {}:\n", dir_path.display());
 
         if directory_entries.is_empty() {
             result.push_str("  (empty directory)\n");
@@ -211,7 +197,6 @@ impl Tool for ListDirectoryTool {
         let args: ListDirectoryArgs = serde_json::from_value(args.clone())
             .context("Invalid arguments for list_directory tool")?;
 
-        // Normalize the path for consistent caching
         let dir_path = self.resolve_path(&args.path);
         let normalized_path = dir_path
             .to_str()

@@ -1,4 +1,3 @@
-mod common;
 mod edit_file;
 mod list_directory;
 mod read_file;

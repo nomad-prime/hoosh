@@ -1,4 +1,5 @@
 use crate::permissions::{OperationType, PermissionManager};
+use crate::security::PathValidator;
 use crate::tools::Tool;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -8,22 +9,21 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
-use super::common::resolve_path;
-
 pub struct WriteFileTool {
-    working_directory: PathBuf,
+    path_validator: PathValidator,
 }
 
 impl WriteFileTool {
     pub fn new() -> Self {
+        let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
-            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            path_validator: PathValidator::new(working_directory),
         }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            working_directory: working_dir,
+            path_validator: PathValidator::new(working_dir),
         }
     }
 }
@@ -42,16 +42,7 @@ impl Tool for WriteFileTool {
         let args: WriteFileArgs = serde_json::from_value(args.clone())
             .context("Invalid arguments for write_file tool")?;
 
-        let file_path = resolve_path(&args.path, &self.working_directory);
-
-        // Security check: ensure we're not writing outside the working directory
-        // For write operations, we need to check the parent directory since the file might not exist yet
-        let canonical_working = self.working_directory.canonicalize().with_context(|| {
-            format!(
-                "Failed to resolve working directory: {}",
-                self.working_directory.display()
-            )
-        })?;
+        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
 
         // Create parent directories if requested
         if args.create_dirs {
@@ -60,29 +51,6 @@ impl Tool for WriteFileTool {
                     .await
                     .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
             }
-        }
-
-        // Check if file exists to determine which path to canonicalize
-        let path_to_check = if file_path.exists() {
-            file_path
-                .canonicalize()
-                .with_context(|| format!("Failed to resolve path: {}", file_path.display()))?
-        } else if let Some(parent) = file_path.parent() {
-            // Check parent directory if file doesn't exist
-            let canonical_parent = parent.canonicalize().with_context(|| {
-                format!("Failed to resolve parent directory: {}", parent.display())
-            })?;
-            canonical_parent.join(
-                file_path
-                    .file_name()
-                    .ok_or_else(|| anyhow::anyhow!("Invalid file path: no file name"))?,
-            )
-        } else {
-            anyhow::bail!("Invalid file path: {}", file_path.display());
-        };
-
-        if !path_to_check.starts_with(&canonical_working) {
-            anyhow::bail!("Access denied: cannot write files outside working directory");
         }
 
         fs::write(&file_path, &args.content)
@@ -152,23 +120,19 @@ impl Tool for WriteFileTool {
         let args: WriteFileArgs = serde_json::from_value(args.clone())
             .context("Invalid arguments for write_file tool")?;
 
-        // Normalize the path for consistent caching
-        let file_path = resolve_path(&args.path, &self.working_directory);
+        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
         let normalized_path = file_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
             .to_string();
 
-        // Always use WriteFile for caching consistency
-        // Whether creating or overwriting, the permission is the same: writing to a file
         let operation = OperationType::WriteFile(normalized_path);
-
         permission_manager.check_permission(&operation).await
     }
 
     async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
         let args: WriteFileArgs = serde_json::from_value(args.clone()).ok()?;
-        let file_path = resolve_path(&args.path, &self.working_directory);
+        let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
 
         // Check if file exists
         if file_path.exists() {
