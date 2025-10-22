@@ -22,22 +22,38 @@ use super::terminal::Tui;
 use super::ui;
 use super::viewport_manager::ViewportManager;
 
-pub struct EventLoopContext {
+pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
     pub parser: Arc<MessageParser>,
     pub tool_registry: Arc<ToolRegistry>,
     pub tool_executor: Arc<ToolExecutor>,
+    pub agent_manager: Arc<AgentManager>,
+    pub command_registry: Arc<CommandRegistry>,
+}
+
+pub struct ConversationState {
     pub conversation: Arc<Mutex<Conversation>>,
+    pub summarizer: Arc<MessageSummarizer>,
+    pub current_agent_name: String,
+}
+
+pub struct EventChannels {
     pub event_rx: mpsc::UnboundedReceiver<AgentEvent>,
     pub event_tx: mpsc::UnboundedSender<AgentEvent>,
-    pub command_registry: Arc<CommandRegistry>,
-    pub agent_manager: Arc<AgentManager>,
-    pub working_dir: String,
+}
+
+pub struct RuntimeState {
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
-    pub summarizer: Arc<MessageSummarizer>,
     pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
-    pub current_agent_name: String,
+    pub working_dir: String,
     pub config: AppConfig,
+}
+
+pub struct EventLoopContext {
+    pub system: SystemResources,
+    pub conversation: ConversationState,
+    pub channels: EventChannels,
+    pub runtime: RuntimeState,
 }
 
 pub async fn run_event_loop(
@@ -57,7 +73,7 @@ pub async fn run_event_loop(
 
         terminal.draw(|f| ui::render(f, app))?;
 
-        while let Ok(event) = context.event_rx.try_recv() {
+        while let Ok(event) = context.channels.event_rx.try_recv() {
             match event {
                 AgentEvent::PermissionRequest {
                     operation,
@@ -75,7 +91,7 @@ pub async fn run_event_loop(
                     app.should_quit = true;
                 }
                 AgentEvent::ClearConversation => {
-                    let mut conv = context.conversation.lock().await;
+                    let mut conv = context.conversation.conversation.lock().await;
                     conv.messages.clear();
                     app.add_message("Conversation cleared.\n".to_string());
                 }
@@ -84,7 +100,7 @@ pub async fn run_event_loop(
                     // app.add_message(format!("[DEBUG] {}\n", _msg));
                 }
                 AgentEvent::AgentSwitched { new_agent_name } => {
-                    context.current_agent_name = new_agent_name;
+                    context.conversation.current_agent_name = new_agent_name;
                     // The header will be updated on next render
                 }
                 other_event => {
@@ -106,7 +122,7 @@ pub async fn run_event_loop(
             let agent_task_active = agent_task.is_some();
 
             // Iterate through handlers in order until one handles the event
-            for handler in &mut context.input_handlers {
+            for handler in &mut context.runtime.input_handlers {
                 if !handler.should_handle(&event, app) {
                     continue;
                 }
@@ -137,29 +153,29 @@ pub async fn run_event_loop(
                         use super::actions::CommandExecutionContext;
                         execute_command(CommandExecutionContext {
                             input,
-                            command_registry: Arc::clone(&context.command_registry),
-                            conversation: Arc::clone(&context.conversation),
-                            tool_registry: Arc::clone(&context.tool_registry),
-                            agent_manager: Arc::clone(&context.agent_manager),
-                            working_dir: context.working_dir.clone(),
-                            event_tx: context.event_tx.clone(),
-                            permission_manager: Arc::clone(&context.permission_manager),
-                            summarizer: Arc::clone(&context.summarizer),
-                            current_agent_name: context.current_agent_name.clone(),
-                            config: context.config.clone(),
-                            backend: Arc::clone(&context.backend),
+                            command_registry: Arc::clone(&context.system.command_registry),
+                            conversation: Arc::clone(&context.conversation.conversation),
+                            tool_registry: Arc::clone(&context.system.tool_registry),
+                            agent_manager: Arc::clone(&context.system.agent_manager),
+                            working_dir: context.runtime.working_dir.clone(),
+                            event_tx: context.channels.event_tx.clone(),
+                            permission_manager: Arc::clone(&context.runtime.permission_manager),
+                            summarizer: Arc::clone(&context.conversation.summarizer),
+                            current_agent_name: context.conversation.current_agent_name.clone(),
+                            config: context.runtime.config.clone(),
+                            backend: Arc::clone(&context.system.backend),
                         });
                         break;
                     }
                     Ok(super::handler_result::KeyHandlerResult::StartConversation(input)) => {
                         agent_task = Some(start_agent_conversation(
                             input,
-                            Arc::clone(&context.parser),
-                            Arc::clone(&context.conversation),
-                            Arc::clone(&context.backend),
-                            Arc::clone(&context.tool_registry),
-                            Arc::clone(&context.tool_executor),
-                            context.event_tx.clone(),
+                            Arc::clone(&context.system.parser),
+                            Arc::clone(&context.conversation.conversation),
+                            Arc::clone(&context.system.backend),
+                            Arc::clone(&context.system.tool_registry),
+                            Arc::clone(&context.system.tool_executor),
+                            context.channels.event_tx.clone(),
                         ));
                         break;
                     }

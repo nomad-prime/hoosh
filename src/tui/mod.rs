@@ -32,7 +32,10 @@ use crate::tools::ToolRegistry;
 
 use app::AppState;
 use completion::{CommandCompleter, FileCompleter};
-use event_loop::{run_event_loop, EventLoopContext};
+use event_loop::{
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
+};
 use history::PromptHistory;
 use terminal::{init_terminal, restore_terminal};
 
@@ -140,24 +143,29 @@ pub async fn run(
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
 
     let context = EventLoopContext {
-        backend,
-        parser: Arc::new(parser),
-        tool_registry: Arc::new(tool_registry),
-        tool_executor: Arc::new(tool_executor),
-        conversation,
-        event_rx,
-        event_tx,
-        command_registry,
-        agent_manager,
-        working_dir: working_dir_display,
-        permission_manager: permission_manager_arc,
-        summarizer,
-        input_handlers,
-        current_agent_name: default_agent
-            .as_ref()
-            .map(|a| a.name.clone())
-            .unwrap_or_else(|| "assistant".to_string()),
-        config,
+        system: SystemResources {
+            backend,
+            parser: Arc::new(parser),
+            tool_registry: Arc::new(tool_registry),
+            tool_executor: Arc::new(tool_executor),
+            agent_manager,
+            command_registry,
+        },
+        conversation: ConversationState {
+            conversation,
+            summarizer,
+            current_agent_name: default_agent
+                .as_ref()
+                .map(|a| a.name.clone())
+                .unwrap_or_else(|| "assistant".to_string()),
+        },
+        channels: EventChannels { event_rx, event_tx },
+        runtime: RuntimeState {
+            permission_manager: permission_manager_arc,
+            input_handlers,
+            working_dir: working_dir_display,
+            config,
+        },
     };
 
     let terminal = run_event_loop(terminal, &mut app, context).await?;
