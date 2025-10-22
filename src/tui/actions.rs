@@ -70,10 +70,7 @@ pub fn start_agent_conversation(
     event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let expanded_input = parser
-            .expand_message(&input)
-            .await
-            .unwrap_or_else(|_| input);
+        let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
 
         {
             let mut conv = conversation.lock().await;
