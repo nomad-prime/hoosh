@@ -1,27 +1,5 @@
 # Hoosh MVP Release Task List
 
-**Goal**: Prepare hoosh for local project usage with minimum viable features, clean code, and production readiness.
-
-**Current Status**: Development mode, running via `cargo run`, basic features working.
-
-## 🟡 HIGH PRIORITY - MVP Blockers
-
-### 3. Graceful LLM Error Handling & Recovery
-
-- **Issue**: No graceful handling of downstream LLM errors (rate limits, API failures, timeouts)
-- **Risk**: HIGH - Poor user experience when LLM backends fail mid-conversation
-- **Required**:
-    - Detect and handle HTTP 429 (rate limit) errors with automatic retry logic
-    - Detect and handle 5xx server errors with exponential backoff
-    - Offer user option to switch model mid-flight (e.g., from gpt-4 to gpt-3.5-turbo)
-    - Offer user option to switch backend mid-flight (e.g., from OpenAI to Anthropic)
-    - Display clear, actionable error messages (e.g., "Rate limit hit. Retry in 20s or switch model?")
-    - Implement `/switch-model <model>` and `/switch-backend <backend>` commands
-    - Preserve conversation context when switching backends/models
-- **Priority**: HIGH
-- **Effort**: 4-5 hours
-- **Why MVP**: Essential for production reliability and user experience
-
 ### 4. Installation & Distribution
 
 - **Issue**: Currently requires `cargo run` to execute
@@ -43,16 +21,6 @@
 - **Priority**: HIGH
 - **Effort**: 4-6 hours
 - **Dependencies**: Command system (✅ already implemented)
-
-### 6. Better Error Messages
-
-- **Issue**: Some errors are cryptic (e.g., backend configuration errors)
-- **Required**:
-    - User-friendly error messages with actionable suggestions
-    - Better validation on startup (check for API keys, validate config)
-    - Graceful degradation when backend unavailable
-- **Priority**: HIGH
-- **Effort**: 3-4 hours
 
 ### 7. Documentation Improvements
 
@@ -166,16 +134,3 @@
 - **Effort**: 3-4 hours
 
 ---
-
-## 🚫 OUT OF SCOPE FOR MVP (Post-v1)
-
-These are explicitly mentioned in ROADMAP as post-v1:
-
-1. **Web Search Tool** - Requires API integration, rate limiting, etc.
-2. **MCP (Model Context Protocol)** - Large feature, needs server integration
-3. **LSP Integration** - Complex, needs language server management
-4. **Project Indexing** - Requires AST parsing, symbol indexing
-5. **Multi-Agent Orchestration (ACE)** - Advanced feature, needs reflection/curator agents
-6. **Screenshot Tool** - Platform-specific, not critical
-7. **Markdown Rendering in TUI** - Nice-to-have UI enhancement
-8. **Multi-file Operations** - Can be done with multiple commands for MVP
