@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
-use crate::conversations::Conversation;
+use crate::conversations::{Conversation, ToolCall, ToolResult};
 use crate::permissions::{OperationType, PermissionScope};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -171,11 +171,36 @@ impl ConversationHandler {
 
         conversation.add_assistant_message(response.content.clone(), Some(tool_calls.clone()));
 
+        // Phase 1: Emit tool call events
         if let Some(ref content) = response.content {
             self.send_event(AgentEvent::AssistantThought(content.clone()));
         }
+        self.emit_tool_call_events(&tool_calls);
 
-        // Format tool call display names
+        // Phase 2: Execute tools
+        let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
+
+        // Phase 3: Check for rejections
+        if self.has_user_rejection(&tool_results) {
+            self.emit_tool_results(&tool_results);
+            for tool_result in tool_results {
+                conversation.add_tool_result(tool_result);
+            }
+            self.send_event(AgentEvent::ToolExecutionComplete);
+            return Ok(TurnStatus::Complete);
+        }
+
+        // Phase 4: Emit results and update conversation
+        self.emit_tool_results(&tool_results);
+        for tool_result in tool_results {
+            conversation.add_tool_result(tool_result);
+        }
+        self.send_event(AgentEvent::ToolExecutionComplete);
+
+        Ok(TurnStatus::Continue)
+    }
+
+    fn emit_tool_call_events(&self, tool_calls: &[ToolCall]) {
         let tool_call_displays: Vec<String> = tool_calls
             .iter()
             .map(|tc| {
@@ -192,67 +217,49 @@ impl ConversationHandler {
             .collect();
 
         self.send_event(AgentEvent::ToolCalls(tool_call_displays));
+    }
 
-        let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
-
-        // Check if any tool result contains a rejection error
-        let has_rejection = tool_results.iter().any(|result| {
-            if let Err(e) = &result.result {
-                e.to_string().contains("Operation rejected:")
-            } else {
-                false
-            }
-        });
-
-        for tool_result in &tool_results {
-            // Get the tool to access its result_summary method
-            let summary = if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
-                match &tool_result.result {
-                    Ok(output) => tool.result_summary(output),
-                    Err(e) => {
-                        // Check if this is a user rejection
-                        let err_str = e.to_string();
-                        if err_str.contains("Operation rejected:") {
-                            "Rejected by user".to_string()
-                        } else {
-                            format!("Error: {}", e)
-                        }
-                    }
-                }
-            } else {
-                // Fallback if tool not found
-                match &tool_result.result {
-                    Ok(_) => "Completed".to_string(),
-                    Err(e) => {
-                        // Check if this is a user rejection
-                        let err_str = e.to_string();
-                        if err_str.contains("Operation rejected:") {
-                            "Rejected by user".to_string()
-                        } else {
-                            format!("Error: {}", e)
-                        }
-                    }
-                }
-            };
-
+    fn emit_tool_results(&self, tool_results: &[ToolResult]) {
+        for tool_result in tool_results {
+            let summary = self.get_tool_result_summary(tool_result);
             self.send_event(AgentEvent::ToolResult {
                 tool_name: tool_result.display_name.clone(),
                 summary,
             });
         }
+    }
 
-        for tool_result in tool_results {
-            conversation.add_tool_result(tool_result);
+    fn get_tool_result_summary(&self, tool_result: &ToolResult) -> String {
+        if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
+            match &tool_result.result {
+                Ok(output) => tool.result_summary(output),
+                Err(e) => self.format_error_summary(e),
+            }
+        } else {
+            match &tool_result.result {
+                Ok(_) => "Completed".to_string(),
+                Err(e) => self.format_error_summary(e),
+            }
         }
+    }
 
-        self.send_event(AgentEvent::ToolExecutionComplete);
-
-        // If user rejected an operation, stop the conversation loop
-        if has_rejection {
-            return Ok(TurnStatus::Complete);
+    fn format_error_summary(&self, error: &anyhow::Error) -> String {
+        let err_str = error.to_string();
+        if err_str.contains("Operation rejected:") {
+            "Rejected by user".to_string()
+        } else {
+            format!("Error: {}", error)
         }
+    }
 
-        Ok(TurnStatus::Continue)
+    fn has_user_rejection(&self, tool_results: &[ToolResult]) -> bool {
+        tool_results.iter().any(|result| {
+            if let Err(e) = &result.result {
+                e.to_string().contains("Operation rejected:")
+            } else {
+                false
+            }
+        })
     }
 }
 
