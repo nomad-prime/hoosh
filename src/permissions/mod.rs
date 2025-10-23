@@ -1,6 +1,10 @@
+pub mod cache;
+
 use anyhow::{Context, Result};
+use cache::{OperationKind, PermissionCacheKey};
 use std::collections::HashMap;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -125,8 +129,8 @@ pub struct PermissionManager {
     skip_permissions: bool,
     default_permission: PermissionLevel,
     /// Cache of permission decisions for this session
-    /// Key is a string representation of the operation
-    session_cache: Arc<Mutex<HashMap<String, bool>>>,
+    /// Uses structured PermissionCacheKey instead of string-based keys
+    session_cache: Arc<Mutex<HashMap<PermissionCacheKey, bool>>>,
     /// Event sender for sending permission requests to UI
     event_sender: Option<mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     /// Response receiver for receiving permission responses from UI
@@ -135,7 +139,7 @@ pub struct PermissionManager {
     /// Request ID counter for generating unique permission request IDs
     request_counter: Arc<AtomicU64>,
     /// Trusted project directory (session-only)
-    trusted_project: Arc<Mutex<Option<std::path::PathBuf>>>,
+    trusted_project: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl PermissionManager {
@@ -185,12 +189,15 @@ impl PermissionManager {
     }
 
     /// Enable project-wide trust for a specific directory
-    pub fn set_trusted_project(&self, project_path: std::path::PathBuf) {
+    pub fn set_trusted_project(&self, project_path: PathBuf) {
         if let Ok(mut trusted) = self.trusted_project.lock() {
             *trusted = Some(project_path.clone());
         }
-        // Also cache the project-wide permission
-        let key = format!("project:{}:*", project_path.display());
+        // Also cache the project-wide permission using structured key
+        let key = PermissionCacheKey::ProjectWide {
+            operation: OperationKind::Write,
+            project_root: project_path.clone(),
+        };
         if let Ok(mut cache) = self.session_cache.lock() {
             cache.insert(key, true);
         }
@@ -207,7 +214,10 @@ impl PermissionManager {
 
         // Remove the project-wide permission from cache
         if let Some(path) = project_path {
-            let key = format!("project:{}:*", path.display());
+            let key = PermissionCacheKey::ProjectWide {
+                operation: OperationKind::Write,
+                project_root: path,
+            };
             if let Ok(mut cache) = self.session_cache.lock() {
                 cache.remove(&key);
             }
@@ -215,122 +225,48 @@ impl PermissionManager {
     }
 
     /// Get the currently trusted project directory
-    pub fn get_trusted_project(&self) -> Option<std::path::PathBuf> {
+    pub fn get_trusted_project(&self) -> Option<PathBuf> {
         self.trusted_project.lock().ok()?.clone()
     }
 
-    /// Get a cache key for a specific operation and scope
-    fn get_cache_key_for_scope(
-        &self,
-        operation: &OperationType,
-        scope: &PermissionScope,
-    ) -> String {
-        let kind = operation.operation_kind();
-        match scope {
-            PermissionScope::Specific(target) => format!("{}:specific:{}", kind, target),
-            PermissionScope::Directory(dir) => format!("{}:dir:{}", kind, dir),
-            PermissionScope::Global => format!("{}:*", kind),
-            PermissionScope::ProjectWide(path) => {
-                format!("project:{}:*", path.display())
-            }
-        }
-    }
-
-    /// Check if an operation path is within a project directory
-    fn is_within_project(operation_path: &str, project_root: &std::path::Path) -> bool {
-        // Try to canonicalize the project root
-        let abs_project_root = match project_root.canonicalize() {
-            Ok(path) => path,
-            Err(_) => return false,
-        };
-
-        // For the operation path, try to canonicalize if it exists
-        // Otherwise, canonicalize its parent directory and append the filename
-        let abs_op_path = if let Ok(path) = std::path::Path::new(operation_path).canonicalize() {
-            path
-        } else {
-            // File doesn't exist yet, try to canonicalize parent
-            let op_path = std::path::Path::new(operation_path);
-            if let Some(parent) = op_path.parent() {
-                if let Ok(abs_parent) = parent.canonicalize() {
-                    if let Some(filename) = op_path.file_name() {
-                        abs_parent.join(filename)
-                    } else {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        };
-
-        abs_op_path.starts_with(&abs_project_root)
-    }
-
     /// Check if operation was previously allowed in this session
-    /// Checks in hierarchical order: project-wide -> specific file -> directory -> global
+    /// Uses hierarchical permission checking with structured keys
     fn check_cache(&self, operation: &OperationType) -> Option<bool> {
         let cache = self.session_cache.lock().ok()?;
-
-        let kind = operation.operation_kind();
+        let operation_kind = operation.operation_kind().parse::<OperationKind>().ok()?;
         let target = operation.target();
 
         self.send_debug(&format!(
             "Checking cache for operation: {} ({})",
-            kind, target
+            operation.operation_kind(),
+            target
         ));
         self.send_debug("Cache contents:");
         for (key, &value) in cache.iter() {
-            self.send_debug(&format!("  {} => {}", key, value));
+            self.send_debug(&format!("  {:?} => {}", key, value));
         }
 
-        // 0. Check project-wide permissions first (highest priority)
-        for (key, &decision) in cache.iter() {
-            if key.starts_with("project:") {
-                // Extract project path from key
-                if let Some(project_path_str) = key
-                    .strip_prefix("project:")
-                    .and_then(|s| s.strip_suffix(":*"))
-                {
-                    if let Ok(project_path) =
-                        std::path::PathBuf::from(project_path_str).canonicalize()
-                    {
-                        if Self::is_within_project(target, &project_path) {
-                            self.send_debug(&format!("Found project-wide permission: {}", key));
-                            return Some(decision);
-                        }
-                    }
-                }
-            }
-        }
+        // Collect all matching cache entries with their precedence
+        let mut matches: Vec<(u8, bool)> = cache
+            .iter()
+            .filter(|(key, _)| key.matches(operation_kind, target))
+            .map(|(key, &decision)| (key.precedence(), decision))
+            .collect();
 
-        // 1. Check specific file/command permission
-        let specific_key = format!("{}:specific:{}", kind, target);
-        if let Some(&decision) = cache.get(&specific_key) {
-            self.send_debug(&format!("Found specific permission: {}", specific_key));
-            return Some(decision);
-        }
+        // Sort by precedence (highest first)
+        matches.sort_by(|a, b| b.0.cmp(&a.0));
 
-        // 2. Check directory permission (for file operations)
-        if let Some(dir) = operation.parent_directory() {
-            let dir_key = format!("{}:dir:{}", kind, dir);
-            if let Some(&decision) = cache.get(&dir_key) {
-                self.send_debug(&format!("Found directory permission: {}", dir_key));
-                return Some(decision);
-            }
+        // Return the decision from the highest precedence match
+        if let Some((precedence, decision)) = matches.first() {
+            self.send_debug(&format!(
+                "Found cached permission with precedence {}: {}",
+                precedence, decision
+            ));
+            Some(*decision)
+        } else {
+            self.send_debug("No cached permission found");
+            None
         }
-
-        // 3. Check global permission for this operation type
-        let global_key = format!("{}:*", kind);
-        if let Some(&decision) = cache.get(&global_key) {
-            self.send_debug(&format!("Found global permission: {}", global_key));
-            return Some(decision);
-        }
-
-        self.send_debug("No cached permission found");
-        None
     }
 
     /// Store permission decision in cache with the specified scope
@@ -344,9 +280,32 @@ impl PermissionManager {
             }
         }
 
-        let key = self.get_cache_key_for_scope(operation, &scope);
+        // Convert to structured cache key
+        let operation_kind = match operation.operation_kind().parse::<OperationKind>() {
+            Ok(kind) => kind,
+            Err(_) => return,
+        };
+
+        let key = match &scope {
+            PermissionScope::Specific(target) => PermissionCacheKey::Specific {
+                operation: operation_kind,
+                target: PathBuf::from(target),
+            },
+            PermissionScope::Directory(dir) => PermissionCacheKey::Directory {
+                operation: operation_kind,
+                directory: PathBuf::from(dir),
+            },
+            PermissionScope::Global => PermissionCacheKey::Global {
+                operation: operation_kind,
+            },
+            PermissionScope::ProjectWide(path) => PermissionCacheKey::ProjectWide {
+                operation: operation_kind,
+                project_root: path.clone(),
+            },
+        };
+
         self.send_debug(&format!(
-            "Caching decision: {} => {} (scope: {:?})",
+            "Caching decision: {:?} => {} (scope: {:?})",
             key, allowed, scope
         ));
         if let Ok(mut cache) = self.session_cache.lock() {
@@ -377,7 +336,7 @@ impl PermissionManager {
 
         // Check if operation is within a trusted project (highest priority)
         if let Some(trusted_path) = self.get_trusted_project() {
-            if Self::is_within_project(operation.target(), &trusted_path) {
+            if PermissionCacheKey::is_within_project_static(operation.target(), &trusted_path) {
                 return Ok(true);
             }
         }
@@ -651,8 +610,9 @@ mod tests {
     fn test_permission_cache_stores_decisions() {
         let manager = PermissionManager::new().with_skip_permissions(false);
 
-        // Manually test cache storage and retrieval
-        let operation = OperationType::WriteFile("/path/to/test.txt".to_string());
+        // Use Cargo.toml which exists in the project root
+        let test_file = "Cargo.toml";
+        let operation = OperationType::WriteFile(test_file.to_string());
 
         // Initially should not be cached
         assert!(manager.check_cache(&operation).is_none());
@@ -660,7 +620,7 @@ mod tests {
         // Store a specific file decision
         manager.cache_decision(
             &operation,
-            PermissionScope::Specific("/path/to/test.txt".to_string()),
+            PermissionScope::Specific(test_file.to_string()),
             true,
         );
 
@@ -671,33 +631,41 @@ mod tests {
         assert_eq!(manager.check_cache(&operation), Some(true));
 
         // Different operation should not be cached
-        let other_operation = OperationType::WriteFile("/path/to/other.txt".to_string());
+        let other_operation = OperationType::WriteFile("README.md".to_string());
         assert!(manager.check_cache(&other_operation).is_none());
     }
 
     #[test]
     fn test_permission_cache_directory_scope() {
+        use tempfile::TempDir;
+
         let manager = PermissionManager::new();
 
+        // Create a temporary directory for testing
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Create test files
+        let file1_path = format!("{}/file1.txt", dir_path);
+        let file2_path = format!("{}/file2.txt", dir_path);
+        std::fs::write(&file1_path, "test").unwrap();
+        std::fs::write(&file2_path, "test").unwrap();
+
         // Cache a directory-level permission
-        let operation = OperationType::WriteFile("/path/to/dir/file1.txt".to_string());
+        let operation = OperationType::WriteFile(file1_path.clone());
         manager.cache_decision(
             &operation,
-            PermissionScope::Directory("/path/to/dir".to_string()),
+            PermissionScope::Directory(dir_path.clone()),
             true,
         );
 
         // Should match for files in the same directory
         assert_eq!(
-            manager.check_cache(&OperationType::WriteFile(
-                "/path/to/dir/file1.txt".to_string()
-            )),
+            manager.check_cache(&OperationType::WriteFile(file1_path.clone())),
             Some(true)
         );
         assert_eq!(
-            manager.check_cache(&OperationType::WriteFile(
-                "/path/to/dir/file2.txt".to_string()
-            )),
+            manager.check_cache(&OperationType::WriteFile(file2_path.clone())),
             Some(true)
         );
 
@@ -733,36 +701,44 @@ mod tests {
 
     #[test]
     fn test_permission_cache_hierarchy() {
+        use tempfile::TempDir;
+
         let manager = PermissionManager::new();
+
+        // Create a temporary directory for testing
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().to_string_lossy().to_string();
+        let file_path = format!("{}/test.txt", dir_path);
+        std::fs::write(&file_path, "test").unwrap();
 
         // Set up hierarchy: global < directory < specific
         manager.cache_decision(
-            &OperationType::WriteFile("/dir/file.txt".to_string()),
+            &OperationType::WriteFile(file_path.clone()),
             PermissionScope::Global,
             true, // Global: allow all writes
         );
         manager.cache_decision(
-            &OperationType::WriteFile("/dir/file.txt".to_string()),
-            PermissionScope::Directory("/dir".to_string()),
-            false, // Directory: deny writes in /dir
+            &OperationType::WriteFile(file_path.clone()),
+            PermissionScope::Directory(dir_path.clone()),
+            false, // Directory: deny writes in dir
         );
 
         // Directory permission should override global
         assert_eq!(
-            manager.check_cache(&OperationType::WriteFile("/dir/file.txt".to_string())),
+            manager.check_cache(&OperationType::WriteFile(file_path.clone())),
             Some(false)
         );
 
         // Now add specific permission
         manager.cache_decision(
-            &OperationType::WriteFile("/dir/file.txt".to_string()),
-            PermissionScope::Specific("/dir/file.txt".to_string()),
+            &OperationType::WriteFile(file_path.clone()),
+            PermissionScope::Specific(file_path.clone()),
             true, // Specific: allow this one file
         );
 
         // Specific permission should override directory
         assert_eq!(
-            manager.check_cache(&OperationType::WriteFile("/dir/file.txt".to_string())),
+            manager.check_cache(&OperationType::WriteFile(file_path.clone())),
             Some(true)
         );
     }
@@ -798,33 +774,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_project_wide_trust() {
-        let manager = PermissionManager::new();
+        use tempfile::TempDir;
+
+        let manager = PermissionManager::new().with_skip_permissions(true); // Skip permissions to avoid prompts
 
         // Create a temporary directory to use as project root
-        let temp_dir = std::env::temp_dir().join("hoosh_test_project");
-        std::fs::create_dir_all(&temp_dir).unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().to_path_buf();
 
         // Set trusted project
-        manager.set_trusted_project(temp_dir.clone());
+        manager.set_trusted_project(project_path.clone());
 
         // Create a file path within the project
-        let file_in_project = temp_dir.join("test_file.txt");
+        let file_in_project = project_path.join("test_file.txt");
+        std::fs::write(&file_in_project, "test").unwrap();
         let operation = OperationType::WriteFile(file_in_project.to_string_lossy().to_string());
 
         // Operation within trusted project should be auto-approved
         assert!(manager.check_permission(&operation).await.unwrap());
 
         // Create a file path outside the project
-        let file_outside = std::env::temp_dir().join("outside_file.txt");
+        let file_outside = std::env::temp_dir().join("outside_file_hoosh_test.txt");
         let operation_outside =
             OperationType::WriteFile(file_outside.to_string_lossy().to_string());
 
         // Operation outside trusted project should check cache (will return None since not cached)
         // We can't test the full flow without mocking user input, but we can verify the cache check
         assert!(manager.check_cache(&operation_outside).is_none());
-
-        // Clean up
-        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
