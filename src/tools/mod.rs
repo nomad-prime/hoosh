@@ -318,11 +318,7 @@ mod tests {
     #[test]
     fn test_tool_registry_with_same_tool() {
         let mut registry = ToolRegistry::new();
-        let tool = Arc::new(MockTool::new(
-            "mock_tool",
-            "Mock tool",
-            "Mock response",
-        ));
+        let tool = Arc::new(MockTool::new("mock_tool", "Mock tool", "Mock response"));
 
         // First registration should succeed
         registry
@@ -339,11 +335,7 @@ mod tests {
 
     #[test]
     fn test_tool_registry_with_provider() {
-        let mock_tool = Arc::new(MockTool::new(
-            "mock_tool",
-            "Mock tool",
-            "Mock response",
-        ));
+        let mock_tool = Arc::new(MockTool::new("mock_tool", "Mock tool", "Mock response"));
         let provider = Arc::new(MockToolProvider::new(vec![mock_tool.clone()]));
 
         let registry = ToolRegistry::new().with_provider(provider);
