@@ -76,27 +76,50 @@ pub trait Tool: Send + Sync {
 pub mod bash;
 pub mod error;
 pub mod file_ops;
+pub mod provider;
 
 pub use bash::BashTool;
 pub use error::{ToolError, ToolResult};
 pub use file_ops::{EditFileTool, ListDirectoryTool, ReadFileTool, WriteFileTool};
+pub use provider::{BuiltinToolProvider, ToolProvider};
 
-/// Tool registry for managing available tools
+/// Tool registry for managing available tools through providers
 #[derive(Clone)]
 pub struct ToolRegistry {
     tools: HashMap<&'static str, Arc<dyn Tool>>,
+    providers: Vec<Arc<dyn ToolProvider>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            providers: Vec::new(),
         }
     }
 
-    pub fn with_tool(mut self, tool: Arc<dyn Tool>) -> Self {
-        self.register_tool(tool).expect("Failed to register tool");
+    /// Register a tool provider and load its tools
+    pub fn with_provider(mut self, provider: Arc<dyn ToolProvider>) -> Self {
+        self.add_provider(provider);
         self
+    }
+
+    /// Add a provider and register its tools
+    pub fn add_provider(&mut self, provider: Arc<dyn ToolProvider>) {
+        // Get tools from provider and register them
+        for tool in provider.provide_tools() {
+            let name = tool.tool_name();
+            if self.tools.contains_key(name) {
+                eprintln!(
+                    "Warning: Tool '{}' already registered, skipping from provider '{}'",
+                    name,
+                    provider.provider_name()
+                );
+                continue;
+            }
+            self.tools.insert(name, tool);
+        }
+        self.providers.push(provider);
     }
 
     pub fn register_tool(&mut self, tool: Arc<dyn Tool>) -> Result<(), String> {
@@ -122,16 +145,34 @@ impl ToolRegistry {
     pub fn get_tool_schemas(&self) -> Vec<Value> {
         self.tools.values().map(|tool| tool.tool_schema()).collect()
     }
+
+    /// Refresh tools from all providers (useful for dynamic tools)
+    pub fn refresh(&mut self) {
+        self.tools.clear();
+        let providers = std::mem::take(&mut self.providers);
+        for provider in providers {
+            for tool in provider.provide_tools() {
+                let name = tool.tool_name();
+                if self.tools.contains_key(name) {
+                    eprintln!(
+                        "Warning: Tool '{}' already registered, skipping from provider '{}'",
+                        name,
+                        provider.provider_name()
+                    );
+                    continue;
+                }
+                self.tools.insert(name, tool);
+            }
+            self.providers.push(provider);
+        }
+    }
 }
 
 impl Default for ToolRegistry {
     fn default() -> Self {
-        Self::new()
-            .with_tool(Arc::new(ReadFileTool::new()))
-            .with_tool(Arc::new(WriteFileTool::new()))
-            .with_tool(Arc::new(EditFileTool::new()))
-            .with_tool(Arc::new(ListDirectoryTool::new()))
-            .with_tool(Arc::new(BashTool::new()))
+        Self::new().with_provider(Arc::new(BuiltinToolProvider::new(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        )))
     }
 }
 
@@ -177,6 +218,26 @@ mod tests {
         }
     }
 
+    struct MockToolProvider {
+        tools: Vec<Arc<dyn Tool>>,
+    }
+
+    impl MockToolProvider {
+        fn new(tools: Vec<Arc<dyn Tool>>) -> Self {
+            Self { tools }
+        }
+    }
+
+    impl ToolProvider for MockToolProvider {
+        fn provide_tools(&self) -> Vec<Arc<dyn Tool>> {
+            self.tools.clone()
+        }
+
+        fn provider_name(&self) -> &'static str {
+            "mock"
+        }
+    }
+
     #[test]
     fn test_tool_registry() {
         let mut registry = ToolRegistry::new();
@@ -203,11 +264,14 @@ mod tests {
     #[test]
     fn test_tool_registry_with_tool() {
         // Register a new tool
-        let registry = ToolRegistry::new().with_tool(Arc::new(MockTool::new(
-            "mock_tool",
-            "Mock tool",
-            "Mock response",
-        )));
+        let mut registry = ToolRegistry::new();
+        registry
+            .register_tool(Arc::new(MockTool::new(
+                "mock_tool",
+                "Mock tool",
+                "Mock response",
+            )))
+            .expect("Failed to register tool");
 
         // Get the tool by name
         let tool = registry
@@ -223,17 +287,21 @@ mod tests {
 
     #[test]
     fn test_tool_registry_with_tool_chain() {
-        let registry = ToolRegistry::new()
-            .with_tool(Arc::new(MockTool::new(
+        let mut registry = ToolRegistry::new();
+        registry
+            .register_tool(Arc::new(MockTool::new(
                 "mock_tool",
                 "Mock tool",
                 "Mock response",
             )))
-            .with_tool(Arc::new(MockTool::new(
+            .expect("Failed to register tool");
+        registry
+            .register_tool(Arc::new(MockTool::new(
                 "another_mock_tool",
                 "Another mock tool",
                 "Another mock response",
-            )));
+            )))
+            .expect("Failed to register tool");
 
         // Get the tool by name
         let tool = registry
@@ -248,20 +316,95 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Failed to register tool: \"Tool with name 'mock_tool' already exists\""
-    )]
     fn test_tool_registry_with_same_tool() {
-        let _registry = ToolRegistry::new()
-            .with_tool(Arc::new(MockTool::new(
-                "mock_tool",
-                "Mock tool",
-                "Mock response",
-            )))
-            .with_tool(Arc::new(MockTool::new(
-                "mock_tool",
-                "Mock tool2",
-                "Mock response3",
-            )));
+        let mut registry = ToolRegistry::new();
+        let tool = Arc::new(MockTool::new(
+            "mock_tool",
+            "Mock tool",
+            "Mock response",
+        ));
+
+        // First registration should succeed
+        registry
+            .register_tool(tool.clone())
+            .expect("First registration should succeed");
+
+        // Second registration should fail
+        let result = registry.register_tool(tool);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Tool with name 'mock_tool' already exists"));
+    }
+
+    #[test]
+    fn test_tool_registry_with_provider() {
+        let mock_tool = Arc::new(MockTool::new(
+            "mock_tool",
+            "Mock tool",
+            "Mock response",
+        ));
+        let provider = Arc::new(MockToolProvider::new(vec![mock_tool.clone()]));
+
+        let registry = ToolRegistry::new().with_provider(provider);
+
+        // Get the tool by name
+        let tool = registry
+            .get_tool("mock_tool")
+            .expect("mock_tool should exist, but it did not");
+        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.description(), "Mock tool");
+
+        // List all tools
+        let tools = registry.list_tools();
+        assert_eq!(tools.len(), 1);
+    }
+
+    #[test]
+    fn test_tool_registry_with_multiple_providers() {
+        let mock_tool1 = Arc::new(MockTool::new(
+            "mock_tool1",
+            "Mock tool 1",
+            "Mock response 1",
+        ));
+        let mock_tool2 = Arc::new(MockTool::new(
+            "mock_tool2",
+            "Mock tool 2",
+            "Mock response 2",
+        ));
+
+        let provider1 = Arc::new(MockToolProvider::new(vec![mock_tool1.clone()]));
+        let provider2 = Arc::new(MockToolProvider::new(vec![mock_tool2.clone()]));
+
+        let registry = ToolRegistry::new()
+            .with_provider(provider1)
+            .with_provider(provider2);
+
+        // Both tools should be registered
+        assert!(registry.get_tool("mock_tool1").is_some());
+        assert!(registry.get_tool("mock_tool2").is_some());
+
+        // List all tools
+        let tools = registry.list_tools();
+        assert_eq!(tools.len(), 2);
+    }
+
+    #[test]
+    fn test_tool_registry_refresh() {
+        let mock_tool1 = Arc::new(MockTool::new(
+            "mock_tool1",
+            "Mock tool 1",
+            "Mock response 1",
+        ));
+        let provider = Arc::new(MockToolProvider::new(vec![mock_tool1.clone()]));
+
+        let mut registry = ToolRegistry::new().with_provider(provider);
+
+        // Initially should have 1 tool
+        assert_eq!(registry.list_tools().len(), 1);
+
+        // Refresh should keep the same tools
+        registry.refresh();
+        assert_eq!(registry.list_tools().len(), 1);
     }
 }
