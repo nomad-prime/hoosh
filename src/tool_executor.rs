@@ -4,9 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::conversations::{AgentEvent, ToolCall, ToolResult};
 use crate::permissions::PermissionManager;
-use crate::tools::{
-    BashTool, EditFileTool, ListDirectoryTool, ReadFileTool, ToolRegistry, WriteFileTool,
-};
+use crate::tools::{ToolRegistry, BuiltinToolProvider};
 
 /// Handles execution of tool calls
 pub struct ToolExecutor {
@@ -219,22 +217,9 @@ impl ToolExecutor {
 
     /// Create tools with the correct working directory
     pub fn create_tool_registry_with_working_dir(working_dir: std::path::PathBuf) -> ToolRegistry {
-        ToolRegistry::new()
-            .with_tool(std::sync::Arc::new(ReadFileTool::with_working_directory(
-                working_dir.clone(),
-            )))
-            .with_tool(std::sync::Arc::new(WriteFileTool::with_working_directory(
-                working_dir.clone(),
-            )))
-            .with_tool(std::sync::Arc::new(EditFileTool::with_working_directory(
-                working_dir.clone(),
-            )))
-            .with_tool(std::sync::Arc::new(
-                ListDirectoryTool::with_working_directory(working_dir.clone()),
-            ))
-            .with_tool(std::sync::Arc::new(BashTool::with_working_directory(
-                working_dir,
-            )))
+        ToolRegistry::new().with_provider(std::sync::Arc::new(BuiltinToolProvider::new(
+            working_dir,
+        )))
     }
 }
 
