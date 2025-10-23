@@ -1,7 +1,9 @@
 use crate::console::VerbosityLevel;
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
+
+pub mod error;
+pub use error::{ConfigError, ConfigResult};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BackendConfig {
@@ -92,13 +94,13 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    pub fn load() -> Result<Self> {
+    pub fn load() -> ConfigResult<Self> {
         let config_path = Self::config_path()?;
         let mut config = if config_path.exists() {
             Self::validate_permissions(&config_path)?;
 
-            let content = fs::read_to_string(&config_path).context("Failed to read config file")?;
-            toml::from_str(&content).context("Failed to parse config file")?
+            let content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
+            toml::from_str(&content).map_err(ConfigError::InvalidToml)?
         } else {
             let config = Self::default();
             config.save()?;
@@ -113,7 +115,7 @@ impl AppConfig {
         Ok(config)
     }
 
-    fn validate(&self) -> Result<()> {
+    fn validate(&self) -> ConfigResult<()> {
         if let Some(default_agent) = &self.default_agent {
             if !self.agents.contains_key(default_agent) {
                 eprintln!(
@@ -131,14 +133,14 @@ impl AppConfig {
     }
 
     /// Validate that the config file has secure permissions (0600)
-    fn validate_permissions(config_path: &std::path::Path) -> Result<()> {
+    fn validate_permissions(config_path: &std::path::Path) -> ConfigResult<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
 
             if config_path.exists() {
-                let metadata = std::fs::metadata(config_path)
-                    .context("Failed to read config file metadata")?;
+                let metadata =
+                    std::fs::metadata(config_path).map_err(|_| ConfigError::PermissionDenied)?;
 
                 let permissions = metadata.mode() & 0o777; // Mask to get only permission bits
 
@@ -160,7 +162,7 @@ impl AppConfig {
     }
 
     /// Ensure default agents from prompts directory are available in config
-    fn ensure_default_agents(&mut self) -> Result<()> {
+    fn ensure_default_agents(&mut self) -> ConfigResult<()> {
         // Get the path to the prompts directory in the source code
         let prompts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src")
@@ -198,13 +200,14 @@ impl AppConfig {
         Ok(())
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&self) -> ConfigResult<()> {
         let config_path = Self::config_path()?;
         if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent).context("Failed to create config directory")?;
+            fs::create_dir_all(parent).map_err(ConfigError::IoError)?;
         }
-        let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
-        fs::write(&config_path, content).context("Failed to write config file")
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| ConfigError::SerializationError(e.to_string()))?;
+        fs::write(&config_path, content).map_err(ConfigError::IoError)
     }
 
     pub fn get_backend_config(&self, backend_name: &str) -> Option<&BackendConfig> {
@@ -220,7 +223,7 @@ impl AppConfig {
         backend_name: &str,
         key: &str,
         value: String,
-    ) -> Result<()> {
+    ) -> ConfigResult<()> {
         let config = self
             .backends
             .entry(backend_name.to_string())
@@ -236,12 +239,17 @@ impl AppConfig {
             "model" => config.model = Some(value),
             "base_url" => config.base_url = Some(value),
             "temperature" => {
-                let temp: f32 = value
-                    .parse()
-                    .context("Temperature must be a valid number")?;
+                let temp: f32 = value.parse().map_err(|_| ConfigError::InvalidValue {
+                    field: "temperature".to_string(),
+                    value,
+                })?;
                 config.temperature = Some(temp);
             }
-            _ => anyhow::bail!("Unknown backend config key: {}", key),
+            _ => {
+                return Err(ConfigError::UnknownConfigKey {
+                    key: key.to_string(),
+                })
+            }
         }
 
         Ok(())
@@ -271,10 +279,10 @@ impl AppConfig {
         self.default_agent = Some(agent_name);
     }
 
-    fn config_path() -> Result<PathBuf> {
+    fn config_path() -> ConfigResult<PathBuf> {
         let path = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
-            .context("Failed to get home directory")?;
+            .map_err(|_| ConfigError::NoHomeDirectory)?;
         let mut path = PathBuf::from(path);
         path.push(".config");
         path.push("hoosh");

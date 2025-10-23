@@ -1,7 +1,7 @@
 use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
-use crate::tools::Tool;
-use anyhow::{Context, Result};
+use crate::tools::{Tool, ToolError, ToolResult};
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -38,39 +38,33 @@ impl ListDirectoryTool {
             .validate_and_resolve(dir_path)
             .unwrap_or_else(|_| PathBuf::from("."))
     }
-}
 
-#[derive(Deserialize)]
-struct ListDirectoryArgs {
-    #[serde(default)]
-    path: String,
-    #[serde(default)]
-    show_hidden: bool,
-}
-
-#[derive(Serialize)]
-struct DirectoryEntry {
-    name: String,
-    is_file: bool,
-    is_dir: bool,
-    size: Option<u64>,
-}
-
-#[async_trait]
-impl Tool for ListDirectoryTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        let args: ListDirectoryArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for list_directory tool")?;
+    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+        let args: ListDirectoryArgs =
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
+                tool: "list_directory".to_string(),
+                message: e.to_string(),
+            })?;
 
         let dir_path = self.resolve_path(&args.path);
 
-        let mut entries = fs::read_dir(&dir_path)
-            .await
-            .with_context(|| format!("Failed to read directory: {}", dir_path.display()))?;
+        let mut entries =
+            fs::read_dir(&dir_path)
+                .await
+                .map_err(|_| ToolError::ExecutionFailed {
+                    message: format!("Failed to read directory: {}", dir_path.display()),
+                })?;
 
         let mut directory_entries = Vec::new();
 
-        while let Some(entry) = entries.next_entry().await? {
+        while let Some(entry) =
+            entries
+                .next_entry()
+                .await
+                .map_err(|_| ToolError::ExecutionFailed {
+                    message: "Failed to read directory entry".to_string(),
+                })?
+        {
             let file_name = entry.file_name().to_string_lossy().to_string();
 
             // Skip hidden files unless explicitly requested
@@ -78,7 +72,12 @@ impl Tool for ListDirectoryTool {
                 continue;
             }
 
-            let metadata = entry.metadata().await?;
+            let metadata = entry
+                .metadata()
+                .await
+                .map_err(|_| ToolError::ExecutionFailed {
+                    message: "Failed to read file metadata".to_string(),
+                })?;
             let is_file = metadata.is_file();
             let is_dir = metadata.is_dir();
             let size = if is_file { Some(metadata.len()) } else { None };
@@ -135,6 +134,31 @@ impl Tool for ListDirectoryTool {
         }
 
         Ok(result)
+    }
+}
+
+#[derive(Deserialize)]
+struct ListDirectoryArgs {
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    show_hidden: bool,
+}
+
+#[derive(Serialize)]
+struct DirectoryEntry {
+    name: String,
+    is_file: bool,
+    is_dir: bool,
+    size: Option<u64>,
+}
+
+#[async_trait]
+impl Tool for ListDirectoryTool {
+    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+        self.execute_impl(args)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     fn tool_name(&self) -> &'static str {
@@ -195,7 +219,7 @@ impl Tool for ListDirectoryTool {
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
         let args: ListDirectoryArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for list_directory tool")?;
+            .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
 
         let dir_path = self.resolve_path(&args.path);
         let normalized_path = dir_path

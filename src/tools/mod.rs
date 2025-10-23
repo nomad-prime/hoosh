@@ -74,9 +74,11 @@ pub trait Tool: Send + Sync {
 }
 
 pub mod bash;
+pub mod error;
 pub mod file_ops;
 
 pub use bash::BashTool;
+pub use error::{ToolError, ToolResult};
 pub use file_ops::{EditFileTool, ListDirectoryTool, ReadFileTool, WriteFileTool};
 
 /// Tool registry for managing available tools

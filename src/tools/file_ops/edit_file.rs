@@ -1,7 +1,7 @@
 use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
-use crate::tools::Tool;
-use anyhow::{Context, Result};
+use crate::tools::{Tool, ToolError, ToolResult};
+use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -27,6 +27,98 @@ impl EditFileTool {
             path_validator: PathValidator::new(working_dir),
         }
     }
+
+    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+        let args: EditFileArgs =
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
+                tool: "edit_file".to_string(),
+                message: e.to_string(),
+            })?;
+
+        // Validate that old_string and new_string are different
+        if args.old_string == args.new_string {
+            return Err(ToolError::EditFailed {
+                message: "old_string and new_string must be different".to_string(),
+            });
+        }
+
+        let file_path = self
+            .path_validator
+            .validate_and_resolve(&args.path)
+            .map_err(|e| ToolError::SecurityViolation {
+                message: e.to_string(),
+            })?;
+
+        // Read the file
+        let content = fs::read_to_string(&file_path)
+            .await
+            .map_err(|_| ToolError::ReadFailed {
+                path: file_path.clone(),
+            })?;
+
+        // Perform the replacement
+        let new_content = if args.replace_all {
+            // Replace all occurrences
+            let count = content.matches(&args.old_string).count();
+            if count == 0 {
+                return Err(ToolError::EditFailed {
+                    message: format!(
+                        "String not found in file: '{}'",
+                        if args.old_string.len() > 50 {
+                            format!("{}...", &args.old_string[..50])
+                        } else {
+                            args.old_string.clone()
+                        }
+                    ),
+                });
+            }
+            let result = content.replace(&args.old_string, &args.new_string);
+            (result, count)
+        } else {
+            // Replace only if unique
+            let matches: Vec<_> = content.match_indices(&args.old_string).collect();
+            match matches.len() {
+                0 => {
+                    return Err(ToolError::EditFailed {
+                        message: format!(
+                            "String not found in file: '{}'",
+                            if args.old_string.len() > 50 {
+                                format!("{}...", &args.old_string[..50])
+                            } else {
+                                args.old_string.clone()
+                            }
+                        ),
+                    });
+                }
+                1 => {
+                    let result = content.replacen(&args.old_string, &args.new_string, 1);
+                    (result, 1)
+                }
+                n => {
+                    return Err(ToolError::EditFailed {
+                        message: format!(
+                            "String appears {} times in file. Use replace_all=true to replace all occurrences, or provide more context to make the match unique.",
+                            n
+                        ),
+                    });
+                }
+            }
+        };
+
+        // Write the modified content back
+        fs::write(&file_path, &new_content.0)
+            .await
+            .map_err(|_| ToolError::WriteFailed {
+                path: file_path.clone(),
+            })?;
+
+        Ok(format!(
+            "Successfully edited {} (replaced {} occurrence{})",
+            file_path.display(),
+            new_content.1,
+            if new_content.1 == 1 { "" } else { "s" }
+        ))
+    }
 }
 
 #[derive(Deserialize)]
@@ -41,71 +133,9 @@ struct EditFileArgs {
 #[async_trait]
 impl Tool for EditFileTool {
     async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        let args: EditFileArgs =
-            serde_json::from_value(args.clone()).context("Invalid arguments for edit_file tool")?;
-
-        // Validate that old_string and new_string are different
-        if args.old_string == args.new_string {
-            anyhow::bail!("old_string and new_string must be different");
-        }
-
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-
-        // Read the file
-        let content = fs::read_to_string(&file_path)
+        self.execute_impl(args)
             .await
-            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
-
-        // Perform the replacement
-        let new_content = if args.replace_all {
-            // Replace all occurrences
-            let count = content.matches(&args.old_string).count();
-            if count == 0 {
-                anyhow::bail!(
-                    "String not found in file: '{}'",
-                    if args.old_string.len() > 50 {
-                        format!("{}...", &args.old_string[..50])
-                    } else {
-                        args.old_string.clone()
-                    }
-                );
-            }
-            let result = content.replace(&args.old_string, &args.new_string);
-            (result, count)
-        } else {
-            // Replace only if unique
-            let matches: Vec<_> = content.match_indices(&args.old_string).collect();
-            match matches.len() {
-                0 => anyhow::bail!(
-                    "String not found in file: '{}'",
-                    if args.old_string.len() > 50 {
-                        format!("{}...", &args.old_string[..50])
-                    } else {
-                        args.old_string.clone()
-                    }
-                ),
-                1 => {
-                    let result = content.replacen(&args.old_string, &args.new_string, 1);
-                    (result, 1)
-                }
-                n => anyhow::bail!(
-                    "String appears {} times in file. Use replace_all=true to replace all occurrences, or provide more context to make the match unique.",
-                    n
-                ),
-            }
-        };
-
-        // Write the modified content back
-        fs::write(&file_path, &new_content.0)
-            .await
-            .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
-
-        Ok(format!(
-            "Successfully edited {} (replaced {} occurrence{})",
-            file_path.display(),
-            new_content.1,
-            if new_content.1 == 1 { "" } else { "s" }
-        ))
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     fn tool_name(&self) -> &'static str {
@@ -169,8 +199,8 @@ impl Tool for EditFileTool {
         args: &serde_json::Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: EditFileArgs =
-            serde_json::from_value(args.clone()).context("Invalid arguments for edit_file tool")?;
+        let args: EditFileArgs = serde_json::from_value(args.clone())
+            .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path)?;
         let normalized_path = file_path
