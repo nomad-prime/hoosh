@@ -38,7 +38,9 @@ impl ToolProvider for BuiltinToolProvider {
             Arc::new(ListDirectoryTool::with_working_directory(
                 self.working_directory.clone(),
             )),
-            Arc::new(BashTool::with_working_directory(self.working_directory.clone())),
+            Arc::new(BashTool::with_working_directory(
+                self.working_directory.clone(),
+            )),
         ]
     }
 
