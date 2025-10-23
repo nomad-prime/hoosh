@@ -1,7 +1,7 @@
 use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
-use crate::tools::Tool;
-use anyhow::{Context, Result};
+use crate::tools::{Tool, ToolError, ToolResult};
+use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -26,6 +26,44 @@ impl WriteFileTool {
             path_validator: PathValidator::new(working_dir),
         }
     }
+
+    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+        let args: WriteFileArgs =
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
+                tool: "write_file".to_string(),
+                message: e.to_string(),
+            })?;
+
+        let file_path = self
+            .path_validator
+            .validate_and_resolve(&args.path)
+            .map_err(|e| ToolError::SecurityViolation {
+                message: e.to_string(),
+            })?;
+
+        // Create parent directories if requested
+        if args.create_dirs {
+            if let Some(parent) = file_path.parent() {
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|_| ToolError::WriteFailed {
+                        path: file_path.clone(),
+                    })?;
+            }
+        }
+
+        fs::write(&file_path, &args.content)
+            .await
+            .map_err(|_| ToolError::WriteFailed {
+                path: file_path.clone(),
+            })?;
+
+        Ok(format!(
+            "Successfully wrote {} bytes to {}",
+            args.content.len(),
+            file_path.display()
+        ))
+    }
 }
 
 #[derive(Deserialize)]
@@ -39,29 +77,9 @@ struct WriteFileArgs {
 #[async_trait]
 impl Tool for WriteFileTool {
     async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        let args: WriteFileArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for write_file tool")?;
-
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-
-        // Create parent directories if requested
-        if args.create_dirs {
-            if let Some(parent) = file_path.parent() {
-                fs::create_dir_all(parent)
-                    .await
-                    .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-            }
-        }
-
-        fs::write(&file_path, &args.content)
+        self.execute_impl(args)
             .await
-            .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
-
-        Ok(format!(
-            "Successfully wrote {} bytes to {}",
-            args.content.len(),
-            file_path.display()
-        ))
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     fn tool_name(&self) -> &'static str {
@@ -118,7 +136,7 @@ impl Tool for WriteFileTool {
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
         let args: WriteFileArgs = serde_json::from_value(args.clone())
-            .context("Invalid arguments for write_file tool")?;
+            .map_err(|e| anyhow::anyhow!("Invalid arguments for write_file tool: {}", e))?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path)?;
         let normalized_path = file_path

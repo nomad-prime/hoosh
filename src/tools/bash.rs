@@ -1,6 +1,6 @@
 use crate::permissions::{OperationType, PermissionManager};
-use crate::tools::Tool;
-use anyhow::{Context, Result};
+use crate::tools::{Tool, ToolError, ToolResult};
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -182,30 +182,25 @@ impl BashTool {
             .filter(|c| !c.is_control() || matches!(c, '\n' | '\t' | ' ') || c.is_whitespace())
             .collect()
     }
-}
 
-#[derive(Deserialize)]
-struct BashArgs {
-    command: String,
-    #[serde(default)]
-    timeout_override: Option<u64>,
-}
-
-#[async_trait]
-impl Tool for BashTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
         let args: BashArgs =
-            serde_json::from_value(args.clone()).context("Invalid arguments for bash tool")?;
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
+                tool: "bash".to_string(),
+                message: e.to_string(),
+            })?;
 
         let command = self.sanitize_command(&args.command);
 
         // Security check for dangerous commands
         if self.is_dangerous_command(&command) {
-            anyhow::bail!(
-                "Command rejected for security reasons: '{}'. \
-                 Use --skip-permissions flag to bypass this check.",
-                command
-            );
+            return Err(ToolError::SecurityViolation {
+                message: format!(
+                    "Command rejected for security reasons: '{}'. \
+                     Use --skip-permissions flag to bypass this check.",
+                    command
+                ),
+            });
         }
 
         let timeout_duration =
@@ -221,10 +216,9 @@ impl Tool for BashTool {
             .stdin(Stdio::null());
 
         let command_future = async {
-            let output = cmd
-                .output()
-                .await
-                .with_context(|| format!("Failed to execute command: {}", command))?;
+            let output = cmd.output().await.map_err(|e| ToolError::ExecutionFailed {
+                message: format!("Failed to execute command '{}': {}", command, e),
+            })?;
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -261,20 +255,33 @@ impl Tool for BashTool {
                 result.push_str("⚠️  Command failed with non-zero exit code\n");
             }
 
-            Ok::<String, anyhow::Error>(result)
+            Ok::<String, ToolError>(result)
         };
 
         // Apply timeout
         match timeout(timeout_duration, command_future).await {
             Ok(result) => result,
-            Err(_) => {
-                anyhow::bail!(
-                    "Command timed out after {} seconds: {}",
-                    timeout_duration.as_secs(),
-                    command
-                );
-            }
+            Err(_) => Err(ToolError::Timeout {
+                tool: "bash".to_string(),
+                seconds: timeout_duration.as_secs(),
+            }),
         }
+    }
+}
+
+#[derive(Deserialize)]
+struct BashArgs {
+    command: String,
+    #[serde(default)]
+    timeout_override: Option<u64>,
+}
+
+#[async_trait]
+impl Tool for BashTool {
+    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+        self.execute_impl(args)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     fn tool_name(&self) -> &'static str {
@@ -345,8 +352,8 @@ impl Tool for BashTool {
         args: &serde_json::Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: BashArgs =
-            serde_json::from_value(args.clone()).context("Invalid arguments for bash tool")?;
+        let args: BashArgs = serde_json::from_value(args.clone())
+            .map_err(|e| anyhow::anyhow!("Invalid arguments for bash tool: {}", e))?;
 
         let operation = OperationType::ExecuteBash(args.command);
         permission_manager.check_permission(&operation).await
@@ -421,7 +428,7 @@ mod tests {
 
         let result = tool.execute(&args).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("timed out"));
+        assert!(result.unwrap_err().to_string().contains("Timeout"));
     }
 
     #[tokio::test]

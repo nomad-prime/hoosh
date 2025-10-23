@@ -1,7 +1,7 @@
 use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
-use crate::tools::Tool;
-use anyhow::{Context, Result};
+use crate::tools::{Tool, ToolError, ToolResult};
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -25,6 +25,76 @@ impl ReadFileTool {
             path_validator: PathValidator::new(working_dir),
         }
     }
+
+    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
+        let args: ReadFileArgs =
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
+                tool: "read_file".to_string(),
+                message: e.to_string(),
+            })?;
+
+        let file_path = self
+            .path_validator
+            .validate_and_resolve(&args.path)
+            .map_err(|e| ToolError::SecurityViolation {
+                message: e.to_string(),
+            })?;
+
+        let content = fs::read_to_string(&file_path)
+            .await
+            .map_err(|_| ToolError::ReadFailed {
+                path: file_path.clone(),
+            })?;
+
+        // Handle line-based reading if specified
+        if let (Some(start), Some(end)) = (args.start_line, args.end_line) {
+            let lines: Vec<&str> = content.lines().collect();
+            if start == 0 || start > lines.len() {
+                return Err(ToolError::InvalidArguments {
+                    tool: "read_file".to_string(),
+                    message: format!(
+                        "Invalid start_line: {} (file has {} lines)",
+                        start,
+                        lines.len()
+                    ),
+                });
+            }
+            if end > lines.len() {
+                return Err(ToolError::InvalidArguments {
+                    tool: "read_file".to_string(),
+                    message: format!("Invalid end_line: {} (file has {} lines)", end, lines.len()),
+                });
+            }
+            if start > end {
+                return Err(ToolError::InvalidArguments {
+                    tool: "read_file".to_string(),
+                    message: format!(
+                        "start_line ({}) cannot be greater than end_line ({})",
+                        start, end
+                    ),
+                });
+            }
+
+            let selected_lines = &lines[start - 1..end];
+            Ok(selected_lines.join("\n"))
+        } else if let Some(start) = args.start_line {
+            let lines: Vec<&str> = content.lines().collect();
+            if start == 0 || start > lines.len() {
+                return Err(ToolError::InvalidArguments {
+                    tool: "read_file".to_string(),
+                    message: format!(
+                        "Invalid start_line: {} (file has {} lines)",
+                        start,
+                        lines.len()
+                    ),
+                });
+            }
+            let selected_lines = &lines[start - 1..];
+            Ok(selected_lines.join("\n"))
+        } else {
+            Ok(content)
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -38,53 +108,10 @@ struct ReadFileArgs {
 
 #[async_trait]
 impl Tool for ReadFileTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        let args: ReadFileArgs =
-            serde_json::from_value(args.clone()).context("Invalid arguments for read_file tool")?;
-
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-
-        let content = fs::read_to_string(&file_path)
+    async fn execute(&self, args: &Value) -> Result<String> {
+        self.execute_impl(args)
             .await
-            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
-
-        // Handle line-based reading if specified
-        if let (Some(start), Some(end)) = (args.start_line, args.end_line) {
-            let lines: Vec<&str> = content.lines().collect();
-            if start == 0 || start > lines.len() {
-                anyhow::bail!(
-                    "Invalid start_line: {} (file has {} lines)",
-                    start,
-                    lines.len()
-                );
-            }
-            if end > lines.len() {
-                anyhow::bail!("Invalid end_line: {} (file has {} lines)", end, lines.len());
-            }
-            if start > end {
-                anyhow::bail!(
-                    "start_line ({}) cannot be greater than end_line ({})",
-                    start,
-                    end
-                );
-            }
-
-            let selected_lines = &lines[start - 1..end];
-            Ok(selected_lines.join("\n"))
-        } else if let Some(start) = args.start_line {
-            let lines: Vec<&str> = content.lines().collect();
-            if start == 0 || start > lines.len() {
-                anyhow::bail!(
-                    "Invalid start_line: {} (file has {} lines)",
-                    start,
-                    lines.len()
-                );
-            }
-            let selected_lines = &lines[start - 1..];
-            Ok(selected_lines.join("\n"))
-        } else {
-            Ok(content)
-        }
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     fn tool_name(&self) -> &'static str {
@@ -136,8 +163,8 @@ impl Tool for ReadFileTool {
         args: &Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: ReadFileArgs =
-            serde_json::from_value(args.clone()).context("Invalid arguments for read_file tool")?;
+        let args: ReadFileArgs = serde_json::from_value(args.clone())
+            .map_err(|e| anyhow::anyhow!("Invalid arguments for read_file tool: {}", e))?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path)?;
         let normalized_path = file_path
