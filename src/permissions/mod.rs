@@ -827,4 +827,85 @@ mod tests {
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
+
+    #[tokio::test]
+    async fn test_project_wide_trust_entire_project() {
+        use tempfile::TempDir;
+
+        let manager = PermissionManager::new().with_skip_permissions(false);
+
+        // Create a temporary directory to use as project root
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().to_path_buf();
+
+        // Create test files in the project
+        let file1_path = project_path.join("file1.txt");
+        let file2_path = project_path.join("subdir/file2.txt");
+        std::fs::write(&file1_path, "test1").unwrap();
+        std::fs::create_dir_all(project_path.join("subdir")).unwrap();
+        std::fs::write(&file2_path, "test2").unwrap();
+
+        // Set trusted project
+        manager.set_trusted_project(project_path.clone());
+
+        // Test that operations within the project are auto-approved
+        let operation1 = OperationType::WriteFile(file1_path.to_string_lossy().to_string());
+        assert!(
+            manager.check_permission(&operation1).await.unwrap(),
+            "File in project root should be allowed"
+        );
+
+        let operation2 = OperationType::WriteFile(file2_path.to_string_lossy().to_string());
+        assert!(
+            manager.check_permission(&operation2).await.unwrap(),
+            "File in project subdirectory should be allowed"
+        );
+
+        // Test that operations outside the project are NOT auto-approved
+        let file_outside = std::env::temp_dir().join("outside_file_hoosh_test.txt");
+        std::fs::write(&file_outside, "outside").unwrap();
+        let operation_outside =
+            OperationType::WriteFile(file_outside.to_string_lossy().to_string());
+
+        // This should not be approved by project trust (will check cache, find nothing, and ask user)
+        // Since we're in test mode without user interaction, it will fail
+        // But the important thing is that it doesn't panic and respects the project boundary
+        let _ = manager.check_permission(&operation_outside).await;
+
+        // Clean up
+        let _ = std::fs::remove_file(&file_outside);
+    }
+
+    #[tokio::test]
+    async fn test_project_wide_trust_new_files() {
+        use tempfile::TempDir;
+
+        let manager = PermissionManager::new().with_skip_permissions(false);
+
+        // Create a temporary directory to use as project root
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().to_path_buf();
+
+        // Set trusted project
+        manager.set_trusted_project(project_path.clone());
+
+        // Test that operations on NON-EXISTENT files within the project are auto-approved
+        // This is the critical test case - files that don't exist yet
+        let new_file_path = project_path.join("new_file_that_does_not_exist.txt");
+        let operation = OperationType::WriteFile(new_file_path.to_string_lossy().to_string());
+
+        assert!(
+            manager.check_permission(&operation).await.unwrap(),
+            "New file in trusted project should be auto-approved even if it doesn't exist yet"
+        );
+
+        // Test nested new file
+        let nested_new_file = project_path.join("subdir/nested_new_file.txt");
+        let operation_nested = OperationType::WriteFile(nested_new_file.to_string_lossy().to_string());
+
+        assert!(
+            manager.check_permission(&operation_nested).await.unwrap(),
+            "New nested file in trusted project should be auto-approved"
+        );
+    }
 }

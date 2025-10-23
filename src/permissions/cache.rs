@@ -96,13 +96,50 @@ impl PermissionCacheKey {
     }
 
     /// Check if a target path is within a project directory (public static version)
+    /// This handles both existing and non-existent files by normalizing paths
     pub fn is_within_project_static(target: &str, project_root: &Path) -> bool {
         let target_path = PathBuf::from(target);
-        target_path
-            .canonicalize()
-            .and_then(|t| project_root.canonicalize().map(|p| (t, p)))
-            .map(|(t, p)| t.starts_with(p))
-            .unwrap_or(false)
+        
+        // Canonicalize project root first
+        let canonical_project = match project_root.canonicalize() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+
+        // For target, try to canonicalize. If it fails, find the first existing ancestor
+        let canonical_target = if let Ok(t) = target_path.canonicalize() {
+            t
+        } else {
+            // Find the first existing ancestor directory
+            let mut current = target_path.clone();
+            let mut found_existing = None;
+            
+            loop {
+                if current.exists() {
+                    found_existing = current.canonicalize().ok();
+                    break;
+                }
+                
+                current = match current.parent() {
+                    Some(parent) if parent != current => parent.to_path_buf(),
+                    _ => break,
+                };
+            }
+            
+            match found_existing {
+                Some(existing) => {
+                    // Append remaining path components
+                    if let Ok(rel_path) = target_path.strip_prefix(existing.clone()) {
+                        existing.join(rel_path)
+                    } else {
+                        existing
+                    }
+                }
+                None => return false, // Couldn't find any existing ancestor
+            }
+        };
+
+        canonical_target.starts_with(&canonical_project)
     }
 
     /// Check if two paths are equal (accounting for canonicalization)
@@ -207,5 +244,61 @@ mod tests {
         // Should not match other files or operation types
         assert!(!key.matches(OperationKind::Read, "Cargo.toml"));
         assert!(!key.matches(OperationKind::Write, "other.txt"));
+    }
+
+    #[test]
+    fn test_is_within_project_static_existing_files() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        
+        // Create a test file
+        let test_file = project_root.join("test.txt");
+        std::fs::write(&test_file, "test").unwrap();
+
+        // Test that existing file is recognized as within project
+        assert!(PermissionCacheKey::is_within_project_static(
+            test_file.to_str().unwrap(),
+            project_root
+        ));
+
+        // Test that file outside project is not recognized
+        let outside_file = std::env::temp_dir().join("outside_test_file.txt");
+        std::fs::write(&outside_file, "outside").unwrap();
+        assert!(!PermissionCacheKey::is_within_project_static(
+            outside_file.to_str().unwrap(),
+            project_root
+        ));
+        let _ = std::fs::remove_file(&outside_file);
+    }
+
+    #[test]
+    fn test_is_within_project_static_nonexistent_files() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Test that non-existent file within project is still recognized
+        let new_file = project_root.join("new_file.txt");
+        assert!(PermissionCacheKey::is_within_project_static(
+            new_file.to_str().unwrap(),
+            project_root
+        ));
+
+        // Test nested non-existent file
+        let nested_new_file = project_root.join("subdir/nested_new.txt");
+        assert!(PermissionCacheKey::is_within_project_static(
+            nested_new_file.to_str().unwrap(),
+            project_root
+        ));
+
+        // Test file outside project (non-existent)
+        let outside_new_file = std::env::temp_dir().join("outside_new_file_test.txt");
+        assert!(!PermissionCacheKey::is_within_project_static(
+            outside_new_file.to_str().unwrap(),
+            project_root
+        ));
     }
 }
