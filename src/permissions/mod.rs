@@ -3,7 +3,6 @@ pub mod cache;
 use anyhow::{Context, Result};
 use cache::{OperationKind, PermissionCacheKey};
 use std::collections::HashMap;
-use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -132,10 +131,10 @@ pub struct PermissionManager {
     /// Uses structured PermissionCacheKey instead of string-based keys
     session_cache: Arc<Mutex<HashMap<PermissionCacheKey, bool>>>,
     /// Event sender for sending permission requests to UI
-    event_sender: Option<mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+    event_sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
     /// Response receiver for receiving permission responses from UI
     response_receiver:
-        Option<Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>>,
+        Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
     /// Request ID counter for generating unique permission request IDs
     request_counter: Arc<AtomicU64>,
     /// Trusted project directory (session-only)
@@ -143,13 +142,16 @@ pub struct PermissionManager {
 }
 
 impl PermissionManager {
-    pub fn new() -> Self {
+    pub fn new(
+        event_sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
+        response_receiver: mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>,
+    ) -> Self {
         Self {
             skip_permissions: false,
             default_permission: PermissionLevel::Ask,
             session_cache: Arc::new(Mutex::new(HashMap::new())),
-            event_sender: None,
-            response_receiver: None,
+            event_sender,
+            response_receiver: Arc::new(Mutex::new(response_receiver)),
             request_counter: Arc::new(AtomicU64::new(0)),
             trusted_project: Arc::new(Mutex::new(None)),
         }
@@ -165,20 +167,14 @@ impl PermissionManager {
         self
     }
 
-    pub fn with_event_sender(
-        mut self,
-        sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
-    ) -> Self {
-        self.event_sender = Some(sender);
-        self
+    /// Get the current skip_permissions setting
+    pub fn skip_permissions(&self) -> bool {
+        self.skip_permissions
     }
 
-    pub fn with_response_receiver(
-        mut self,
-        receiver: mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>,
-    ) -> Self {
-        self.response_receiver = Some(Arc::new(Mutex::new(receiver)));
-        self
+    /// Get the current default permission level
+    pub fn default_permission(&self) -> PermissionLevel {
+        self.default_permission
     }
 
     /// Clear the session cache
@@ -313,13 +309,13 @@ impl PermissionManager {
         }
     }
 
-    /// Send a debug message via the event sender if available
+    /// Send a debug message via the event sender
     fn send_debug(&self, message: &str) {
-        if let Some(sender) = &self.event_sender {
-            let _ = sender.send(crate::conversations::AgentEvent::DebugMessage(
+        let _ = self
+            .event_sender
+            .send(crate::conversations::AgentEvent::DebugMessage(
                 message.to_string(),
             ));
-        }
     }
 
     /// Check if an operation is allowed
@@ -361,21 +357,14 @@ impl PermissionManager {
         Ok(allowed)
     }
 
-    /// Ask user for permission interactively
+    /// Ask user for permission interactively via TUI event system
     /// Returns (allowed, optional_scope)
     async fn ask_user_permission(
         &self,
         operation: &OperationType,
     ) -> Result<(bool, Option<PermissionScope>)> {
-        // If we have an event sender, use the TUI system
-        if let (Some(sender), Some(receiver)) = (&self.event_sender, &self.response_receiver) {
-            return self
-                .ask_user_permission_via_tui(operation, sender, receiver)
-                .await;
-        }
-
-        // Otherwise, fall back to CLI/println approach
-        self.ask_user_permission_via_cli(operation).await
+        self.ask_user_permission_via_tui(operation, &self.event_sender, &self.response_receiver)
+            .await
     }
 
     /// Ask user for permission via TUI event system
@@ -428,102 +417,6 @@ impl PermissionManager {
         Ok((response.allowed, response.scope))
     }
 
-    /// Ask user for permission via CLI (fallback for non-TUI mode)
-    async fn ask_user_permission_via_cli(
-        &self,
-        operation: &OperationType,
-    ) -> Result<(bool, Option<PermissionScope>)> {
-        println!(); // Add newline for spacing before permission prompt
-
-        let warning_emoji = if operation.is_destructive() {
-            "⚠️"
-        } else {
-            "🔒"
-        };
-
-        println!(
-            "{} Permission required to {}",
-            warning_emoji,
-            operation.description()
-        );
-
-        if operation.is_destructive() {
-            println!("⚠️  WARNING: This operation may be destructive!");
-        }
-
-        println!("Allow this operation?");
-        println!("  [y] Yes, once");
-        println!("  [n] No");
-
-        // Contextual message for 'a' option based on operation type
-        match operation {
-            OperationType::ExecuteBash(_) => {
-                println!("  [a] Always for this command");
-            }
-            _ => {
-                println!("  [a] Always for this file");
-            }
-        }
-
-        // Show directory option for file operations
-        if let Some(dir) = operation.parent_directory() {
-            println!("  [d] Always for this directory ({})", dir);
-        }
-
-        println!(
-            "  [A] Always for all {} operations",
-            operation.operation_kind()
-        );
-
-        print!("Choice [y/N/a/d/A]: ");
-        io::stdout().flush().context("Failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("Failed to read user input")?;
-
-        let response = input.trim();
-        match response {
-            "y" | "Y" | "yes" | "Yes" => {
-                Ok((true, None)) // Allow once, don't cache
-            }
-            "a" => {
-                let target = operation.target().to_string();
-                println!(
-                    "ℹ️  Permission for '{}' will be remembered for this session.",
-                    target
-                );
-                Ok((true, Some(PermissionScope::Specific(target))))
-            }
-            "d" | "D" => {
-                if let Some(dir) = operation.parent_directory() {
-                    println!(
-                        "ℹ️  All {} operations in '{}' will be allowed for this session.",
-                        operation.operation_kind(),
-                        dir
-                    );
-                    Ok((true, Some(PermissionScope::Directory(dir))))
-                } else {
-                    println!("⚠️  Directory-based permission not available for this operation.");
-                    println!("ℹ️  Using file-specific permission instead.");
-                    let target = operation.target().to_string();
-                    Ok((true, Some(PermissionScope::Specific(target))))
-                }
-            }
-            "A" => {
-                println!(
-                    "ℹ️  All {} operations will be allowed for this session.",
-                    operation.operation_kind()
-                );
-                Ok((true, Some(PermissionScope::Global)))
-            }
-            _ => {
-                Ok((false, None)) // Deny, no need to cache denials
-            }
-        }
-    }
-
     /// Check if permissions are being enforced
     pub fn is_enforcing(&self) -> bool {
         !self.skip_permissions
@@ -532,7 +425,9 @@ impl PermissionManager {
 
 impl Default for PermissionManager {
     fn default() -> Self {
-        Self::new()
+        let (event_tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let (_, response_rx) = tokio::sync::mpsc::unbounded_channel();
+        Self::new(event_tx, response_rx)
     }
 }
 
@@ -549,6 +444,13 @@ pub enum PermissionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Helper function to create a PermissionManager for testing
+    fn create_test_manager() -> PermissionManager {
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        PermissionManager::new(event_tx, response_rx)
+    }
 
     #[test]
     fn test_operation_safety_classification() {
@@ -570,7 +472,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_permission_manager_skip_permissions() {
-        let manager = PermissionManager::new().with_skip_permissions(true);
+        let manager = create_test_manager().with_skip_permissions(true);
         let operation = OperationType::WriteFile("test.txt".to_string());
 
         let result = manager.check_permission(&operation).await.unwrap();
@@ -579,7 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_permission_manager_safe_operations() {
-        let manager = PermissionManager::new(); // Default: ask for permission
+        let manager = create_test_manager(); // Default: ask for permission
         let read_op = OperationType::ReadFile("test.txt".to_string());
         let list_op = OperationType::ListDirectory("./".to_string());
 
@@ -608,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_permission_cache_stores_decisions() {
-        let manager = PermissionManager::new().with_skip_permissions(false);
+        let manager = create_test_manager().with_skip_permissions(false);
 
         // Use Cargo.toml which exists in the project root
         let test_file = "Cargo.toml";
@@ -639,7 +541,7 @@ mod tests {
     fn test_permission_cache_directory_scope() {
         use tempfile::TempDir;
 
-        let manager = PermissionManager::new();
+        let manager = create_test_manager();
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -677,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_permission_cache_global_scope() {
-        let manager = PermissionManager::new();
+        let manager = create_test_manager();
 
         // Cache a global permission for write operations
         let operation = OperationType::WriteFile("/path/to/file.txt".to_string());
@@ -703,7 +605,7 @@ mod tests {
     fn test_permission_cache_hierarchy() {
         use tempfile::TempDir;
 
-        let manager = PermissionManager::new();
+        let manager = create_test_manager();
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -745,7 +647,7 @@ mod tests {
 
     #[test]
     fn test_permission_cache_cleared() {
-        let manager = PermissionManager::new();
+        let manager = create_test_manager();
 
         // Cache some decisions at different scopes
         manager.cache_decision(
@@ -776,7 +678,7 @@ mod tests {
     async fn test_project_wide_trust() {
         use tempfile::TempDir;
 
-        let manager = PermissionManager::new().with_skip_permissions(true); // Skip permissions to avoid prompts
+        let manager = create_test_manager().with_skip_permissions(true); // Skip permissions to avoid prompts
 
         // Create a temporary directory to use as project root
         let temp_dir = TempDir::new().unwrap();
@@ -805,7 +707,7 @@ mod tests {
 
     #[test]
     fn test_clear_trusted_project() {
-        let manager = PermissionManager::new();
+        let manager = create_test_manager();
 
         // Create a temporary directory
         let temp_dir = std::env::temp_dir().join("hoosh_test_clear_project");
@@ -832,7 +734,7 @@ mod tests {
     async fn test_project_wide_trust_entire_project() {
         use tempfile::TempDir;
 
-        let manager = PermissionManager::new().with_skip_permissions(false);
+        let manager = create_test_manager().with_skip_permissions(false);
 
         // Create a temporary directory to use as project root
         let temp_dir = TempDir::new().unwrap();
@@ -880,7 +782,7 @@ mod tests {
     async fn test_project_wide_trust_new_files() {
         use tempfile::TempDir;
 
-        let manager = PermissionManager::new().with_skip_permissions(false);
+        let manager = create_test_manager().with_skip_permissions(false);
 
         // Create a temporary directory to use as project root
         let temp_dir = TempDir::new().unwrap();
@@ -901,7 +803,8 @@ mod tests {
 
         // Test nested new file
         let nested_new_file = project_path.join("subdir/nested_new_file.txt");
-        let operation_nested = OperationType::WriteFile(nested_new_file.to_string_lossy().to_string());
+        let operation_nested =
+            OperationType::WriteFile(nested_new_file.to_string_lossy().to_string());
 
         assert!(
             manager.check_permission(&operation_nested).await.unwrap(),

@@ -237,7 +237,10 @@ mod tests {
 
         let tool_registry =
             ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
-        let permission_manager = PermissionManager::new().with_skip_permissions(true);
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
         let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {
@@ -259,7 +262,9 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let tool_registry =
             ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
-        let permission_manager = PermissionManager::new();
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager = PermissionManager::new(event_tx, response_rx);
         let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {

@@ -60,7 +60,11 @@ async fn handle_chat(
     };
 
     let parser = MessageParser::with_working_directory(working_dir.clone());
-    let permission_manager = PermissionManager::new().with_skip_permissions(skip_permissions);
+    
+    let (event_tx, _) = tokio::sync::mpsc::unbounded_channel();
+    let (_, response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let permission_manager = PermissionManager::new(event_tx, response_rx)
+        .with_skip_permissions(skip_permissions);
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
