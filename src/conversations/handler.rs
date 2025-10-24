@@ -329,7 +329,10 @@ mod tests {
             )]));
 
         let tool_registry = Arc::new(ToolRegistry::new());
-        let permission_manager = PermissionManager::new().with_skip_permissions(true);
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
         let tool_executor = Arc::new(ToolExecutor::new(
             (*tool_registry).clone(),
             permission_manager,
@@ -370,7 +373,10 @@ mod tests {
         let tool_registry = Arc::new(ToolExecutor::create_tool_registry_with_working_dir(
             temp_dir.path().to_path_buf(),
         ));
-        let permission_manager = PermissionManager::new().with_skip_permissions(true);
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
         let tool_executor = Arc::new(ToolExecutor::new(
             (*tool_registry).clone(),
             permission_manager,

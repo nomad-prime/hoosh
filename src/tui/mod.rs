@@ -114,9 +114,12 @@ pub async fn run(
     let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
     let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let permission_manager = permission_manager
-        .with_event_sender(event_tx.clone())
-        .with_response_receiver(permission_response_rx);
+    // Recreate permission manager with the TUI channels
+    let skip_perms = permission_manager.skip_permissions();
+    let default_perm = permission_manager.default_permission();
+    let permission_manager = PermissionManager::new(event_tx.clone(), permission_response_rx)
+        .with_skip_permissions(skip_perms)
+        .with_default_permission(default_perm);
 
     let permission_manager_arc = Arc::new(permission_manager.clone());
 
