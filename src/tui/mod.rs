@@ -13,7 +13,6 @@ mod input_handler;
 mod message_renderer;
 mod terminal;
 mod ui;
-mod viewport_manager;
 
 pub use message_renderer::MessageRenderer;
 
@@ -46,7 +45,7 @@ pub async fn run(
     tool_registry: ToolRegistry,
     config: AppConfig,
 ) -> Result<()> {
-    let base_ui_height = 6;
+    let base_ui_height = 8;
 
     let terminal = init_terminal(base_ui_height)?;
     let mut app = AppState::new();

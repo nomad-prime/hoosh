@@ -20,7 +20,6 @@ use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
 use super::terminal::Tui;
 use super::ui;
-use super::viewport_manager::ViewportManager;
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -62,14 +61,11 @@ pub async fn run_event_loop(
     mut context: EventLoopContext,
 ) -> Result<Tui> {
     let mut agent_task: Option<JoinHandle<()>> = None;
-    let mut viewport = ViewportManager::with_default_height();
 
     let message_renderer = MessageRenderer::new();
 
     loop {
         message_renderer.render_pending_messages(app, &mut terminal)?;
-
-        (terminal, _) = viewport.update_and_resize(app, terminal)?;
 
         terminal.draw(|f| ui::render(f, app))?;
 
