@@ -11,6 +11,7 @@ mod header;
 pub mod history;
 mod input_handler;
 mod message_renderer;
+mod minimal_terminal;
 mod terminal;
 mod ui;
 
@@ -45,9 +46,7 @@ pub async fn run(
     tool_registry: ToolRegistry,
     config: AppConfig,
 ) -> Result<()> {
-    let base_ui_height = 8;
-
-    let terminal = init_terminal(base_ui_height)?;
+    let terminal = init_terminal()?;
     let mut app = AppState::new();
 
     // Load history from file

@@ -30,7 +30,7 @@ impl FileCompleter {
         max_depth: usize,
         current_depth: usize,
         files: &'a mut Vec<PathBuf>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             if current_depth > max_depth {
                 return Ok(());
