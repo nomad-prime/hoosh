@@ -1,4 +1,5 @@
 use crate::tui::app::AppState;
+use crate::tui::layout_builder::WidgetRenderer;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -10,15 +11,11 @@ use ratatui::{
 /// Approval dialog widget that shows tool approval requests
 pub struct ApprovalDialogWidget<'a> {
     app_state: &'a AppState,
-    anchor_area: Rect,
 }
 
 impl<'a> ApprovalDialogWidget<'a> {
-    pub fn new(app_state: &'a AppState, anchor_area: Rect) -> Self {
-        Self {
-            app_state,
-            anchor_area,
-        }
+    pub fn new(app_state: &'a AppState) -> Self {
+        Self { app_state }
     }
 }
 
@@ -62,31 +59,7 @@ impl<'a> Widget for ApprovalDialogWidget<'a> {
                 Style::default().fg(Color::Cyan),
             )));
 
-            // Calculate dialog dimensions - positioned below anchor area
-            let viewport_area = area;
-            let popup_start_y = self.anchor_area.y + self.anchor_area.height;
-            let viewport_bottom = viewport_area.y + viewport_area.height;
-            let available_height = viewport_bottom.saturating_sub(popup_start_y);
-
-            let max_width = lines
-                .iter()
-                .map(|l| l.spans.iter().map(|s| s.content.len()).sum::<usize>())
-                .max()
-                .unwrap_or(50) as u16;
-
-            let dialog_width = (max_width + 4).min(viewport_area.width.saturating_sub(4));
-            let desired_height = lines.len() as u16 + 2;
-            let dialog_height = desired_height.min(available_height).max(5);
-
-            let dialog_area = Rect {
-                x: self.anchor_area.x,
-                y: popup_start_y,
-                width: dialog_width,
-                height: dialog_height,
-            };
-
-            // Clear the area first to prevent text bleed-through
-            Clear.render(dialog_area, buf);
+            Clear.render(area, buf);
 
             let block = Block::default()
                 .title(" Approval Required ")
@@ -98,7 +71,17 @@ impl<'a> Widget for ApprovalDialogWidget<'a> {
                 .block(block)
                 .wrap(Wrap { trim: false });
 
-            paragraph.render(dialog_area, buf);
+            paragraph.render(area, buf);
         }
+    }
+}
+
+pub struct ApprovalDialogRenderer;
+
+impl WidgetRenderer for ApprovalDialogRenderer {
+    type State = AppState;
+
+    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        ApprovalDialogWidget::new(state).render(area, buf);
     }
 }

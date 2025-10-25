@@ -1,3 +1,5 @@
+use crate::tui::app::AppState;
+use crate::tui::layout_builder::WidgetRenderer;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -37,5 +39,16 @@ impl<'a> Widget for InputWidget<'a> {
 
         // Render the input
         input_widget.render(text_area, buf);
+    }
+}
+
+pub struct InputRenderer;
+
+impl WidgetRenderer for InputRenderer {
+    type State = AppState;
+
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
+        let input_widget = InputWidget::new(&state.input);
+        input_widget.render(area, buf);
     }
 }

@@ -1,11 +1,5 @@
-use crate::tui::app::AppState;
-
-#[allow(dead_code)]
-pub trait Measurable {
-    fn measure_height(&self, app: &AppState) -> u16;
-
-    fn is_visible(&self, app: &AppState) -> bool;
-}
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoxModel {
@@ -45,19 +39,23 @@ impl BoxModel {
     }
 }
 
-#[derive(Clone)]
-pub struct ComponentDescriptor {
-    pub name: &'static str,
-    pub box_model: BoxModel,
-    pub visible: bool,
+pub trait WidgetRenderer: Send + Sync {
+    type State;
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer);
 }
 
-impl ComponentDescriptor {
-    pub fn new(name: &'static str, height: u16) -> Self {
+pub struct ComponentDescriptor<S> {
+    pub box_model: BoxModel,
+    pub visible: bool,
+    pub renderer: Option<Box<dyn WidgetRenderer<State = S>>>,
+}
+
+impl<S> ComponentDescriptor<S> {
+    pub fn new(height: u16, renderer: Option<Box<dyn WidgetRenderer<State = S>>>) -> Self {
         Self {
-            name,
             box_model: BoxModel::new(height),
             visible: true,
+            renderer,
         }
     }
 
@@ -86,51 +84,70 @@ impl ComponentDescriptor {
     }
 }
 
-pub struct LayoutBuilder {
-    components: Vec<ComponentDescriptor>,
+pub struct LayoutBuilder<S> {
+    components: Vec<ComponentDescriptor<S>>,
 }
 
-impl LayoutBuilder {
+impl<S> LayoutBuilder<S> {
     pub fn new() -> Self {
         Self {
             components: Vec::new(),
         }
     }
 
-    pub fn spacer(self, name: &'static str, height: u16) -> Self {
-        self.component(ComponentDescriptor::new(name, height))
+    pub fn spacer(self, height: u16) -> Self {
+        self.component(ComponentDescriptor::new(height, None))
     }
 
-    pub fn component(mut self, desc: ComponentDescriptor) -> Self {
+    pub fn component(mut self, desc: ComponentDescriptor<S>) -> Self {
         self.components.push(desc);
         self
     }
 
     /// Generic method - build the layout
-    pub fn build(self) -> Layout {
+    pub fn build(self) -> Layout<S> {
         Layout {
             components: self.components,
         }
     }
 }
 
-impl Default for LayoutBuilder {
+impl<S> Default for LayoutBuilder<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct Layout {
-    components: Vec<ComponentDescriptor>,
+pub struct Layout<S> {
+    components: Vec<ComponentDescriptor<S>>,
 }
 
-impl Layout {
+impl<S> Layout<S> {
     pub fn total_height(&self) -> u16 {
         self.components.iter().map(|c| c.height()).sum()
     }
 
-    pub fn visible_components(&self) -> impl Iterator<Item = &ComponentDescriptor> {
+    pub fn visible_components(&self) -> impl Iterator<Item = &ComponentDescriptor<S>> {
         self.components.iter().filter(|c| c.visible)
+    }
+
+    pub fn render(&self, state: &S, area: Rect, buf: &mut Buffer) {
+        use ratatui::layout::{Constraint, Layout as RatatuiLayout};
+
+        let constraints: Vec<Constraint> = self
+            .visible_components()
+            .map(|comp| Constraint::Length(comp.height()))
+            .collect();
+
+        let areas = RatatuiLayout::vertical(constraints).split(area);
+
+        for (area_idx, component) in self.visible_components().enumerate() {
+            let component_area = areas[area_idx];
+
+            if let Some(renderer) = &component.renderer {
+                renderer.render(state, component_area, buf);
+            }
+        }
     }
 }
 
