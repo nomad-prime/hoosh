@@ -1,5 +1,6 @@
 use crate::tui::app::AppState;
 
+#[allow(dead_code)]
 pub trait Measurable {
     fn measure_height(&self, app: &AppState) -> u16;
 
@@ -26,6 +27,7 @@ impl BoxModel {
         }
     }
 
+    #[allow(dead_code)]
     pub const fn with_padding(mut self, top: u16, bottom: u16) -> Self {
         self.padding_top = top;
         self.padding_bottom = bottom;
@@ -64,6 +66,7 @@ impl ComponentDescriptor {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_padding(mut self, top: u16, bottom: u16) -> Self {
         self.box_model = self.box_model.with_padding(top, bottom);
         self
@@ -98,15 +101,9 @@ impl LayoutBuilder {
         self.component(ComponentDescriptor::new(name, height))
     }
 
-    /// Generic method - add ANY component
     pub fn component(mut self, desc: ComponentDescriptor) -> Self {
         self.components.push(desc);
         self
-    }
-
-    /// Generic method - calculate height
-    pub fn total_height(&self) -> u16 {
-        self.components.iter().map(|c| c.height()).sum()
     }
 
     /// Generic method - build the layout
@@ -132,17 +129,9 @@ impl Layout {
         self.components.iter().map(|c| c.height()).sum()
     }
 
-    pub fn get_component(&self, name: &str) -> Option<&ComponentDescriptor> {
-        self.components.iter().find(|c| c.name == name)
-    }
-
     pub fn visible_components(&self) -> impl Iterator<Item = &ComponentDescriptor> {
         self.components.iter().filter(|c| c.visible)
     }
-}
-
-pub fn layout() -> LayoutBuilder {
-    LayoutBuilder::new()
 }
 
 #[cfg(test)]
