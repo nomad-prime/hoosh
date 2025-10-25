@@ -4,14 +4,9 @@ use super::components::{
     input::InputWidget, mode_indicator::ModeIndicatorWidget,
     permission_dialog::PermissionDialogWidget, status::StatusWidget,
 };
-use crate::tui::app_layout::AppLayout;
 use crate::tui::layout_builder::Layout;
 use crate::tui::terminal::Frame;
 use ratatui::layout::{Constraint, Layout as RatatuiLayout};
-
-pub fn create_app_layout(app: &AppState) -> Layout {
-    Layout::create(app)
-}
 
 /// Renders the entire UI into a frame.
 /// This is called *inside* `draw_dynamic_ui`.

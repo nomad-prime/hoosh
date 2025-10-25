@@ -1,15 +1,14 @@
+use super::clipboard::ClipboardManager;
+use super::events::AgentState;
+use crate::completion::Completer;
+use crate::conversations::AgentEvent;
+use crate::history::PromptHistory;
+use crate::permissions::OperationType;
 use rand::Rng;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
-
-use super::clipboard::ClipboardManager;
-use super::completion::Completer;
-use super::events::AgentState;
-use super::history::PromptHistory;
-use crate::conversations::AgentEvent;
-use crate::permissions::OperationType;
 
 #[derive(Clone)]
 pub enum MessageLine {

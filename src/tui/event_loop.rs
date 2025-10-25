@@ -17,8 +17,10 @@ use crate::conversations::{AgentEvent, Conversation, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
+use crate::tui::app_layout::AppLayout;
+use crate::tui::layout_builder::Layout;
 use crate::tui::terminal::{resize_terminal, HooshTerminal};
-use crate::tui::ui::{create_app_layout, render_ui};
+use crate::tui::ui::render_ui;
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -66,7 +68,7 @@ pub async fn run_event_loop(
     loop {
         message_renderer.render_pending_messages(app, &mut terminal)?;
 
-        let layout = create_app_layout(app);
+        let layout = Layout::create(app);
 
         resize_terminal(&mut terminal, layout.total_height())?;
 
