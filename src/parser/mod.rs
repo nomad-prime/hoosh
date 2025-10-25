@@ -1,4 +1,4 @@
-use crate::tools::{file_ops::ReadFileTool, Tool};
+use crate::tools::{Tool, file_ops::ReadFileTool};
 use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::{Path, PathBuf};
@@ -47,10 +47,10 @@ impl MessageParser {
             // Check if the @ is preceded by an alphanumeric character (indicating an email)
             if match_start > 0 {
                 let preceding_char = message.chars().nth(match_start - 1);
-                if let Some(ch) = preceding_char {
-                    if ch.is_alphanumeric() {
-                        continue; // Skip this match as it's likely an email
-                    }
+                if let Some(ch) = preceding_char
+                    && ch.is_alphanumeric()
+                {
+                    continue; // Skip this match as it's likely an email
                 }
             }
 

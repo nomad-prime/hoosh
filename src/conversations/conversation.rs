@@ -138,19 +138,19 @@ impl Conversation {
     }
 
     pub fn has_pending_tool_calls(&self) -> bool {
-        if let Some(last_message) = self.messages.last() {
-            if last_message.role == "assistant" {
-                return last_message.tool_calls.is_some();
-            }
+        if let Some(last_message) = self.messages.last()
+            && last_message.role == "assistant"
+        {
+            return last_message.tool_calls.is_some();
         }
         false
     }
 
     pub fn get_pending_tool_calls(&self) -> Option<&Vec<ToolCall>> {
-        if let Some(last_message) = self.messages.last() {
-            if last_message.role == "assistant" {
-                return last_message.tool_calls.as_ref();
-            }
+        if let Some(last_message) = self.messages.last()
+            && last_message.role == "assistant"
+        {
+            return last_message.tool_calls.as_ref();
         }
         None
     }

@@ -142,10 +142,10 @@ impl ConversationHandler {
         response: LlmResponse,
         step: usize,
     ) -> Result<TurnStatus> {
-        if let Some(ref tool_calls) = response.tool_calls {
-            if !tool_calls.is_empty() {
-                return self.handle_tool_calls(conversation, response, step).await;
-            }
+        if let Some(ref tool_calls) = response.tool_calls
+            && !tool_calls.is_empty()
+        {
+            return self.handle_tool_calls(conversation, response, step).await;
         }
 
         if let Some(content) = response.content {

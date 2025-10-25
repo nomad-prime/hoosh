@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -42,14 +42,14 @@ impl WriteFileTool {
             })?;
 
         // Create parent directories if requested
-        if args.create_dirs {
-            if let Some(parent) = file_path.parent() {
-                fs::create_dir_all(parent)
-                    .await
-                    .map_err(|_| ToolError::WriteFailed {
-                        path: file_path.clone(),
-                    })?;
-            }
+        if args.create_dirs
+            && let Some(parent) = file_path.parent()
+        {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|_| ToolError::WriteFailed {
+                    path: file_path.clone(),
+                })?;
         }
 
         fs::write(&file_path, &args.content)
@@ -122,10 +122,10 @@ impl Tool for WriteFileTool {
 
     fn result_summary(&self, result: &str) -> String {
         // Extract byte count from result like "Successfully wrote 123 bytes to ..."
-        if let Some(bytes_str) = result.split("wrote ").nth(1) {
-            if let Some(bytes) = bytes_str.split(" bytes").next() {
-                return format!("Wrote {} bytes", bytes);
-            }
+        if let Some(bytes_str) = result.split("wrote ").nth(1)
+            && let Some(bytes) = bytes_str.split(" bytes").next()
+        {
+            return format!("Wrote {} bytes", bytes);
         }
         "File written successfully".to_string()
     }

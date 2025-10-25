@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 
 use super::registry::{Command, CommandContext, CommandResult};
@@ -55,14 +55,14 @@ impl Command for SwitchAgentCommand {
             .ok_or_else(|| anyhow!("Agent manager not available"))?;
 
         // Check if already using this agent
-        if let Some(current_agent) = &context.current_agent_name {
-            if current_agent == &new_agent_name {
-                let mut message = format!("Already using {} agent", new_agent_name);
-                if set_default {
-                    message.push_str(" (default unchanged)");
-                }
-                return Ok(CommandResult::Success(message));
+        if let Some(current_agent) = &context.current_agent_name
+            && current_agent == &new_agent_name
+        {
+            let mut message = format!("Already using {} agent", new_agent_name);
+            if set_default {
+                message.push_str(" (default unchanged)");
             }
+            return Ok(CommandResult::Success(message));
         }
 
         // Get the new agent

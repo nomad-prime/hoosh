@@ -99,7 +99,7 @@ impl PermissionCacheKey {
     /// This handles both existing and non-existent files by normalizing paths
     pub fn is_within_project_static(target: &str, project_root: &Path) -> bool {
         let target_path = PathBuf::from(target);
-        
+
         // Canonicalize project root first
         let canonical_project = match project_root.canonicalize() {
             Ok(p) => p,
@@ -113,19 +113,19 @@ impl PermissionCacheKey {
             // Find the first existing ancestor directory
             let mut current = target_path.clone();
             let mut found_existing = None;
-            
+
             loop {
                 if current.exists() {
                     found_existing = current.canonicalize().ok();
                     break;
                 }
-                
+
                 current = match current.parent() {
                     Some(parent) if parent != current => parent.to_path_buf(),
                     _ => break,
                 };
             }
-            
+
             match found_existing {
                 Some(existing) => {
                     // Append remaining path components
@@ -252,7 +252,7 @@ mod tests {
 
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
-        
+
         // Create a test file
         let test_file = project_root.join("test.txt");
         std::fs::write(&test_file, "test").unwrap();
