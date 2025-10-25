@@ -94,6 +94,10 @@ impl LayoutBuilder {
         }
     }
 
+    pub fn spacer(self, name: &'static str, height: u16) -> Self {
+        self.component(ComponentDescriptor::new(name, height))
+    }
+
     /// Generic method - add ANY component
     pub fn component(mut self, desc: ComponentDescriptor) -> Self {
         self.components.push(desc);
