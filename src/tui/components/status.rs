@@ -9,19 +9,12 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 
-/// Status widget that displays the current agent state with animated spinners
-pub struct StatusWidget<'a> {
-    app_state: &'a AppState,
-}
+pub struct StatusRenderer;
 
-impl<'a> StatusWidget<'a> {
-    pub fn new(app_state: &'a AppState) -> Self {
-        Self { app_state }
-    }
-}
+impl WidgetRenderer for StatusRenderer {
+    type State = AppState;
 
-impl<'a> Widget for StatusWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
         let thinking_spinners = [
             &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"][..], // Classic rotation
             &["⠐", "⠒", "⠓", "⠋", "⠙", "⠹", "⠸", "⠼"][..], // Wave pattern
@@ -45,50 +38,44 @@ impl<'a> Widget for StatusWidget<'a> {
         let waiting_spinners = ["⠄", "⠂", "⠁", "⠂"];
         let retry_spinners = ["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"];
 
-        let (status_text, status_color) =
-            if let Some(retry_status) = &self.app_state.current_retry_status {
-                let retry_spinner =
-                    retry_spinners[self.app_state.animation_frame % retry_spinners.len()];
-                (format!(" {} {}", retry_spinner, retry_status), Color::Red)
-            } else if self.app_state.is_showing_permission_dialog()
-                || self.app_state.is_showing_approval_dialog()
-            {
-                let waiting_spinner =
-                    waiting_spinners[self.app_state.animation_frame % waiting_spinners.len()];
-                (format!(" {} Your turn", waiting_spinner), Color::Yellow)
-            } else {
-                match self.app_state.agent_state {
-                    AgentState::Summarizing => {
-                        let spinner = thinking_spinners[self.app_state.current_thinking_spinner]
-                            [self.app_state.animation_frame
-                                % thinking_spinners[self.app_state.current_thinking_spinner].len()];
-                        (
-                            format!(" {} Summarizing", spinner),
-                            Color::Rgb(142, 240, 204),
-                        )
-                    }
-                    AgentState::Idle => (String::new(), Color::Rgb(142, 240, 204)),
-                    AgentState::Thinking => {
-                        let spinner = thinking_spinners[self.app_state.current_thinking_spinner]
-                            [self.app_state.animation_frame
-                                % thinking_spinners[self.app_state.current_thinking_spinner].len()];
-                        (
-                            format!(" {} Processing", spinner),
-                            Color::Rgb(142, 240, 204),
-                        )
-                    }
-                    AgentState::ExecutingTools => {
-                        let spinner = executing_spinners[self.app_state.current_executing_spinner]
-                            [self.app_state.animation_frame
-                                % executing_spinners[self.app_state.current_executing_spinner]
-                                    .len()];
-                        (
-                            format!(" {} Executing tools", spinner),
-                            Color::Rgb(142, 240, 204),
-                        )
-                    }
+        let (status_text, status_color) = if let Some(retry_status) = &state.current_retry_status {
+            let retry_spinner = retry_spinners[state.animation_frame % retry_spinners.len()];
+            (format!(" {} {}", retry_spinner, retry_status), Color::Red)
+        } else if state.is_showing_permission_dialog() || state.is_showing_approval_dialog() {
+            let waiting_spinner = waiting_spinners[state.animation_frame % waiting_spinners.len()];
+            (format!(" {} Your turn", waiting_spinner), Color::Yellow)
+        } else {
+            match state.agent_state {
+                AgentState::Summarizing => {
+                    let spinner = thinking_spinners[state.current_thinking_spinner][state
+                        .animation_frame
+                        % thinking_spinners[state.current_thinking_spinner].len()];
+                    (
+                        format!(" {} Summarizing", spinner),
+                        Color::Rgb(142, 240, 204),
+                    )
                 }
-            };
+                AgentState::Idle => (String::new(), Color::Rgb(142, 240, 204)),
+                AgentState::Thinking => {
+                    let spinner = thinking_spinners[state.current_thinking_spinner][state
+                        .animation_frame
+                        % thinking_spinners[state.current_thinking_spinner].len()];
+                    (
+                        format!(" {} Processing", spinner),
+                        Color::Rgb(142, 240, 204),
+                    )
+                }
+                AgentState::ExecutingTools => {
+                    let spinner = executing_spinners[state.current_executing_spinner][state
+                        .animation_frame
+                        % executing_spinners[state.current_executing_spinner].len()];
+                    (
+                        format!(" {} Executing tools", spinner),
+                        Color::Rgb(142, 240, 204),
+                    )
+                }
+            }
+        };
 
         if !status_text.is_empty() {
             let status_line =
@@ -96,16 +83,5 @@ impl<'a> Widget for StatusWidget<'a> {
             let paragraph = Paragraph::new(status_line);
             paragraph.render(area, buf);
         }
-    }
-}
-
-pub struct StatusRenderer;
-
-impl WidgetRenderer for StatusRenderer {
-    type State = AppState;
-
-    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        let status_widget = StatusWidget::new(state);
-        status_widget.render(area, buf);
     }
 }
