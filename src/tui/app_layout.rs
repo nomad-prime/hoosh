@@ -6,14 +6,14 @@ pub trait AppLayout {
     fn create(app: &AppState) -> Self;
 }
 
-impl AppLayout for Layout {
+impl AppLayout for Layout<AppState> {
     fn create(app: &AppState) -> Self {
         let has_overlay = app.is_showing_permission_dialog()
             || app.is_showing_approval_dialog()
             || app.is_completing();
 
         let mut builder = LayoutBuilder::new()
-            .spacer("top", 1)
+            .spacer(1)
             .status_bar()
             .input_field()
             .mode_indicator(!has_overlay);

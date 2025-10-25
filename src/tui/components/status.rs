@@ -1,5 +1,6 @@
 use crate::tui::app::AppState;
 use crate::tui::events::AgentState;
+use crate::tui::layout_builder::WidgetRenderer;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -95,5 +96,16 @@ impl<'a> Widget for StatusWidget<'a> {
             let paragraph = Paragraph::new(status_line);
             paragraph.render(area, buf);
         }
+    }
+}
+
+pub struct StatusRenderer;
+
+impl WidgetRenderer for StatusRenderer {
+    type State = AppState;
+
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
+        let status_widget = StatusWidget::new(state);
+        status_widget.render(area, buf);
     }
 }

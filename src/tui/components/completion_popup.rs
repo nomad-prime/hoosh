@@ -1,4 +1,5 @@
 use crate::tui::app::AppState;
+use crate::tui::layout_builder::WidgetRenderer;
 use ratatui::text::Span;
 use ratatui::{
     buffer::Buffer,
@@ -10,15 +11,11 @@ use ratatui::{
 /// Completion popup widget that shows file/command completion options
 pub struct CompletionPopupWidget<'a> {
     app_state: &'a AppState,
-    anchor_area: Rect,
 }
 
 impl<'a> CompletionPopupWidget<'a> {
-    pub fn new(app_state: &'a AppState, anchor_area: Rect) -> Self {
-        Self {
-            app_state,
-            anchor_area,
-        }
+    pub fn new(app_state: &'a AppState) -> Self {
+        Self { app_state }
     }
 }
 
@@ -54,30 +51,6 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
                 })
                 .collect();
 
-            let viewport_area = area;
-            let popup_start_y = self.anchor_area.y + self.anchor_area.height;
-            let viewport_bottom = viewport_area.y + viewport_area.height;
-            let available_height = viewport_bottom.saturating_sub(popup_start_y);
-            let desired_height = visible_candidates.len() as u16 + 2;
-            let popup_height = desired_height.min(available_height).max(3);
-
-            let popup_width = visible_candidates
-                .iter()
-                .map(|c| c.len())
-                .max()
-                .unwrap_or(20)
-                .min(60) as u16
-                + 4;
-
-            let width = popup_width.max(32);
-
-            let popup_area = Rect {
-                x: self.anchor_area.x,
-                y: popup_start_y,
-                width,
-                height: popup_height,
-            };
-
             let current_selection = completion_state.selected_index + 1;
             let total_completions = completion_state.candidates.len();
             let title = Span::styled(
@@ -88,7 +61,7 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
             );
 
             // Clear the area first to prevent text bleed-through
-            Clear.render(popup_area, buf);
+            Clear.render(area, buf);
 
             let block = Block::default()
                 .title(title)
@@ -96,7 +69,17 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
                 .border_style(Style::default().fg(Color::Cyan));
 
             let list = List::new(items).block(block);
-            list.render(popup_area, buf);
+            list.render(area, buf);
         }
+    }
+}
+
+pub struct CompletionPopupRenderer;
+
+impl WidgetRenderer for CompletionPopupRenderer {
+    type State = AppState;
+    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        let widget = CompletionPopupWidget::new(state);
+        widget.render(area, buf);
     }
 }
