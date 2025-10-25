@@ -8,20 +8,13 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
 };
 
-/// Approval dialog widget that shows tool approval requests
-pub struct ApprovalDialogWidget<'a> {
-    app_state: &'a AppState,
-}
+pub struct ApprovalDialogRenderer;
 
-impl<'a> ApprovalDialogWidget<'a> {
-    pub fn new(app_state: &'a AppState) -> Self {
-        Self { app_state }
-    }
-}
+impl WidgetRenderer for ApprovalDialogRenderer {
+    type State = AppState;
 
-impl<'a> Widget for ApprovalDialogWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        if let Some(dialog_state) = &self.app_state.approval_dialog_state {
+    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        if let Some(dialog_state) = &state.approval_dialog_state {
             // Build the dialog content
             let mut lines = vec![];
 
@@ -73,15 +66,5 @@ impl<'a> Widget for ApprovalDialogWidget<'a> {
 
             paragraph.render(area, buf);
         }
-    }
-}
-
-pub struct ApprovalDialogRenderer;
-
-impl WidgetRenderer for ApprovalDialogRenderer {
-    type State = AppState;
-
-    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        ApprovalDialogWidget::new(state).render(area, buf);
     }
 }

@@ -8,21 +8,13 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 
-/// Mode indicator widget that shows whether autopilot is enabled
-pub struct ModeIndicatorWidget<'a> {
-    app_state: &'a AppState,
-}
+pub struct ModeIndicatorRenderer;
 
-impl<'a> ModeIndicatorWidget<'a> {
-    pub fn new(app_state: &'a AppState) -> Self {
-        Self { app_state }
-    }
-}
+impl WidgetRenderer for ModeIndicatorRenderer {
+    type State = AppState;
 
-impl<'a> Widget for ModeIndicatorWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let is_autopilot = self
-            .app_state
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
+        let is_autopilot = state
             .autopilot_enabled
             .load(std::sync::atomic::Ordering::Relaxed);
 
@@ -51,16 +43,5 @@ impl<'a> Widget for ModeIndicatorWidget<'a> {
 
         let paragraph = Paragraph::new(mode_line);
         paragraph.render(area, buf);
-    }
-}
-
-pub struct ModeIndicatorRenderer;
-
-impl WidgetRenderer for ModeIndicatorRenderer {
-    type State = AppState;
-
-    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        let mode_widget = ModeIndicatorWidget::new(state);
-        mode_widget.render(area, buf);
     }
 }

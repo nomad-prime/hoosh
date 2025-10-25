@@ -8,20 +8,12 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Widget},
 };
 
-/// Completion popup widget that shows file/command completion options
-pub struct CompletionPopupWidget<'a> {
-    app_state: &'a AppState,
-}
+pub struct CompletionPopupRenderer;
 
-impl<'a> CompletionPopupWidget<'a> {
-    pub fn new(app_state: &'a AppState) -> Self {
-        Self { app_state }
-    }
-}
-
-impl<'a> Widget for CompletionPopupWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        if let Some(completion_state) = &self.app_state.completion_state {
+impl WidgetRenderer for CompletionPopupRenderer {
+    type State = AppState;
+    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        if let Some(completion_state) = &state.completion_state {
             if completion_state.candidates.is_empty() {
                 return;
             }
@@ -71,15 +63,5 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
             let list = List::new(items).block(block);
             list.render(area, buf);
         }
-    }
-}
-
-pub struct CompletionPopupRenderer;
-
-impl WidgetRenderer for CompletionPopupRenderer {
-    type State = AppState;
-    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        let widget = CompletionPopupWidget::new(state);
-        widget.render(area, buf);
     }
 }

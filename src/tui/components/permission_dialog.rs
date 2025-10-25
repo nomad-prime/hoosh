@@ -9,20 +9,13 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-/// Permission dialog widget that shows permission requests
-pub struct PermissionDialogWidget<'a> {
-    app_state: &'a AppState,
-}
+pub struct PermissionDialogRenderer;
 
-impl<'a> PermissionDialogWidget<'a> {
-    pub fn new(app_state: &'a AppState) -> Self {
-        Self { app_state }
-    }
-}
+impl WidgetRenderer for PermissionDialogRenderer {
+    type State = AppState;
 
-impl<'a> Widget for PermissionDialogWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        if let Some(dialog_state) = &self.app_state.permission_dialog_state {
+    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        if let Some(dialog_state) = &state.permission_dialog_state {
             let operation = &dialog_state.operation;
 
             // Build the dialog content
@@ -109,16 +102,5 @@ impl<'a> Widget for PermissionDialogWidget<'a> {
 
             paragraph.render(area, buf);
         }
-    }
-}
-
-pub struct PermissionDialogRenderer;
-
-impl WidgetRenderer for PermissionDialogRenderer {
-    type State = AppState;
-
-    fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        let widget = PermissionDialogWidget::new(state);
-        widget.render(area, buf);
     }
 }

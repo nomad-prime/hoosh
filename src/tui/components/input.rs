@@ -5,22 +5,14 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     widgets::{Block, Borders, Paragraph, Widget},
 };
-use tui_textarea::TextArea;
 
-/// Input widget that displays the text input area with a prompt
-pub struct InputWidget<'a> {
-    input: &'a TextArea<'static>,
-}
+pub struct InputRenderer;
 
-impl<'a> InputWidget<'a> {
-    pub fn new(input: &'a TextArea<'static>) -> Self {
-        Self { input }
-    }
-}
+impl WidgetRenderer for InputRenderer {
+    type State = AppState;
 
-impl<'a> Widget for InputWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let input_widget = self.input.widget();
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
+        let input_widget = state.input.widget();
         let input_block = Block::default().borders(Borders::BOTTOM | Borders::TOP);
 
         let inner_area = input_block.inner(area);
@@ -39,16 +31,5 @@ impl<'a> Widget for InputWidget<'a> {
 
         // Render the input
         input_widget.render(text_area, buf);
-    }
-}
-
-pub struct InputRenderer;
-
-impl WidgetRenderer for InputRenderer {
-    type State = AppState;
-
-    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        let input_widget = InputWidget::new(&state.input);
-        input_widget.render(area, buf);
     }
 }
