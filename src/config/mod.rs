@@ -116,17 +116,16 @@ impl AppConfig {
     }
 
     fn validate(&self) -> ConfigResult<()> {
-        if let Some(default_agent) = &self.default_agent {
-            if !self.agents.contains_key(default_agent) {
-                eprintln!(
-                    "Warning: Configured default agent '{}' not found in agents configuration",
-                    default_agent
-                );
-                if !self.agents.is_empty() {
-                    let available_agents: Vec<&str> =
-                        self.agents.keys().map(|s| s.as_str()).collect();
-                    eprintln!("Available agents: {}", available_agents.join(", "));
-                }
+        if let Some(default_agent) = &self.default_agent
+            && !self.agents.contains_key(default_agent)
+        {
+            eprintln!(
+                "Warning: Configured default agent '{}' not found in agents configuration",
+                default_agent
+            );
+            if !self.agents.is_empty() {
+                let available_agents: Vec<&str> = self.agents.keys().map(|s| s.as_str()).collect();
+                eprintln!("Available agents: {}", available_agents.join(", "));
             }
         }
         Ok(())

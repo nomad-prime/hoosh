@@ -104,10 +104,8 @@ impl ToolExecutor {
                 .load(std::sync::atomic::Ordering::Relaxed);
 
             // If not in autopilot mode, request approval before continuing
-            if !is_autopilot {
-                if let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
-                    return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
-                }
+            if !is_autopilot && let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
+                return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
             }
         }
 

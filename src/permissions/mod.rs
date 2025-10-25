@@ -268,12 +268,11 @@ impl PermissionManager {
     /// Store permission decision in cache with the specified scope
     fn cache_decision(&self, operation: &OperationType, scope: PermissionScope, allowed: bool) {
         // If this is a ProjectWide scope, also update the trusted_project field
-        if let PermissionScope::ProjectWide(ref path) = scope {
-            if allowed {
-                if let Ok(mut trusted) = self.trusted_project.lock() {
-                    *trusted = Some(path.clone());
-                }
-            }
+        if let PermissionScope::ProjectWide(ref path) = scope
+            && allowed
+            && let Ok(mut trusted) = self.trusted_project.lock()
+        {
+            *trusted = Some(path.clone());
         }
 
         // Convert to structured cache key
@@ -331,10 +330,10 @@ impl PermissionManager {
         }
 
         // Check if operation is within a trusted project (highest priority)
-        if let Some(trusted_path) = self.get_trusted_project() {
-            if PermissionCacheKey::is_within_project_static(operation.target(), &trusted_path) {
-                return Ok(true);
-            }
+        if let Some(trusted_path) = self.get_trusted_project()
+            && PermissionCacheKey::is_within_project_static(operation.target(), &trusted_path)
+        {
+            return Ok(true);
         }
 
         // Check cache (hierarchical: project-wide -> specific -> directory -> global)

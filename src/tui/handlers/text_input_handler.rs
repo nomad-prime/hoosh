@@ -90,10 +90,10 @@ impl InputHandler for TextInputHandler {
                     let cursor_pos = app.input.cursor();
                     app.start_completion(cursor_pos.0, completer_idx);
 
-                    if let Some(completer) = app.completers.get(completer_idx) {
-                        if let Ok(candidates) = completer.get_completions("").await {
-                            app.set_completion_candidates(candidates);
-                        }
+                    if let Some(completer) = app.completers.get(completer_idx)
+                        && let Ok(candidates) = completer.get_completions("").await
+                    {
+                        app.set_completion_candidates(candidates);
                     }
                 } else {
                     app.input

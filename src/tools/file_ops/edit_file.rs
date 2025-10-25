@@ -182,14 +182,14 @@ impl Tool for EditFileTool {
 
     fn result_summary(&self, result: &str) -> String {
         // Extract occurrence count from result like "Successfully edited ... (replaced N occurrence(s))"
-        if let Some(replaced_part) = result.split("replaced ").nth(1) {
-            if let Some(count_str) = replaced_part.split(" occurrence").next() {
-                return format!(
-                    "Replaced {} occurrence{}",
-                    count_str,
-                    if count_str == "1" { "" } else { "s" }
-                );
-            }
+        if let Some(replaced_part) = result.split("replaced ").nth(1)
+            && let Some(count_str) = replaced_part.split(" occurrence").next()
+        {
+            return format!(
+                "Replaced {} occurrence{}",
+                count_str,
+                if count_str == "1" { "" } else { "s" }
+            );
         }
         "File edited successfully".to_string()
     }

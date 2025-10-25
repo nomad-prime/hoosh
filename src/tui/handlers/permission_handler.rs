@@ -47,12 +47,12 @@ impl InputHandler for PermissionHandler {
                 .cloned();
 
             // Handle Ctrl+C separately - it should cancel the entire task
-            if let KeyCode::Char('c') = key {
-                if modifiers.contains(KeyModifiers::CONTROL) {
-                    app.hide_permission_dialog();
-                    app.should_cancel_task = true;
-                    return Ok(KeyHandlerResult::ShouldCancelTask);
-                }
+            if let KeyCode::Char('c') = key
+                && modifiers.contains(KeyModifiers::CONTROL)
+            {
+                app.hide_permission_dialog();
+                app.should_cancel_task = true;
+                return Ok(KeyHandlerResult::ShouldCancelTask);
             }
 
             let response = match key {
@@ -131,11 +131,11 @@ impl InputHandler for PermissionHandler {
 
             if let Some((allowed, scope)) = response {
                 // Update app state if ProjectWide scope was selected
-                if let Some(crate::permissions::PermissionScope::ProjectWide(ref path)) = scope {
-                    if allowed {
-                        app.set_trusted_project(path.clone());
-                        app.add_status_message("Project trusted for this session.");
-                    }
+                if let Some(crate::permissions::PermissionScope::ProjectWide(ref path)) = scope
+                    && allowed
+                {
+                    app.set_trusted_project(path.clone());
+                    app.add_status_message("Project trusted for this session.");
                 }
 
                 let perm_response = crate::conversations::PermissionResponse {

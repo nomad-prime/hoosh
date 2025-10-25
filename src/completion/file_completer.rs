@@ -93,10 +93,10 @@ impl FileCompleter {
         let mut current_pattern_char = pattern_chars.next();
 
         for target_char in target_lower.chars() {
-            if let Some(pc) = current_pattern_char {
-                if pc == target_char {
-                    current_pattern_char = pattern_chars.next();
-                }
+            if let Some(pc) = current_pattern_char
+                && pc == target_char
+            {
+                current_pattern_char = pattern_chars.next();
             }
         }
 

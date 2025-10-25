@@ -72,17 +72,17 @@ impl OpenAICompatibleBackend {
             .connect_timeout(std::time::Duration::from_secs(30));
 
         // Configure HTTP proxy if environment variables are set
-        if let Ok(http_proxy) = std::env::var("HTTP_PROXY") {
-            if let Ok(proxy) = reqwest::Proxy::http(&http_proxy) {
-                client_builder = client_builder.proxy(proxy);
-            }
+        if let Ok(http_proxy) = std::env::var("HTTP_PROXY")
+            && let Ok(proxy) = reqwest::Proxy::http(&http_proxy)
+        {
+            client_builder = client_builder.proxy(proxy);
         }
 
         // Configure HTTPS proxy if environment variables are set
-        if let Ok(https_proxy) = std::env::var("HTTPS_PROXY") {
-            if let Ok(proxy) = reqwest::Proxy::https(&https_proxy) {
-                client_builder = client_builder.proxy(proxy);
-            }
+        if let Ok(https_proxy) = std::env::var("HTTPS_PROXY")
+            && let Ok(proxy) = reqwest::Proxy::https(&https_proxy)
+        {
+            client_builder = client_builder.proxy(proxy);
         }
 
         let client = client_builder
@@ -238,18 +238,18 @@ impl OpenAICompatibleBackend {
                 message: format!("Failed to parse response: {}", e),
             })?;
 
-        if let Some(choice) = response_data.choices.first() {
-            if let Some(message) = &choice.message {
-                if let Some(tool_calls) = &message.tool_calls {
-                    // Response contains tool calls
-                    return Ok(LlmResponse::with_tool_calls(
-                        message.content.clone(),
-                        tool_calls.clone(),
-                    ));
-                } else if let Some(content) = &message.content {
-                    // Response contains only content
-                    return Ok(LlmResponse::content_only(content.clone()));
-                }
+        if let Some(choice) = response_data.choices.first()
+            && let Some(message) = &choice.message
+        {
+            if let Some(tool_calls) = &message.tool_calls {
+                // Response contains tool calls
+                return Ok(LlmResponse::with_tool_calls(
+                    message.content.clone(),
+                    tool_calls.clone(),
+                ));
+            } else if let Some(content) = &message.content {
+                // Response contains only content
+                return Ok(LlmResponse::content_only(content.clone()));
             }
         }
 
