@@ -26,8 +26,7 @@ impl AppLayoutBuilder for LayoutBuilder {
         self.component(
             ComponentDescriptor::new("permission", content_lines)
                 .with_border()
-                .with_visibility(visible)
-                .with_z_index(100),
+                .with_visibility(visible),
         )
     }
 
@@ -35,8 +34,7 @@ impl AppLayoutBuilder for LayoutBuilder {
         self.component(
             ComponentDescriptor::new("approval", 6)
                 .with_border()
-                .with_visibility(visible)
-                .with_z_index(100),
+                .with_visibility(visible),
         )
     }
 
@@ -44,8 +42,7 @@ impl AppLayoutBuilder for LayoutBuilder {
         self.component(
             ComponentDescriptor::new("completion", content_lines)
                 .with_border()
-                .with_visibility(visible)
-                .with_z_index(100),
+                .with_visibility(visible),
         )
     }
 }

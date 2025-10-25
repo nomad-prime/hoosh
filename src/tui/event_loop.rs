@@ -2,9 +2,13 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
+use super::actions::{execute_command, start_agent_conversation};
+use super::app::AppState;
+use super::input_handler::InputHandler;
+use super::message_renderer::MessageRenderer;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
@@ -13,12 +17,8 @@ use crate::conversations::{AgentEvent, Conversation, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
-
-use super::actions::{execute_command, start_agent_conversation};
-use super::app::AppState;
-use super::input_handler::InputHandler;
-use super::message_renderer::MessageRenderer;
-use super::terminal::{Tui, draw_dynamic_ui};
+use crate::tui::terminal::{resize_terminal, HooshTerminal};
+use crate::tui::ui::{create_app_layout, render_ui};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -55,10 +55,10 @@ pub struct EventLoopContext {
 }
 
 pub async fn run_event_loop(
-    mut terminal: Tui,
+    mut terminal: HooshTerminal,
     app: &mut AppState,
     mut context: EventLoopContext,
-) -> Result<Tui> {
+) -> Result<HooshTerminal> {
     let mut agent_task: Option<JoinHandle<()>> = None;
 
     let message_renderer = MessageRenderer::new();
@@ -66,7 +66,13 @@ pub async fn run_event_loop(
     loop {
         message_renderer.render_pending_messages(app, &mut terminal)?;
 
-        draw_dynamic_ui(&mut terminal, app)?;
+        let layout = create_app_layout(app);
+
+        resize_terminal(&mut terminal, layout.total_height())?;
+
+        terminal.draw(|frame| {
+            render_ui(frame, app, &layout);
+        })?;
 
         while let Ok(event) = context.channels.event_rx.try_recv() {
             match event {
