@@ -3,14 +3,12 @@ mod app;
 mod app_layout;
 mod app_layout_builder;
 mod clipboard;
-pub mod completion;
 pub mod components;
 mod event_loop;
 mod events;
 mod handler_result;
 pub mod handlers;
 mod header;
-pub mod history;
 mod input_handler;
 mod layout_builder;
 mod message_renderer;
@@ -32,14 +30,14 @@ use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
+use crate::completion::{CommandCompleter, FileCompleter};
+use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
-use completion::{CommandCompleter, FileCompleter};
 use event_loop::{
     run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
     SystemResources,
 };
-use history::PromptHistory;
 
 pub async fn run(
     backend: Box<dyn LlmBackend>,
