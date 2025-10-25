@@ -18,8 +18,7 @@ use super::actions::{execute_command, start_agent_conversation};
 use super::app::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
-use super::terminal::Tui;
-use super::ui;
+use super::terminal::{draw_dynamic_ui, Tui};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -67,7 +66,7 @@ pub async fn run_event_loop(
     loop {
         message_renderer.render_pending_messages(app, &mut terminal)?;
 
-        terminal.draw(|f| ui::render(f, app))?;
+        draw_dynamic_ui(&mut terminal, app)?;
 
         while let Ok(event) = context.channels.event_rx.try_recv() {
             match event {
