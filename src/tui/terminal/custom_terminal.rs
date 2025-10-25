@@ -175,7 +175,7 @@ where
     }
 
     /// Get a Frame object which provides a consistent view into the terminal state for rendering.
-    pub fn get_frame(&mut self) -> Frame {
+    pub fn get_frame(&mut self) -> Frame<'_> {
         Frame {
             cursor_position: None,
             viewport_area: self.viewport_area,
@@ -310,7 +310,7 @@ where
     /// }
     /// # std::io::Result::Ok(())
     /// ```
-    pub fn draw<F>(&mut self, render_callback: F) -> io::Result<CompletedFrame>
+    pub fn draw<F>(&mut self, render_callback: F) -> io::Result<CompletedFrame<'_>>
     where
         F: FnOnce(&mut Frame),
     {
@@ -385,7 +385,7 @@ where
     /// }
     /// # io::Result::Ok(())
     /// ```
-    pub fn try_draw<F, E>(&mut self, render_callback: F) -> io::Result<CompletedFrame>
+    pub fn try_draw<F, E>(&mut self, render_callback: F) -> io::Result<CompletedFrame<'_>>
     where
         F: FnOnce(&mut Frame) -> Result<(), E>,
         E: Into<io::Error>,
