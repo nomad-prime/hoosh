@@ -48,7 +48,6 @@ pub struct ComponentDescriptor {
     pub name: &'static str,
     pub box_model: BoxModel,
     pub visible: bool,
-    pub z_index: i32,
 }
 
 impl ComponentDescriptor {
@@ -57,7 +56,6 @@ impl ComponentDescriptor {
             name,
             box_model: BoxModel::new(height),
             visible: true,
-            z_index: 0,
         }
     }
 
@@ -73,11 +71,6 @@ impl ComponentDescriptor {
 
     pub fn with_visibility(mut self, visible: bool) -> Self {
         self.visible = visible;
-        self
-    }
-
-    pub fn with_z_index(mut self, z: i32) -> Self {
-        self.z_index = z;
         self
     }
 

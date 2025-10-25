@@ -1,9 +1,8 @@
+use super::app::{AppState, MessageLine};
+use crate::tui::terminal::HooshTerminal;
 use anyhow::Result;
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Paragraph, Widget};
-
-use super::app::{AppState, MessageLine};
-use super::terminal::Tui;
 
 /// Handles rendering of chat messages in the TUI
 ///
@@ -26,7 +25,11 @@ impl MessageRenderer {
     }
 
     /// Renders all pending messages from app into the terminal
-    pub fn render_pending_messages(&self, app: &mut AppState, terminal: &mut Tui) -> Result<()> {
+    pub fn render_pending_messages(
+        &self,
+        app: &mut AppState,
+        terminal: &mut HooshTerminal,
+    ) -> Result<()> {
         if !app.has_pending_messages() {
             return Ok(());
         }
@@ -45,7 +48,7 @@ impl MessageRenderer {
         &self,
         message: MessageLine,
         terminal_width: usize,
-        terminal: &mut Tui,
+        terminal: &mut HooshTerminal,
     ) -> Result<()> {
         match message {
             MessageLine::Plain(text) => self.render_plain_message(text, terminal_width, terminal),
@@ -58,7 +61,7 @@ impl MessageRenderer {
         &self,
         text: String,
         terminal_width: usize,
-        terminal: &mut Tui,
+        terminal: &mut HooshTerminal,
     ) -> Result<()> {
         let wrapped_lines = self.wrap_plain_text(&text, terminal_width);
         let line_count = wrapped_lines.len() as u16;
@@ -71,7 +74,11 @@ impl MessageRenderer {
     }
 
     /// Renders pre-styled message
-    fn render_styled_message(&self, line: Line<'static>, terminal: &mut Tui) -> Result<()> {
+    fn render_styled_message(
+        &self,
+        line: Line<'static>,
+        terminal: &mut HooshTerminal,
+    ) -> Result<()> {
         let terminal_width = terminal.size()?.width as usize;
         let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         let wrapped_line_count = if line_text.is_empty() {

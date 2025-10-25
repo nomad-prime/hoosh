@@ -6,21 +6,18 @@ use super::components::{
 };
 use crate::tui::app_layout::AppLayout;
 use crate::tui::layout_builder::Layout;
-use crate::tui::minimal_terminal::Frame;
+use crate::tui::terminal::Frame;
 use ratatui::layout::{Constraint, Layout as RatatuiLayout};
 
-/// Calculates the total vertical height needed for the entire UI.
-/// This is called by `draw_dynamic_ui` *before* the draw call.
-pub fn calculate_desired_height(app: &AppState) -> u16 {
-    Layout::create(app).total_height()
+pub fn create_app_layout(app: &AppState) -> Layout {
+    Layout::create(app)
 }
 
 /// Renders the entire UI into a frame.
 /// This is called *inside* `draw_dynamic_ui`.
 /// It assumes the frame it receives is *already* the correct size.
-pub fn render_ui(frame: &mut Frame, app: &mut AppState) {
+pub fn render_ui(frame: &mut Frame, app: &mut AppState, layout: &Layout) {
     let viewport_area = frame.area();
-    let layout = Layout::create(app);
 
     // Build constraints from the layout
     let constraints: Vec<Constraint> = layout
