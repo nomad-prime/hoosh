@@ -1,8 +1,8 @@
 use crate::tui::terminal::Terminal;
 use anyhow::Result;
+use crossterm::ExecutableCommand;
 use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use crossterm::ExecutableCommand;
 use ratatui::backend::Backend;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{TerminalOptions, Viewport};

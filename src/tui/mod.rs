@@ -50,10 +50,10 @@ pub async fn run(
     let mut app = AppState::new();
 
     // Load history from file
-    if let Some(history_path) = PromptHistory::default_history_path() {
-        if let Ok(history) = PromptHistory::with_file(1000, &history_path) {
-            app.prompt_history = history;
-        }
+    if let Some(history_path) = PromptHistory::default_history_path()
+        && let Ok(history) = PromptHistory::with_file(1000, &history_path)
+    {
+        app.prompt_history = history;
     }
 
     // Setup working directory

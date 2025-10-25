@@ -23,11 +23,9 @@ pub fn render_ui(frame: &mut Frame, app: &mut AppState, layout: &Layout) {
     // Create the vertical layout
     let areas = RatatuiLayout::vertical(constraints).split(viewport_area);
 
-    // Render each visible component
-    let mut area_idx = 0;
     let mut input_area = None;
 
-    for component in layout.visible_components() {
+    for (area_idx, component) in layout.visible_components().enumerate() {
         let area = areas[area_idx];
 
         match component.name {
@@ -58,7 +56,5 @@ pub fn render_ui(frame: &mut Frame, app: &mut AppState, layout: &Layout) {
             }
             _ => {}
         }
-
-        area_idx += 1;
     }
 }
