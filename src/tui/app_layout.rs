@@ -13,6 +13,7 @@ impl AppLayout for Layout {
             || app.is_completing();
 
         let mut builder = LayoutBuilder::new()
+            .spacer("top", 1)
             .status_bar()
             .input_field()
             .mode_indicator(!has_overlay);

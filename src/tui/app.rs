@@ -19,6 +19,7 @@ pub enum MessageLine {
 pub struct CompletionState {
     pub candidates: Vec<String>,
     pub selected_index: usize,
+    pub scroll_offset: usize,
     #[allow(dead_code)]
     pub trigger_position: usize,
     pub query: String,
@@ -36,6 +37,7 @@ pub struct ApprovalDialogState {
     pub tool_call_id: String,
     pub tool_name: String,
     pub selected_index: usize,
+    pub scroll_offset: usize,
 }
 
 impl ApprovalDialogState {
@@ -44,6 +46,7 @@ impl ApprovalDialogState {
             tool_call_id,
             tool_name,
             selected_index: 0, // 0 = Approve, 1 = Reject
+            scroll_offset: 0,
         }
     }
 }
@@ -63,6 +66,7 @@ impl CompletionState {
         Self {
             candidates: Vec::new(),
             selected_index: 0,
+            scroll_offset: 0,
             trigger_position,
             query: String::new(),
             completer_index,
@@ -76,6 +80,7 @@ impl CompletionState {
     pub fn select_next(&mut self) {
         if !self.candidates.is_empty() {
             self.selected_index = (self.selected_index + 1) % self.candidates.len();
+            self.update_scroll_offset(10);
         }
     }
 
@@ -86,6 +91,15 @@ impl CompletionState {
             } else {
                 self.selected_index -= 1;
             }
+            self.update_scroll_offset(10);
+        }
+    }
+
+    fn update_scroll_offset(&mut self, visible_items: usize) {
+        if self.selected_index < self.scroll_offset {
+            self.scroll_offset = self.selected_index;
+        } else if self.selected_index >= self.scroll_offset + visible_items {
+            self.scroll_offset = self.selected_index.saturating_sub(visible_items - 1);
         }
     }
 }
@@ -272,6 +286,7 @@ impl AppState {
         if let Some(state) = &mut self.completion_state {
             state.candidates = candidates;
             state.selected_index = 0;
+            state.scroll_offset = 0;
         }
     }
 

@@ -1,4 +1,5 @@
 use crate::tui::app::AppState;
+use ratatui::text::Span;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -29,14 +30,16 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
             }
 
             let max_items = 10;
-            let visible_candidates =
-                &completion_state.candidates[..completion_state.candidates.len().min(max_items)];
+            let scroll_offset = completion_state.scroll_offset;
+            let end_idx = (scroll_offset + max_items).min(completion_state.candidates.len());
+            let visible_candidates = &completion_state.candidates[scroll_offset..end_idx];
 
             let items: Vec<ListItem> = visible_candidates
                 .iter()
                 .enumerate()
                 .map(|(idx, candidate)| {
-                    let is_selected = idx == completion_state.selected_index;
+                    let actual_idx = scroll_offset + idx;
+                    let is_selected = actual_idx == completion_state.selected_index;
                     let style = if is_selected {
                         Style::default()
                             .fg(Color::Black)
@@ -66,18 +69,29 @@ impl<'a> Widget for CompletionPopupWidget<'a> {
                 .min(60) as u16
                 + 4;
 
+            let width = popup_width.max(32);
+
             let popup_area = Rect {
                 x: self.anchor_area.x,
                 y: popup_start_y,
-                width: popup_width,
+                width,
                 height: popup_height,
             };
+
+            let current_selection = completion_state.selected_index + 1;
+            let total_completions = completion_state.candidates.len();
+            let title = Span::styled(
+                format!(" Files ( {} / {} ) ", current_selection, total_completions),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            );
 
             // Clear the area first to prevent text bleed-through
             Clear.render(popup_area, buf);
 
             let block = Block::default()
-                .title(" File Completion ")
+                .title(title)
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan));
 
