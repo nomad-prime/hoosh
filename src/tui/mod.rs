@@ -13,7 +13,6 @@ mod input_handler;
 mod layout_builder;
 mod message_renderer;
 mod terminal;
-mod ui;
 
 pub use message_renderer::MessageRenderer;
 
@@ -22,7 +21,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
 use crate::conversations::MessageSummarizer;
 use crate::parser::MessageParser;
@@ -35,8 +34,8 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
-    run_event_loop,
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
 };
 
 pub async fn run(

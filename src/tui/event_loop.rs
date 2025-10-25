@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
 use super::actions::{execute_command, start_agent_conversation};
@@ -19,8 +19,7 @@ use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 use crate::tui::app_layout::AppLayout;
 use crate::tui::layout_builder::Layout;
-use crate::tui::terminal::{HooshTerminal, resize_terminal};
-use crate::tui::ui::render_ui;
+use crate::tui::terminal::{resize_terminal, HooshTerminal};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -73,7 +72,7 @@ pub async fn run_event_loop(
         resize_terminal(&mut terminal, layout.total_height())?;
 
         terminal.draw(|frame| {
-            render_ui(frame, app, &layout);
+            layout.render(app, frame.area(), frame.buffer_mut());
         })?;
 
         while let Ok(event) = context.channels.event_rx.try_recv() {
