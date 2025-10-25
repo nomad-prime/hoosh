@@ -43,12 +43,12 @@ impl InputHandler for ApprovalHandler {
             let selected_index = dialog_state.selected_index;
 
             // Handle Ctrl+C separately - it should cancel the entire task
-            if let KeyCode::Char('c') = key {
-                if modifiers.contains(KeyModifiers::CONTROL) {
-                    app.hide_approval_dialog();
-                    app.should_cancel_task = true;
-                    return Ok(KeyHandlerResult::ShouldCancelTask);
-                }
+            if let KeyCode::Char('c') = key
+                && modifiers.contains(KeyModifiers::CONTROL)
+            {
+                app.hide_approval_dialog();
+                app.should_cancel_task = true;
+                return Ok(KeyHandlerResult::ShouldCancelTask);
             }
 
             let response = match key {

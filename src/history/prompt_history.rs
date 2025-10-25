@@ -105,10 +105,10 @@ impl PromptHistory {
         }
 
         // Skip if it's the same as the last entry
-        if let Some(last) = self.entries.last() {
-            if last == trimmed {
-                return;
-            }
+        if let Some(last) = self.entries.last()
+            && last == trimmed
+        {
+            return;
         }
 
         self.entries.push(trimmed.to_string());

@@ -229,10 +229,10 @@ impl AppState {
 
         options.push(PermissionOption::AlwaysForType);
 
-        if !matches!(operation, OperationType::ExecuteBash(_)) {
-            if let Ok(current_dir) = std::env::current_dir() {
-                options.push(PermissionOption::TrustProject(current_dir));
-            }
+        if !matches!(operation, OperationType::ExecuteBash(_))
+            && let Ok(current_dir) = std::env::current_dir()
+        {
+            options.push(PermissionOption::TrustProject(current_dir));
         }
 
         self.permission_dialog_state = Some(PermissionDialogState {
@@ -244,21 +244,21 @@ impl AppState {
     }
 
     pub fn select_next_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.permission_dialog_state {
-            if !dialog.options.is_empty() {
-                dialog.selected_index = (dialog.selected_index + 1) % dialog.options.len();
-            }
+        if let Some(dialog) = &mut self.permission_dialog_state
+            && !dialog.options.is_empty()
+        {
+            dialog.selected_index = (dialog.selected_index + 1) % dialog.options.len();
         }
     }
 
     pub fn select_prev_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.permission_dialog_state {
-            if !dialog.options.is_empty() {
-                if dialog.selected_index == 0 {
-                    dialog.selected_index = dialog.options.len() - 1;
-                } else {
-                    dialog.selected_index -= 1;
-                }
+        if let Some(dialog) = &mut self.permission_dialog_state
+            && !dialog.options.is_empty()
+        {
+            if dialog.selected_index == 0 {
+                dialog.selected_index = dialog.options.len() - 1;
+            } else {
+                dialog.selected_index -= 1;
             }
         }
     }

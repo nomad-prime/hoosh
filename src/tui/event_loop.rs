@@ -112,10 +112,10 @@ pub async fn run_event_loop(
             }
         }
 
-        if let Some(task) = &agent_task {
-            if task.is_finished() {
-                agent_task = None;
-            }
+        if let Some(task) = &agent_task
+            && task.is_finished()
+        {
+            agent_task = None;
         }
 
         app.tick_animation();
