@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
 use crate::agents::AgentManager;
@@ -18,7 +18,7 @@ use super::actions::{execute_command, start_agent_conversation};
 use super::app::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
-use super::terminal::{draw_dynamic_ui, Tui};
+use super::terminal::{Tui, draw_dynamic_ui};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,

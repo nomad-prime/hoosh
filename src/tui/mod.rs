@@ -1,5 +1,7 @@
 mod actions;
 mod app;
+mod app_layout;
+mod app_layout_builder;
 mod clipboard;
 pub mod completion;
 pub mod components;
@@ -10,6 +12,7 @@ pub mod handlers;
 mod header;
 pub mod history;
 mod input_handler;
+mod layout_builder;
 mod message_renderer;
 mod minimal_terminal;
 mod terminal;
@@ -22,7 +25,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::commands::{register_default_commands, CommandRegistry};
+use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
 use crate::conversations::MessageSummarizer;
 use crate::parser::MessageParser;
@@ -33,8 +36,8 @@ use crate::tools::ToolRegistry;
 use app::AppState;
 use completion::{CommandCompleter, FileCompleter};
 use event_loop::{
-    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
-    SystemResources,
+    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
+    run_event_loop,
 };
 use history::PromptHistory;
 use terminal::{init_terminal, restore_terminal};

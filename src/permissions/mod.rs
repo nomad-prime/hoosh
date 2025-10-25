@@ -572,9 +572,11 @@ mod tests {
         );
 
         // Should NOT match for files in different directory
-        assert!(manager
-            .check_cache(&OperationType::WriteFile("/other/dir/file.txt".to_string()))
-            .is_none());
+        assert!(
+            manager
+                .check_cache(&OperationType::WriteFile("/other/dir/file.txt".to_string()))
+                .is_none()
+        );
     }
 
     #[test]
@@ -596,9 +598,11 @@ mod tests {
         );
 
         // Should NOT match for different operation types
-        assert!(manager
-            .check_cache(&OperationType::ReadFile("/any/path/file.txt".to_string()))
-            .is_none());
+        assert!(
+            manager
+                .check_cache(&OperationType::ReadFile("/any/path/file.txt".to_string()))
+                .is_none()
+        );
     }
 
     #[test]
@@ -661,17 +665,21 @@ mod tests {
             true,
         );
 
-        assert!(manager
-            .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
-            .is_some());
+        assert!(
+            manager
+                .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
+                .is_some()
+        );
 
         // Clear cache
         manager.clear_cache();
 
         // Should no longer be cached
-        assert!(manager
-            .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
-            .is_none());
+        assert!(
+            manager
+                .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
+                .is_none()
+        );
     }
 
     #[tokio::test]

@@ -278,10 +278,12 @@ mod tests {
 
         let result = executor.execute_tool_call(&tool_call).await;
         assert!(result.result.is_err());
-        assert!(result
-            .result
-            .unwrap_err()
-            .to_string()
-            .contains("Unknown tool"));
+        assert!(
+            result
+                .result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown tool")
+        );
     }
 }
