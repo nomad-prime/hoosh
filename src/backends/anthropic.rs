@@ -97,17 +97,17 @@ impl AnthropicBackend {
             .connect_timeout(std::time::Duration::from_secs(30));
 
         // Configure HTTP proxy if environment variables are set
-        if let Ok(http_proxy) = std::env::var("HTTP_PROXY") {
-            if let Ok(proxy) = reqwest::Proxy::http(&http_proxy) {
-                client_builder = client_builder.proxy(proxy);
-            }
+        if let Ok(http_proxy) = std::env::var("HTTP_PROXY")
+            && let Ok(proxy) = reqwest::Proxy::http(&http_proxy)
+        {
+            client_builder = client_builder.proxy(proxy);
         }
 
         // Configure HTTPS proxy if environment variables are set
-        if let Ok(https_proxy) = std::env::var("HTTPS_PROXY") {
-            if let Ok(proxy) = reqwest::Proxy::https(&https_proxy) {
-                client_builder = client_builder.proxy(proxy);
-            }
+        if let Ok(https_proxy) = std::env::var("HTTPS_PROXY")
+            && let Ok(proxy) = reqwest::Proxy::https(&https_proxy)
+        {
+            client_builder = client_builder.proxy(proxy);
         }
 
         let client = client_builder
@@ -151,10 +151,10 @@ impl AnthropicBackend {
                     let mut blocks: Vec<ContentBlock> = Vec::new();
 
                     // Add text block if content exists
-                    if let Some(text) = &msg.content {
-                        if !text.is_empty() {
-                            blocks.push(ContentBlock::Text { text: text.clone() });
-                        }
+                    if let Some(text) = &msg.content
+                        && !text.is_empty()
+                    {
+                        blocks.push(ContentBlock::Text { text: text.clone() });
                     }
 
                     // Add tool_use blocks
@@ -181,26 +181,26 @@ impl AnthropicBackend {
                 };
 
                 // Check if we need to merge with the previous message (same role)
-                if let Some(last_msg) = anthropic_messages.last_mut() {
-                    if last_msg.role == role {
-                        // Merge content blocks to maintain role alternation
-                        let new_blocks = match content {
-                            AnthropicContent::Text(text) => vec![ContentBlock::Text { text }],
-                            AnthropicContent::Blocks(blocks) => blocks,
-                        };
+                if let Some(last_msg) = anthropic_messages.last_mut()
+                    && last_msg.role == role
+                {
+                    // Merge content blocks to maintain role alternation
+                    let new_blocks = match content {
+                        AnthropicContent::Text(text) => vec![ContentBlock::Text { text }],
+                        AnthropicContent::Blocks(blocks) => blocks,
+                    };
 
-                        // Convert last message content to blocks if needed
-                        let mut merged_blocks = match &last_msg.content {
-                            AnthropicContent::Text(text) => {
-                                vec![ContentBlock::Text { text: text.clone() }]
-                            }
-                            AnthropicContent::Blocks(blocks) => blocks.clone(),
-                        };
+                    // Convert last message content to blocks if needed
+                    let mut merged_blocks = match &last_msg.content {
+                        AnthropicContent::Text(text) => {
+                            vec![ContentBlock::Text { text: text.clone() }]
+                        }
+                        AnthropicContent::Blocks(blocks) => blocks.clone(),
+                    };
 
-                        merged_blocks.extend(new_blocks);
-                        last_msg.content = AnthropicContent::Blocks(merged_blocks);
-                        continue;
-                    }
+                    merged_blocks.extend(new_blocks);
+                    last_msg.content = AnthropicContent::Blocks(merged_blocks);
+                    continue;
                 }
 
                 anthropic_messages.push(AnthropicMessage { role, content });

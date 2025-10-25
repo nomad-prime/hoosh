@@ -1,19 +1,18 @@
 mod actions;
 mod app;
+mod app_layout;
+mod app_layout_builder;
 mod clipboard;
-pub mod completion;
 pub mod components;
 mod event_loop;
 mod events;
 mod handler_result;
 pub mod handlers;
 mod header;
-pub mod history;
 mod input_handler;
+mod layout_builder;
 mod message_renderer;
 mod terminal;
-mod ui;
-mod viewport_manager;
 
 pub use message_renderer::MessageRenderer;
 
@@ -22,7 +21,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::commands::{register_default_commands, CommandRegistry};
+use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
 use crate::conversations::MessageSummarizer;
 use crate::parser::MessageParser;
@@ -30,14 +29,14 @@ use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
+use crate::completion::{CommandCompleter, FileCompleter};
+use crate::history::PromptHistory;
+use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
-use completion::{CommandCompleter, FileCompleter};
 use event_loop::{
-    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
-    SystemResources,
+    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
+    run_event_loop,
 };
-use history::PromptHistory;
-use terminal::{init_terminal, restore_terminal};
 
 pub async fn run(
     backend: Box<dyn LlmBackend>,
@@ -46,16 +45,14 @@ pub async fn run(
     tool_registry: ToolRegistry,
     config: AppConfig,
 ) -> Result<()> {
-    let base_ui_height = 6;
-
-    let terminal = init_terminal(base_ui_height)?;
+    let terminal = init_terminal()?;
     let mut app = AppState::new();
 
     // Load history from file
-    if let Some(history_path) = PromptHistory::default_history_path() {
-        if let Ok(history) = PromptHistory::with_file(1000, &history_path) {
-            app.prompt_history = history;
-        }
+    if let Some(history_path) = PromptHistory::default_history_path()
+        && let Ok(history) = PromptHistory::with_file(1000, &history_path)
+    {
+        app.prompt_history = history;
     }
 
     // Setup working directory

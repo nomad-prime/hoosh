@@ -1,10 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::conversations::AgentEvent;
 use crate::Command;
 use crate::CommandContext;
 use crate::CommandResult;
+use crate::conversations::AgentEvent;
 
 pub struct CompactCommand;
 

@@ -30,7 +30,7 @@ impl FileCompleter {
         max_depth: usize,
         current_depth: usize,
         files: &'a mut Vec<PathBuf>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             if current_depth > max_depth {
                 return Ok(());
@@ -93,10 +93,10 @@ impl FileCompleter {
         let mut current_pattern_char = pattern_chars.next();
 
         for target_char in target_lower.chars() {
-            if let Some(pc) = current_pattern_char {
-                if pc == target_char {
-                    current_pattern_char = pattern_chars.next();
-                }
+            if let Some(pc) = current_pattern_char
+                && pc == target_char
+            {
+                current_pattern_char = pattern_chars.next();
             }
         }
 

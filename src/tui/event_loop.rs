@@ -2,9 +2,13 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
+use super::actions::{execute_command, start_agent_conversation};
+use super::app::AppState;
+use super::input_handler::InputHandler;
+use super::message_renderer::MessageRenderer;
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
@@ -13,14 +17,9 @@ use crate::conversations::{AgentEvent, Conversation, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
-
-use super::actions::{execute_command, start_agent_conversation};
-use super::app::AppState;
-use super::input_handler::InputHandler;
-use super::message_renderer::MessageRenderer;
-use super::terminal::Tui;
-use super::ui;
-use super::viewport_manager::ViewportManager;
+use crate::tui::app_layout::AppLayout;
+use crate::tui::layout_builder::Layout;
+use crate::tui::terminal::{HooshTerminal, resize_terminal};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -57,21 +56,24 @@ pub struct EventLoopContext {
 }
 
 pub async fn run_event_loop(
-    mut terminal: Tui,
+    mut terminal: HooshTerminal,
     app: &mut AppState,
     mut context: EventLoopContext,
-) -> Result<Tui> {
+) -> Result<HooshTerminal> {
     let mut agent_task: Option<JoinHandle<()>> = None;
-    let mut viewport = ViewportManager::with_default_height();
 
     let message_renderer = MessageRenderer::new();
 
     loop {
         message_renderer.render_pending_messages(app, &mut terminal)?;
 
-        (terminal, _) = viewport.update_and_resize(app, terminal)?;
+        let layout = Layout::create(app);
 
-        terminal.draw(|f| ui::render(f, app))?;
+        resize_terminal(&mut terminal, layout.total_height())?;
+
+        terminal.draw(|frame| {
+            layout.render(app, frame.area(), frame.buffer_mut());
+        })?;
 
         while let Ok(event) = context.channels.event_rx.try_recv() {
             match event {
@@ -109,10 +111,10 @@ pub async fn run_event_loop(
             }
         }
 
-        if let Some(task) = &agent_task {
-            if task.is_finished() {
-                agent_task = None;
-            }
+        if let Some(task) = &agent_task
+            && task.is_finished()
+        {
+            agent_task = None;
         }
 
         app.tick_animation();

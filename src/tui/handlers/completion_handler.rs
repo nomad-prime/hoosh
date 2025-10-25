@@ -50,27 +50,23 @@ impl InputHandler for CompletionHandler {
                 let completer_idx = app.completion_state.as_ref().map(|s| s.completer_index);
                 let input_text = app.get_input_text();
 
-                if let Some(selected) = app.apply_completion() {
-                    if let Some(idx) = completer_idx {
-                        if let Some(completer) = app.completers.get(idx) {
-                            if let Some(trigger_pos) = completer.find_trigger_position(&input_text)
-                            {
-                                let new_text =
-                                    completer.apply_completion(&input_text, trigger_pos, &selected);
+                if let Some(selected) = app.apply_completion()
+                    && let Some(idx) = completer_idx
+                    && let Some(completer) = app.completers.get(idx)
+                    && let Some(trigger_pos) = completer.find_trigger_position(&input_text)
+                {
+                    let new_text = completer.apply_completion(&input_text, trigger_pos, &selected);
 
-                                // Clear and rebuild the input with the new text
-                                app.clear_input();
+                    // Clear and rebuild the input with the new text
+                    app.clear_input();
 
-                                // Insert each line, adding newlines between them
-                                let lines: Vec<&str> = new_text.lines().collect();
-                                for (i, line) in lines.iter().enumerate() {
-                                    app.input.insert_str(line);
-                                    // Add newline after each line except the last
-                                    if i < lines.len() - 1 {
-                                        app.input.insert_newline();
-                                    }
-                                }
-                            }
+                    // Insert each line, adding newlines between them
+                    let lines: Vec<&str> = new_text.lines().collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        app.input.insert_str(line);
+                        // Add newline after each line except the last
+                        if i < lines.len() - 1 {
+                            app.input.insert_newline();
                         }
                     }
                 }
@@ -95,10 +91,10 @@ impl InputHandler for CompletionHandler {
 
                     if let Some((_, query)) = trigger_and_query {
                         app.update_completion_query(query.clone());
-                        if let Some(completer) = app.completers.get(idx) {
-                            if let Ok(candidates) = completer.get_completions(&query).await {
-                                app.set_completion_candidates(candidates);
-                            }
+                        if let Some(completer) = app.completers.get(idx)
+                            && let Ok(candidates) = completer.get_completions(&query).await
+                        {
+                            app.set_completion_candidates(candidates);
                         }
                     } else {
                         app.cancel_completion();
@@ -123,10 +119,10 @@ impl InputHandler for CompletionHandler {
 
                     if let Some((_, query)) = trigger_and_query {
                         app.update_completion_query(query.clone());
-                        if let Some(completer) = app.completers.get(idx) {
-                            if let Ok(candidates) = completer.get_completions(&query).await {
-                                app.set_completion_candidates(candidates);
-                            }
+                        if let Some(completer) = app.completers.get(idx)
+                            && let Ok(candidates) = completer.get_completions(&query).await
+                        {
+                            app.set_completion_candidates(candidates);
                         }
                     }
                 }
