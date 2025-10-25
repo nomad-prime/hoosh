@@ -126,8 +126,10 @@ impl OpenAICompatibleBackend {
     async fn send_message_attempt(&self, message: &str) -> Result<String, LlmError> {
         if self.config.api_key.is_empty() {
             return Err(LlmError::AuthenticationError {
-                message: format!("{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
-                    self.config.name, self.config.name)
+                message: format!(
+                    "{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                    self.config.name, self.config.name
+                ),
             });
         }
 
@@ -189,8 +191,10 @@ impl OpenAICompatibleBackend {
     ) -> Result<LlmResponse, LlmError> {
         if self.config.api_key.is_empty() {
             return Err(LlmError::AuthenticationError {
-                message: format!("{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
-                    self.config.name, self.config.name)
+                message: format!(
+                    "{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                    self.config.name, self.config.name
+                ),
             });
         }
 

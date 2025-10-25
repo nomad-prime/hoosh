@@ -248,7 +248,7 @@ impl AppConfig {
             _ => {
                 return Err(ConfigError::UnknownConfigKey {
                     key: key.to_string(),
-                })
+                });
             }
         }
 

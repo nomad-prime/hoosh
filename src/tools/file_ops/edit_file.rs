@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use similar::{ChangeTag, TextDiff};
 use std::path::PathBuf;
 use tokio::fs;

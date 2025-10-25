@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::permissions::PermissionManager;
@@ -328,9 +328,11 @@ mod tests {
         // Second registration should fail
         let result = registry.register_tool(tool);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("Tool with name 'mock_tool' already exists"));
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Tool with name 'mock_tool' already exists")
+        );
     }
 
     #[test]
