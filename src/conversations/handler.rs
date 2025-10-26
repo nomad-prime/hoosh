@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
-use crate::conversations::{Conversation, ToolCall, ToolResult};
+use crate::conversations::{ContextManager, Conversation, ToolCall, ToolResult};
 use crate::permissions::{OperationType, PermissionScope};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -48,6 +48,21 @@ pub enum AgentEvent {
     AgentSwitched {
         new_agent_name: String,
     },
+    ContextCompressionTriggered {
+        original_message_count: usize,
+        compressed_message_count: usize,
+        token_pressure: f32,
+    },
+    ContextCompressionComplete {
+        summary_length: usize,
+    },
+    ContextCompressionError {
+        error: String,
+    },
+    TokenPressureWarning {
+        current_pressure: f32,
+        threshold: f32,
+    },
     Summarizing {
         message_count: usize,
     },
@@ -80,6 +95,7 @@ pub struct ConversationHandler {
     tool_executor: Arc<ToolExecutor>,
     max_steps: usize,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
+    context_manager: Option<Arc<ContextManager>>,
 }
 
 impl ConversationHandler {
@@ -94,6 +110,7 @@ impl ConversationHandler {
             tool_executor,
             max_steps: 1000,
             event_sender: None,
+            context_manager: None,
         }
     }
 
@@ -107,6 +124,11 @@ impl ConversationHandler {
         self
     }
 
+    pub fn with_context_manager(mut self, context_manager: Arc<ContextManager>) -> Self {
+        self.context_manager = Some(context_manager);
+        self
+    }
+
     fn send_event(&self, event: AgentEvent) {
         if let Some(sender) = &self.event_sender {
             let _ = sender.send(event);
@@ -115,6 +137,12 @@ impl ConversationHandler {
 
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(AgentEvent::Thinking);
+
+        // Apply context compression if configured
+        if let Some(context_manager) = &self.context_manager {
+            self.apply_context_compression(conversation, context_manager)
+                .await?;
+        }
 
         for step in 0..self.max_steps {
             let response = self
@@ -133,6 +161,54 @@ impl ConversationHandler {
         }
 
         self.send_event(AgentEvent::MaxStepsReached(self.max_steps));
+        Ok(())
+    }
+
+    async fn apply_context_compression(
+        &self,
+        conversation: &mut Conversation,
+        context_manager: &ContextManager,
+    ) -> Result<()> {
+        let current_pressure = context_manager.get_token_pressure(&conversation.messages);
+
+        // Emit warning if approaching threshold
+        if current_pressure > 0.7 {
+            self.send_event(AgentEvent::TokenPressureWarning {
+                current_pressure,
+                threshold: context_manager.config.compression_threshold,
+            });
+        }
+
+        // Apply compression if needed
+        if context_manager.should_compress(&conversation.messages) {
+            let original_count = conversation.messages.len();
+            self.send_event(AgentEvent::ContextCompressionTriggered {
+                original_message_count: original_count,
+                compressed_message_count: 0,
+                token_pressure: current_pressure,
+            });
+
+            match context_manager
+                .compress_messages(&conversation.messages)
+                .await
+            {
+                Ok(compressed_messages) => {
+                    let compressed_count = compressed_messages.len();
+                    conversation.messages = compressed_messages;
+
+                    self.send_event(AgentEvent::ContextCompressionComplete {
+                        summary_length: original_count - compressed_count,
+                    });
+                }
+                Err(e) => {
+                    self.send_event(AgentEvent::ContextCompressionError {
+                        error: e.to_string(),
+                    });
+                    // Continue without compression on error
+                }
+            }
+        }
+
         Ok(())
     }
 

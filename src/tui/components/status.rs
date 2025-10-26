@@ -82,6 +82,9 @@ impl WidgetRenderer for StatusRenderer {
                 Line::from(Span::styled(status_text, Style::default().fg(status_color)));
             let paragraph = Paragraph::new(status_line);
             paragraph.render(area, buf);
+        } else {
+            let paragraph = Paragraph::new(Line::from(" "));
+            paragraph.render(area, buf);
         }
     }
 }
