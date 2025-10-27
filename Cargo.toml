@@ -40,6 +40,7 @@ textwrap = "0.16"
 # Use ureq instead of reqwest for simpler HTTP client that doesn't pull in ICU deps
 reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
 dirs = "6.0.0"
+jsonschema = "0.18"
 
 [dev-dependencies]
 tempfile = "3.0"
