@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
 use crate::conversations::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
@@ -34,14 +34,14 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
-    run_event_loop,
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
 };
 
 pub async fn run(
     backend: Box<dyn LlmBackend>,
     parser: MessageParser,
-    permission_manager: PermissionManager,
+    skip_permissions: bool,
     tool_registry: ToolRegistry,
     config: AppConfig,
 ) -> Result<()> {
@@ -77,6 +77,14 @@ pub async fn run(
     let agent_manager = Arc::new(agent_manager);
     let default_agent = agent_manager.get_default_agent();
 
+    // Initialize permission manager with proper channels
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let permission_manager = PermissionManager::new(event_tx.clone(), permission_response_rx)
+        .with_skip_permissions(skip_permissions);
+
     // Wrap backend in Arc for shared ownership
     let backend: Arc<dyn LlmBackend> = Arc::from(backend);
 
@@ -106,17 +114,6 @@ pub async fn run(
         }
         conv
     }));
-
-    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
-
-    // Recreate permission manager with the TUI channels
-    let skip_perms = permission_manager.skip_permissions();
-    let default_perm = permission_manager.default_permission();
-    let permission_manager = PermissionManager::new(event_tx.clone(), permission_response_rx)
-        .with_skip_permissions(skip_perms)
-        .with_default_permission(default_perm);
 
     let permission_manager_arc = Arc::new(permission_manager.clone());
 

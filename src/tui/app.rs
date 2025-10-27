@@ -327,6 +327,16 @@ impl AppState {
         self.pending_messages.push_back(msg_line);
     }
 
+    pub fn add_debug_message(&mut self, message: String) {
+        let styled_line = Line::from(Span::styled(
+            format!("  [DEBUG] {}", message),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::ITALIC),
+        ));
+        self.add_styled_line(styled_line);
+    }
+
     pub fn add_styled_line(&mut self, line: Line<'static>) {
         let msg_line = MessageLine::Styled(line);
         self.messages.push_back(msg_line.clone());

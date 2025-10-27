@@ -308,7 +308,6 @@ impl PermissionManager {
         }
     }
 
-    /// Send a debug message via the event sender
     fn send_debug(&self, message: &str) {
         let _ = self
             .event_sender
