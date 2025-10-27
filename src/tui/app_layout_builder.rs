@@ -4,7 +4,7 @@ use crate::tui::components::completion_popup::CompletionPopupRenderer;
 use crate::tui::components::input::InputRenderer;
 use crate::tui::components::mode_indicator::ModeIndicatorRenderer;
 use crate::tui::components::permission_dialog::PermissionDialogRenderer;
-use crate::tui::components::status::StatusRenderer;
+use crate::tui::components::status_bar::StatusBarRenderer;
 use crate::tui::layout_builder::{ComponentDescriptor, LayoutBuilder};
 
 pub trait AppLayoutBuilder {
@@ -18,7 +18,10 @@ pub trait AppLayoutBuilder {
 
 impl AppLayoutBuilder for LayoutBuilder<AppState> {
     fn status_bar(self) -> Self {
-        self.component(ComponentDescriptor::new(1, Some(Box::new(StatusRenderer))))
+        self.component(ComponentDescriptor::new(
+            1,
+            Some(Box::new(StatusBarRenderer)),
+        ))
     }
 
     fn input_field(self) -> Self {

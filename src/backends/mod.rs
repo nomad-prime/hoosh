@@ -10,6 +10,8 @@ use tokio::sync::mpsc::UnboundedSender;
 pub struct LlmResponse {
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
+    pub input_tokens: Option<usize>,
+    pub output_tokens: Option<usize>,
 }
 
 impl LlmResponse {
@@ -17,6 +19,8 @@ impl LlmResponse {
         Self {
             content: Some(content),
             tool_calls: None,
+            input_tokens: None,
+            output_tokens: None,
         }
     }
 
@@ -24,7 +28,28 @@ impl LlmResponse {
         Self {
             content,
             tool_calls: Some(tool_calls),
+            input_tokens: None,
+            output_tokens: None,
         }
+    }
+
+    pub fn with_tokens(mut self, input_tokens: usize, output_tokens: usize) -> Self {
+        self.input_tokens = Some(input_tokens);
+        self.output_tokens = Some(output_tokens);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct TokenPricing {
+    pub input_per_million: f64,
+    pub output_per_million: f64,
+}
+
+impl TokenPricing {
+    pub fn calculate_cost(&self, input_tokens: usize, output_tokens: usize) -> f64 {
+        (input_tokens as f64 * self.input_per_million / 1_000_000.0)
+            + (output_tokens as f64 * self.output_per_million / 1_000_000.0)
     }
 }
 
@@ -40,6 +65,9 @@ pub trait LlmBackend: Send + Sync {
 
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
+    fn pricing(&self) -> Option<TokenPricing> {
+        None
+    }
 
     async fn send_message_with_events(
         &self,

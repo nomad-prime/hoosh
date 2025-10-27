@@ -3,36 +3,36 @@ use crate::tui::events::AgentState;
 use crate::tui::layout_builder::WidgetRenderer;
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
 
-pub struct StatusRenderer;
+pub struct StatusBarRenderer;
 
-impl WidgetRenderer for StatusRenderer {
+impl WidgetRenderer for StatusBarRenderer {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
         let thinking_spinners = [
-            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"][..], // Classic rotation
-            &["⠐", "⠒", "⠓", "⠋", "⠙", "⠹", "⠸", "⠼"][..], // Wave pattern
-            &["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"][..], // Binary progression
-            &["⡏", "⡟", "⡻", "⣻", "⣿", "⣯", "⣧", "⡧"][..], // Fill pattern
-            &["⣷", "⣯", "⣟", "⡿", "⢿", "⠿", "⠷", "⣶"][..], // Circle pattern
-            &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠴", "⠲"][..], // Twirl pattern
-            &["⢹", "⢺", "⢼", "⣸", "⣇", "⡧", "⡏", "⡃"][..], // Rotation pattern
+            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"][..],
+            &["⠐", "⠒", "⠓", "⠋", "⠙", "⠹", "⠸", "⠼"][..],
+            &["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"][..],
+            &["⡏", "⡟", "⡻", "⣻", "⣿", "⣯", "⣧", "⡧"][..],
+            &["⣷", "⣯", "⣟", "⡿", "⢿", "⠿", "⠷", "⣶"][..],
+            &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠴", "⠲"][..],
+            &["⢹", "⢺", "⢼", "⣸", "⣇", "⡧", "⡏", "⡃"][..],
         ];
 
         let executing_spinners = [
-            &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠤", "⠐"][..], // Zigzag pattern
-            &["⠁", "⠉", "⠋", "⠛", "⠟", "⠿", "⠿", "⠟"][..], // Growing/shrinking
-            &["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"][..], // Pulse pattern
-            &["⡀", "⡁", "⡃", "⡇", "⡧", "⡷", "⣶", "⣦"][..], // Fill/unfill
-            &["⠐", "⠒", "⠖", "⠶", "⠷", "⠿", "⠻", "⠛"][..], // Ascending/descending
-            &["⢀", "⢄", "⢤", "⢦", "⢧", "⢧", "⢧", "⢧"][..], // Progressive dots
-            &["⣀", "⣄", "⣤", "⣦", "⣶", "⣾", "⣽", "⣻"][..], // Circle fill
+            &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠤", "⠐"][..],
+            &["⠁", "⠉", "⠋", "⠛", "⠟", "⠿", "⠿", "⠟"][..],
+            &["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"][..],
+            &["⡀", "⡁", "⡃", "⡇", "⡧", "⡷", "⣶", "⣦"][..],
+            &["⠐", "⠒", "⠖", "⠶", "⠷", "⠿", "⠻", "⠛"][..],
+            &["⢀", "⢄", "⢤", "⢦", "⢧", "⢧", "⢧", "⢧"][..],
+            &["⣀", "⣄", "⣤", "⣦", "⣶", "⣾", "⣽", "⣻"][..],
         ];
 
         let waiting_spinners = ["⠄", "⠂", "⠁", "⠂"];
@@ -77,14 +77,28 @@ impl WidgetRenderer for StatusRenderer {
             }
         };
 
+        let token_text = if state.input_tokens > 0 || state.output_tokens > 0 {
+            format!(
+                "Tokens: {} ↑ | {} ↓ (${:.4}) ",
+                state.input_tokens, state.output_tokens, state.total_cost
+            )
+        } else {
+            "Tokens: 0 ↑ | 0 ↓ ".to_string()
+        };
+
+        let token_color = Color::LightCyan;
+
+        let areas = Layout::horizontal([Constraint::Fill(1), Constraint::Length(36)]).split(area);
+
         if !status_text.is_empty() {
             let status_line =
                 Line::from(Span::styled(status_text, Style::default().fg(status_color)));
             let paragraph = Paragraph::new(status_line);
-            paragraph.render(area, buf);
-        } else {
-            let paragraph = Paragraph::new(Line::from(" "));
-            paragraph.render(area, buf);
+            paragraph.render(areas[0], buf);
         }
+
+        let token_line = Line::from(Span::styled(token_text, Style::default().fg(token_color)));
+        let paragraph = Paragraph::new(token_line).right_aligned();
+        paragraph.render(areas[1], buf);
     }
 }
