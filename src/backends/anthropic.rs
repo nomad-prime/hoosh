@@ -408,6 +408,9 @@ impl AnthropicBackend {
             }
         }
 
+        let input_tokens = response.usage.input_tokens as usize;
+        let output_tokens = response.usage.output_tokens as usize;
+
         if !tool_calls.is_empty() {
             let content = if text_parts.is_empty() {
                 None
@@ -415,8 +418,10 @@ impl AnthropicBackend {
                 Some(text_parts.join("\n"))
             };
             LlmResponse::with_tool_calls(content, tool_calls)
+                .with_tokens(input_tokens, output_tokens)
         } else {
             LlmResponse::content_only(text_parts.join("\n"))
+                .with_tokens(input_tokens, output_tokens)
         }
     }
 }
@@ -485,5 +490,26 @@ impl LlmBackend for AnthropicBackend {
 
     fn model_name(&self) -> &str {
         &self.config.model
+    }
+
+    fn pricing(&self) -> Option<crate::backends::TokenPricing> {
+        let pricing = match self.config.model.as_str() {
+            "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-20240620" => {
+                crate::backends::TokenPricing {
+                    input_per_million: 3.0,
+                    output_per_million: 15.0,
+                }
+            }
+            "claude-3-5-haiku-20241022" => crate::backends::TokenPricing {
+                input_per_million: 0.8,
+                output_per_million: 4.0,
+            },
+            "claude-3-opus-20240229" => crate::backends::TokenPricing {
+                input_per_million: 15.0,
+                output_per_million: 75.0,
+            },
+            _ => return None,
+        };
+        Some(pricing)
     }
 }

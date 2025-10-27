@@ -1,4 +1,5 @@
 use crate::console::VerbosityLevel;
+use crate::conversations::ContextManagerConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -35,6 +36,8 @@ pub struct AppConfig {
     pub agents: HashMap<String, AgentConfig>,
     #[serde(default = "default_review_mode")]
     pub review_mode: bool,
+    #[serde(default)]
+    pub context_manager: Option<ContextManagerConfig>,
 }
 
 fn default_review_mode() -> bool {
@@ -89,6 +92,7 @@ impl Default for AppConfig {
             default_agent: Some("hoosh_coder".to_string()),
             agents,
             review_mode: default_review_mode(),
+            context_manager: None,
         }
     }
 }
@@ -276,6 +280,16 @@ impl AppConfig {
     /// Set the default agent in configuration
     pub fn set_default_agent(&mut self, agent_name: String) {
         self.default_agent = Some(agent_name);
+    }
+
+    /// Get the context manager configuration, or default if not set
+    pub fn get_context_manager_config(&self) -> ContextManagerConfig {
+        self.context_manager.clone().unwrap_or_default()
+    }
+
+    /// Set the context manager configuration
+    pub fn set_context_manager_config(&mut self, config: ContextManagerConfig) {
+        self.context_manager = Some(config);
     }
 
     fn config_path() -> ConfigResult<PathBuf> {

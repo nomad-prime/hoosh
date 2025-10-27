@@ -124,6 +124,9 @@ pub struct AppState {
     pub clipboard: ClipboardManager,
     pub trusted_project: Option<std::path::PathBuf>,
     pub current_retry_status: Option<String>,
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+    pub total_cost: f64,
 }
 
 impl AppState {
@@ -157,6 +160,9 @@ impl AppState {
             clipboard: ClipboardManager::new(),
             trusted_project: None,
             current_retry_status: None,
+            input_tokens: 0,
+            output_tokens: 0,
+            total_cost: 0.0,
         }
     }
 
@@ -422,6 +428,49 @@ impl AppState {
             AgentEvent::SummaryError { error } => {
                 self.agent_state = AgentState::Idle;
                 self.add_message(format!("Error summarizing conversation: {}", error));
+            }
+            AgentEvent::ContextCompressionTriggered {
+                original_message_count,
+                token_pressure,
+                ..
+            } => {
+                self.add_status_message(&format!(
+                    "Compressing context ({} messages, {:.0}% token pressure)",
+                    original_message_count,
+                    token_pressure * 100.0
+                ));
+            }
+            AgentEvent::ContextCompressionComplete { summary_length } => {
+                self.add_status_message(&format!(
+                    "Context compressed (summarized {} messages)",
+                    summary_length
+                ));
+            }
+            AgentEvent::ContextCompressionError { error } => {
+                self.add_message(format!("Context compression error: {}", error));
+            }
+            AgentEvent::TokenPressureWarning {
+                current_pressure,
+                threshold,
+            } => {
+                if current_pressure > threshold {
+                    self.add_status_message(&format!(
+                        "High token pressure: {:.0}% (threshold: {:.0}%)",
+                        current_pressure * 100.0,
+                        threshold * 100.0
+                    ));
+                }
+            }
+            AgentEvent::TokenUsage {
+                input_tokens,
+                output_tokens,
+                cost,
+            } => {
+                self.input_tokens = input_tokens;
+                self.output_tokens = output_tokens;
+                if let Some(call_cost) = cost {
+                    self.total_cost += call_cost;
+                }
             }
         }
     }

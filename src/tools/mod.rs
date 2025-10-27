@@ -9,7 +9,7 @@ use crate::permissions::PermissionManager;
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Execute the tool with the given arguments
-    async fn execute(&self, args: &serde_json::Value) -> Result<String>;
+    async fn execute(&self, args: &Value) -> Result<String>;
 
     /// Get the tool's name (used for identification)
     fn tool_name(&self) -> &'static str;
@@ -41,22 +41,16 @@ pub trait Tool: Send + Sync {
         }
     }
 
-    /// Check if this tool execution is permitted
-    /// Each tool knows how to request its own permissions
-    /// Default implementation allows all operations (for safe/readonly tools)
     async fn check_permission(
         &self,
-        _args: &serde_json::Value,
+        _args: &Value,
         _permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        // Default: no permission needed (safe operations)
-        Ok(true)
-    }
+    ) -> Result<bool>;
 
     /// Generate a preview of what this tool will do (e.g., a diff for edits)
     /// This is shown to the user before requesting permission
     /// Default implementation returns None (most tools don't need previews)
-    async fn generate_preview(&self, _args: &serde_json::Value) -> Option<String> {
+    async fn generate_preview(&self, _args: &Value) -> Option<String> {
         None
     }
 
@@ -215,6 +209,14 @@ mod tests {
 
         async fn execute(&self, _args: &serde_json::Value) -> Result<String> {
             Ok(self.response.to_string())
+        }
+
+        async fn check_permission(
+            &self,
+            _args: &Value,
+            _permission_manager: &PermissionManager,
+        ) -> Result<bool> {
+            Ok(false)
         }
     }
 
