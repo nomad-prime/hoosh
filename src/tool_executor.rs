@@ -1,10 +1,28 @@
 use anyhow::{Context, Result};
-use serde_json;
+use serde_json::{self, Value};
 use tokio::sync::mpsc;
 
 use crate::conversations::{AgentEvent, ToolCall, ToolResult};
 use crate::permissions::PermissionManager;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
+
+/// Validate arguments against a JSON schema
+/// Returns an error if validation fails
+fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> Result<()> {
+    let compiled_schema = jsonschema::JSONSchema::compile(schema)
+        .map_err(|e| anyhow::anyhow!("Failed to compile schema for tool '{}': {}", tool_name, e))?;
+
+    compiled_schema.validate(args).map_err(|e| {
+        let errors: Vec<String> = e.map(|err| err.to_string()).collect();
+        anyhow::anyhow!(
+            "Tool '{}' arguments do not match schema: {}",
+            tool_name,
+            errors.join("; ")
+        )
+    })?;
+
+    Ok(())
+}
 
 /// Handles execution of tool calls
 pub struct ToolExecutor {
@@ -84,6 +102,12 @@ impl ToolExecutor {
                 );
             }
         };
+
+        // Validate arguments against the tool's schema
+        let schema = tool.parameter_schema();
+        if let Err(e) = validate_against_schema(&args, &schema, tool_name) {
+            return ToolResult::error(tool_call_id, tool_name.clone(), tool_name.clone(), e);
+        }
 
         // Get the display name from the tool
         let display_name = tool.format_call_display(&args);
@@ -282,6 +306,36 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("Unknown tool")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_read_file_tool_with_invalid_schema() {
+        let temp_dir = tempdir().unwrap();
+        let tool_registry =
+            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
+        let executor = ToolExecutor::new(tool_registry, permission_manager);
+
+        let tool_call = ToolCall {
+            id: "call_456".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: json!({"start_line": "not_a_number"}).to_string(),
+            },
+        };
+
+        let result = executor.execute_tool_call(&tool_call).await;
+        assert!(result.result.is_err());
+        let error_msg = result.result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("do not match schema") || error_msg.contains("required"),
+            "Expected schema validation error, got: {}",
+            error_msg
         );
     }
 }

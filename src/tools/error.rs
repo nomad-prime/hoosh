@@ -41,6 +41,9 @@ pub enum ToolError {
 
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
+
+    #[error("Schema validation failed for tool '{tool}': {message}")]
+    SchemaValidationFailed { tool: String, message: String },
 }
 
 pub type ToolResult<T> = Result<T, ToolError>;
