@@ -216,7 +216,7 @@ mod tests {
         let accountant = TokenAccountant::new();
 
         accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
-            8_000, 2_000,
+            126_000, 2_000,
         ));
 
         let accountant = Arc::new(accountant);
