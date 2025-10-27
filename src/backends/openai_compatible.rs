@@ -49,7 +49,44 @@ struct ChatCompletionRequest {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ChatCompletionResponse {
+    #[serde(default)]
     choices: Vec<Choice>,
+    #[serde(default)]
+    usage: Option<Usage>,
+    // New response format fields
+    #[serde(default)]
+    output: Option<Vec<Output>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Output {
+    #[serde(default)]
+    content: Option<Vec<ContentBlock>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+enum ContentBlock {
+    #[serde(rename = "output_text")]
+    OutputText { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Usage {
+    #[serde(default)]
+    prompt_tokens: u32,
+    #[serde(default)]
+    completion_tokens: u32,
+    #[serde(default)]
+    input_tokens: u32,
+    #[serde(default)]
+    output_tokens: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -238,6 +275,64 @@ impl OpenAICompatibleBackend {
                 message: format!("Failed to parse response: {}", e),
             })?;
 
+        // Extract tokens - handle both old and new API formats
+        let (input_tokens, output_tokens) = if let Some(usage) = response_data.usage {
+            let input = if usage.input_tokens > 0 {
+                usage.input_tokens as usize
+            } else {
+                usage.prompt_tokens as usize
+            };
+            let output = if usage.output_tokens > 0 {
+                usage.output_tokens as usize
+            } else {
+                usage.completion_tokens as usize
+            };
+            (input, output)
+        } else {
+            (0, 0)
+        };
+
+        // Try new response format first (with output field)
+        if let Some(outputs) = response_data.output
+            && let Some(output) = outputs.first()
+            && let Some(content_blocks) = &output.content
+        {
+            let mut text_parts = Vec::new();
+            let mut tool_calls = Vec::new();
+
+            for block in content_blocks {
+                match block {
+                    ContentBlock::OutputText { text } => {
+                        text_parts.push(text.clone());
+                    }
+                    ContentBlock::ToolUse { id, name, input } => {
+                        tool_calls.push(ToolCall {
+                            id: id.clone(),
+                            r#type: "function".to_string(),
+                            function: crate::conversations::ToolFunction {
+                                name: name.clone(),
+                                arguments: input.to_string(),
+                            },
+                        });
+                    }
+                }
+            }
+
+            if !tool_calls.is_empty() {
+                let content = if text_parts.is_empty() {
+                    None
+                } else {
+                    Some(text_parts.join("\n"))
+                };
+                return Ok(LlmResponse::with_tool_calls(content, tool_calls)
+                    .with_tokens(input_tokens, output_tokens));
+            } else if !text_parts.is_empty() {
+                return Ok(LlmResponse::content_only(text_parts.join("\n"))
+                    .with_tokens(input_tokens, output_tokens));
+            }
+        }
+
+        // Fall back to traditional chat completion format
         if let Some(choice) = response_data.choices.first()
             && let Some(message) = &choice.message
         {
@@ -246,10 +341,12 @@ impl OpenAICompatibleBackend {
                 return Ok(LlmResponse::with_tool_calls(
                     message.content.clone(),
                     tool_calls.clone(),
-                ));
+                )
+                .with_tokens(input_tokens, output_tokens));
             } else if let Some(content) = &message.content {
                 // Response contains only content
-                return Ok(LlmResponse::content_only(content.clone()));
+                return Ok(LlmResponse::content_only(content.clone())
+                    .with_tokens(input_tokens, output_tokens));
             }
         }
 

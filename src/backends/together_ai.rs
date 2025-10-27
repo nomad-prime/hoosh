@@ -45,6 +45,14 @@ struct ChatCompletionRequest {
 #[derive(Debug, Deserialize, Serialize)]
 struct ChatCompletionResponse {
     choices: Vec<Choice>,
+    #[serde(default)]
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Usage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -227,6 +235,15 @@ impl TogetherAiBackend {
                 message: format!("Failed to parse response: {}", e),
             })?;
 
+        let (input_tokens, output_tokens) = if let Some(usage) = response_data.usage {
+            (
+                usage.prompt_tokens as usize,
+                usage.completion_tokens as usize,
+            )
+        } else {
+            (0, 0)
+        };
+
         if let Some(choice) = response_data.choices.first()
             && let Some(message) = &choice.message
         {
@@ -235,10 +252,12 @@ impl TogetherAiBackend {
                 return Ok(LlmResponse::with_tool_calls(
                     message.content.clone(),
                     tool_calls.clone(),
-                ));
+                )
+                .with_tokens(input_tokens, output_tokens));
             } else if let Some(content) = &message.content {
                 // Response contains only content
-                return Ok(LlmResponse::content_only(content.clone()));
+                return Ok(LlmResponse::content_only(content.clone())
+                    .with_tokens(input_tokens, output_tokens));
             }
         }
 

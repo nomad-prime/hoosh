@@ -73,6 +73,10 @@ pub enum AgentEvent {
     SummaryError {
         error: String,
     },
+    TokenUsage {
+        input_tokens: usize,
+        output_tokens: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -169,18 +173,19 @@ impl ConversationHandler {
         conversation: &mut Conversation,
         context_manager: &ContextManager,
     ) -> Result<()> {
-        let current_pressure = context_manager.get_token_pressure(&conversation.messages);
+        let current_pressure = context_manager.get_token_pressure();
 
         // Emit warning if approaching threshold
-        if current_pressure > 0.7 {
+        if context_manager.should_warn_about_pressure() {
             self.send_event(AgentEvent::TokenPressureWarning {
                 current_pressure,
-                threshold: context_manager.config.compression_threshold,
+                threshold: context_manager.config.warning_threshold,
             });
         }
 
-        // Apply compression if needed
-        if context_manager.should_compress(&conversation.messages) {
+        // Apply compression if needed (based on actual token usage from accountant)
+        let stats = context_manager.get_token_stats();
+        if context_manager.should_compress(stats.total_tokens) {
             let original_count = conversation.messages.len();
             self.send_event(AgentEvent::ContextCompressionTriggered {
                 original_message_count: original_count,
@@ -189,7 +194,7 @@ impl ConversationHandler {
             });
 
             match context_manager
-                .compress_messages(&conversation.messages)
+                .apply_context_compression(&conversation.messages)
                 .await
             {
                 Ok(compressed_messages) => {
@@ -218,6 +223,16 @@ impl ConversationHandler {
         response: LlmResponse,
         step: usize,
     ) -> Result<TurnStatus> {
+        // Emit token usage event if available
+        if let (Some(input_tokens), Some(output_tokens)) =
+            (response.input_tokens, response.output_tokens)
+        {
+            self.send_event(AgentEvent::TokenUsage {
+                input_tokens,
+                output_tokens,
+            });
+        }
+
         if let Some(ref tool_calls) = response.tool_calls
             && !tool_calls.is_empty()
         {

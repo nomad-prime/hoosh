@@ -124,6 +124,8 @@ pub struct AppState {
     pub clipboard: ClipboardManager,
     pub trusted_project: Option<std::path::PathBuf>,
     pub current_retry_status: Option<String>,
+    pub input_tokens: usize,
+    pub output_tokens: usize,
 }
 
 impl AppState {
@@ -157,6 +159,8 @@ impl AppState {
             clipboard: ClipboardManager::new(),
             trusted_project: None,
             current_retry_status: None,
+            input_tokens: 0,
+            output_tokens: 0,
         }
     }
 
@@ -454,6 +458,13 @@ impl AppState {
                         threshold * 100.0
                     ));
                 }
+            }
+            AgentEvent::TokenUsage {
+                input_tokens,
+                output_tokens,
+            } => {
+                self.input_tokens = input_tokens;
+                self.output_tokens = output_tokens;
             }
         }
     }

@@ -408,6 +408,9 @@ impl AnthropicBackend {
             }
         }
 
+        let input_tokens = response.usage.input_tokens as usize;
+        let output_tokens = response.usage.output_tokens as usize;
+
         if !tool_calls.is_empty() {
             let content = if text_parts.is_empty() {
                 None
@@ -415,8 +418,10 @@ impl AnthropicBackend {
                 Some(text_parts.join("\n"))
             };
             LlmResponse::with_tool_calls(content, tool_calls)
+                .with_tokens(input_tokens, output_tokens)
         } else {
             LlmResponse::content_only(text_parts.join("\n"))
+                .with_tokens(input_tokens, output_tokens)
         }
     }
 }

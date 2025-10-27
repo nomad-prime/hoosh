@@ -284,9 +284,7 @@ impl AppConfig {
 
     /// Get the context manager configuration, or default if not set
     pub fn get_context_manager_config(&self) -> ContextManagerConfig {
-        self.context_manager
-            .clone()
-            .unwrap_or_default()
+        self.context_manager.clone().unwrap_or_default()
     }
 
     /// Set the context manager configuration

@@ -10,6 +10,8 @@ use tokio::sync::mpsc::UnboundedSender;
 pub struct LlmResponse {
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
+    pub input_tokens: Option<usize>,
+    pub output_tokens: Option<usize>,
 }
 
 impl LlmResponse {
@@ -17,6 +19,8 @@ impl LlmResponse {
         Self {
             content: Some(content),
             tool_calls: None,
+            input_tokens: None,
+            output_tokens: None,
         }
     }
 
@@ -24,7 +28,15 @@ impl LlmResponse {
         Self {
             content,
             tool_calls: Some(tool_calls),
+            input_tokens: None,
+            output_tokens: None,
         }
+    }
+
+    pub fn with_tokens(mut self, input_tokens: usize, output_tokens: usize) -> Self {
+        self.input_tokens = Some(input_tokens);
+        self.output_tokens = Some(output_tokens);
+        self
     }
 }
 
