@@ -63,6 +63,18 @@ impl ToolResult {
         }
     }
 
+    /// Check if this result represents a user rejection
+    pub fn is_rejected(&self) -> bool {
+        if let Err(e) = &self.result {
+            // Try to downcast to ToolExecutionError
+            e.downcast_ref::<crate::conversations::ToolExecutionError>()
+                .map(|err| err.is_user_rejection())
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
     pub fn to_message(&self) -> ConversationMessage {
         let content = match &self.result {
             Ok(output) => output.clone(),

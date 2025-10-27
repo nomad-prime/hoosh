@@ -342,22 +342,11 @@ impl ConversationHandler {
     }
 
     fn format_error_summary(&self, error: &anyhow::Error) -> String {
-        let err_str = error.to_string();
-        if err_str.contains("Operation rejected:") {
-            "Rejected by user".to_string()
-        } else {
-            format!("Error: {}", error)
-        }
+        format!("Error: {}", error)
     }
 
     fn has_user_rejection(&self, tool_results: &[ToolResult]) -> bool {
-        tool_results.iter().any(|result| {
-            if let Err(e) = &result.result {
-                e.to_string().contains("Operation rejected:")
-            } else {
-                false
-            }
-        })
+        tool_results.iter().any(|result| result.is_rejected())
     }
 }
 

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde_json::{self, Value};
 use tokio::sync::mpsc;
 
-use crate::conversations::{AgentEvent, ToolCall, ToolResult};
+use crate::conversations::{AgentEvent, ToolCall, ToolExecutionError, ToolResult};
 use crate::permissions::PermissionManager;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
@@ -14,11 +14,10 @@ fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> Res
 
     compiled_schema.validate(args).map_err(|e| {
         let errors: Vec<String> = e.map(|err| err.to_string()).collect();
-        anyhow::anyhow!(
-            "Tool '{}' arguments do not match schema: {}",
+        anyhow::Error::new(ToolExecutionError::invalid_arguments(
             tool_name,
-            errors.join("; ")
-        )
+            errors.join("; "),
+        ))
     })?;
 
     Ok(())
@@ -33,7 +32,7 @@ pub struct ToolExecutor {
     approval_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     approval_receiver: Option<
         std::sync::Arc<
-            std::sync::Mutex<mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>>,
+            tokio::sync::Mutex<mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>>,
         >,
     >,
 }
@@ -68,7 +67,7 @@ impl ToolExecutor {
         mut self,
         receiver: mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>,
     ) -> Self {
-        self.approval_receiver = Some(std::sync::Arc::new(std::sync::Mutex::new(receiver)));
+        self.approval_receiver = Some(std::sync::Arc::new(tokio::sync::Mutex::new(receiver)));
         self
     }
 
@@ -85,7 +84,7 @@ impl ToolExecutor {
                     tool_call_id,
                     tool_name.clone(),
                     tool_name.clone(),
-                    anyhow::anyhow!("Unknown tool: {}", tool_name),
+                    anyhow::Error::new(ToolExecutionError::unknown_tool(tool_name)),
                 );
             }
         };
@@ -176,36 +175,27 @@ impl ToolExecutor {
 
         // Wait for response
         if let Some(receiver) = &self.approval_receiver {
-            let receiver_clone = std::sync::Arc::clone(receiver);
             let response = loop {
-                // Try to receive in a block that drops the lock immediately
-                let maybe_response = {
-                    let mut rx = receiver_clone
-                        .lock()
-                        .map_err(|e| anyhow::anyhow!("Failed to lock receiver: {}", e))?;
-                    rx.try_recv().ok()
-                };
-
-                if let Some(response) = maybe_response {
+                let mut rx = receiver.lock().await;
+                if let Ok(response) = rx.try_recv() {
                     // Verify tool_call_id matches
                     if response.tool_call_id == tool_call_id {
                         break response;
                     }
                 }
+                drop(rx); // Explicitly drop the lock before sleeping
 
-                // Small sleep to avoid busy-waiting
+                // Sleep briefly to avoid busy-waiting
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
             };
 
             if !response.approved {
-                // Send UserRejection event to signal that user rejected the operation
-                if let Some(sender) = &self.event_sender {
-                    let _ = sender.send(AgentEvent::UserRejection);
-                }
                 let reason = response
                     .rejection_reason
                     .unwrap_or_else(|| "User rejected".to_string());
-                anyhow::bail!("Operation rejected: {}", reason);
+                return Err(anyhow::Error::new(ToolExecutionError::user_rejected(
+                    reason,
+                )));
             }
         }
 
@@ -230,7 +220,9 @@ impl ToolExecutor {
             .await?;
 
         if !allowed {
-            anyhow::bail!("Permission denied for {} operation", tool.tool_name());
+            return Err(anyhow::Error::new(ToolExecutionError::permission_denied(
+                tool.tool_name(),
+            )));
         }
 
         Ok(())
