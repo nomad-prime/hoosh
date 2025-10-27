@@ -284,7 +284,7 @@ impl ConversationHandler {
             for tool_result in tool_results {
                 conversation.add_tool_result(tool_result);
             }
-            self.send_event(AgentEvent::ToolExecutionComplete);
+            self.send_event(AgentEvent::UserRejection);
             return Ok(TurnStatus::Complete);
         }
 

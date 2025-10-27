@@ -135,7 +135,7 @@ impl InputHandler for PermissionHandler {
                     && allowed
                 {
                     app.set_trusted_project(path.clone());
-                    app.add_status_message("Project trusted for this session.");
+                    app.add_status_message("Project trusted");
                 }
 
                 let perm_response = crate::conversations::PermissionResponse {

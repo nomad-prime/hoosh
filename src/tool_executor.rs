@@ -112,6 +112,10 @@ impl ToolExecutor {
         // Get the display name from the tool
         let display_name = tool.format_call_display(&args);
 
+        if let Err(e) = self.check_tool_permissions(tool, &args).await {
+            return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
+        }
+
         // Generate and emit preview if available
         if let Some(preview) = tool.generate_preview(&args).await {
             // Always show the preview in the message stream first
@@ -131,11 +135,6 @@ impl ToolExecutor {
             if !is_autopilot && let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
                 return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
             }
-        }
-
-        // Check permissions using the tool's own permission check
-        if let Err(e) = self.check_tool_permissions(tool, &args).await {
-            return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
         }
 
         // Execute the tool
