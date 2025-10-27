@@ -50,8 +50,8 @@ pub struct RuntimeState {
 }
 
 pub struct EventLoopContext {
-    pub system: SystemResources,
-    pub conversation: ConversationState,
+    pub system_resources: SystemResources,
+    pub conversation_state: ConversationState,
     pub channels: EventChannels,
     pub runtime: RuntimeState,
 }
@@ -94,10 +94,10 @@ pub async fn run_event_loop(
                     app.should_quit = true;
                 }
                 AgentEvent::ClearConversation => {
-                    let mut conv = context.conversation.conversation.lock().await;
+                    let mut conv = context.conversation_state.conversation.lock().await;
                     conv.messages.clear();
                     context
-                        .conversation
+                        .conversation_state
                         .context_manager
                         .token_accountant
                         .reset();
@@ -111,7 +111,7 @@ pub async fn run_event_loop(
                     // app.add_message(format!("[DEBUG] {}\n", _msg));
                 }
                 AgentEvent::AgentSwitched { new_agent_name } => {
-                    context.conversation.current_agent_name = new_agent_name;
+                    context.conversation_state.current_agent_name = new_agent_name;
                     // The header will be updated on next render
                 }
                 other_event => {
@@ -161,34 +161,11 @@ pub async fn run_event_loop(
                         break;
                     }
                     Ok(super::handler_result::KeyHandlerResult::StartCommand(input)) => {
-                        use super::actions::CommandExecutionContext;
-                        execute_command(CommandExecutionContext {
-                            input,
-                            command_registry: Arc::clone(&context.system.command_registry),
-                            conversation: Arc::clone(&context.conversation.conversation),
-                            tool_registry: Arc::clone(&context.system.tool_registry),
-                            agent_manager: Arc::clone(&context.system.agent_manager),
-                            working_dir: context.runtime.working_dir.clone(),
-                            event_tx: context.channels.event_tx.clone(),
-                            permission_manager: Arc::clone(&context.runtime.permission_manager),
-                            summarizer: Arc::clone(&context.conversation.summarizer),
-                            current_agent_name: context.conversation.current_agent_name.clone(),
-                            config: context.runtime.config.clone(),
-                            backend: Arc::clone(&context.system.backend),
-                        });
+                        execute_command(input, &context);
                         break;
                     }
                     Ok(super::handler_result::KeyHandlerResult::StartConversation(input)) => {
-                        agent_task = Some(start_agent_conversation(
-                            input,
-                            Arc::clone(&context.system.parser),
-                            Arc::clone(&context.conversation.conversation),
-                            Arc::clone(&context.system.backend),
-                            Arc::clone(&context.system.tool_registry),
-                            Arc::clone(&context.system.tool_executor),
-                            context.channels.event_tx.clone(),
-                            Arc::clone(&context.conversation.context_manager),
-                        ));
+                        agent_task = Some(start_agent_conversation(input, &context));
                         break;
                     }
                     Err(_) => {

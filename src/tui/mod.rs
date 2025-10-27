@@ -151,7 +151,7 @@ pub async fn run(
     ));
 
     let context = EventLoopContext {
-        system: SystemResources {
+        system_resources: SystemResources {
             backend,
             parser: Arc::new(parser),
             tool_registry: Arc::new(tool_registry),
@@ -159,7 +159,7 @@ pub async fn run(
             agent_manager,
             command_registry,
         },
-        conversation: ConversationState {
+        conversation_state: ConversationState {
             conversation,
             summarizer,
             context_manager,
