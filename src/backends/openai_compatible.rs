@@ -460,4 +460,29 @@ impl LlmBackend for OpenAICompatibleBackend {
     fn model_name(&self) -> &str {
         &self.config.model
     }
+
+    fn pricing(&self) -> Option<crate::backends::TokenPricing> {
+        let pricing = match self.config.model.as_str() {
+            "gpt-4o" | "gpt-4o-2024-11-20" | "gpt-4o-2024-08-06" | "gpt-4o-2024-05-13" => {
+                crate::backends::TokenPricing {
+                    input_per_million: 2.5,
+                    output_per_million: 10.0,
+                }
+            }
+            "gpt-4o-mini" | "gpt-4o-mini-2024-07-18" => crate::backends::TokenPricing {
+                input_per_million: 0.15,
+                output_per_million: 0.6,
+            },
+            "o1" | "o1-2024-12-17" => crate::backends::TokenPricing {
+                input_per_million: 15.0,
+                output_per_million: 60.0,
+            },
+            "o1-mini" | "o1-mini-2024-09-12" => crate::backends::TokenPricing {
+                input_per_million: 3.0,
+                output_per_million: 12.0,
+            },
+            _ => return None,
+        };
+        Some(pricing)
+    }
 }

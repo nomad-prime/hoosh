@@ -13,7 +13,7 @@ use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
-use crate::conversations::{AgentEvent, Conversation, MessageSummarizer};
+use crate::conversations::{AgentEvent, ContextManager, Conversation, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -33,6 +33,7 @@ pub struct SystemResources {
 pub struct ConversationState {
     pub conversation: Arc<Mutex<Conversation>>,
     pub summarizer: Arc<MessageSummarizer>,
+    pub context_manager: Arc<ContextManager>,
     pub current_agent_name: String,
 }
 
@@ -95,6 +96,14 @@ pub async fn run_event_loop(
                 AgentEvent::ClearConversation => {
                     let mut conv = context.conversation.conversation.lock().await;
                     conv.messages.clear();
+                    context
+                        .conversation
+                        .context_manager
+                        .token_accountant
+                        .reset();
+                    app.input_tokens = 0;
+                    app.output_tokens = 0;
+                    app.total_cost = 0.0;
                     app.add_message("Conversation cleared.\n".to_string());
                 }
                 AgentEvent::DebugMessage(_msg) => {
@@ -178,6 +187,7 @@ pub async fn run_event_loop(
                             Arc::clone(&context.system.tool_registry),
                             Arc::clone(&context.system.tool_executor),
                             context.channels.event_tx.clone(),
+                            Arc::clone(&context.conversation.context_manager),
                         ));
                         break;
                     }

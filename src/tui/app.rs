@@ -126,6 +126,7 @@ pub struct AppState {
     pub current_retry_status: Option<String>,
     pub input_tokens: usize,
     pub output_tokens: usize,
+    pub total_cost: f64,
 }
 
 impl AppState {
@@ -161,6 +162,7 @@ impl AppState {
             current_retry_status: None,
             input_tokens: 0,
             output_tokens: 0,
+            total_cost: 0.0,
         }
     }
 
@@ -462,9 +464,13 @@ impl AppState {
             AgentEvent::TokenUsage {
                 input_tokens,
                 output_tokens,
+                cost,
             } => {
                 self.input_tokens = input_tokens;
                 self.output_tokens = output_tokens;
+                if let Some(call_cost) = cost {
+                    self.total_cost += call_cost;
+                }
             }
         }
     }

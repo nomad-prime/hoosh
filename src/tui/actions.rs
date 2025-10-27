@@ -68,6 +68,7 @@ pub fn start_agent_conversation(
     tool_registry: Arc<ToolRegistry>,
     tool_executor: Arc<ToolExecutor>,
     event_tx: tokio::sync::mpsc::UnboundedSender<AgentEvent>,
+    context_manager: Arc<crate::conversations::ContextManager>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
@@ -79,7 +80,8 @@ pub fn start_agent_conversation(
 
         let mut conv = conversation.lock().await;
         let handler = ConversationHandler::new(backend, tool_registry, tool_executor)
-            .with_event_sender(event_tx);
+            .with_event_sender(event_tx)
+            .with_context_manager(context_manager);
 
         let _ = handler.handle_turn(&mut conv).await;
     })

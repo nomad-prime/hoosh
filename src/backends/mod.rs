@@ -40,6 +40,19 @@ impl LlmResponse {
     }
 }
 
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct TokenPricing {
+    pub input_per_million: f64,
+    pub output_per_million: f64,
+}
+
+impl TokenPricing {
+    pub fn calculate_cost(&self, input_tokens: usize, output_tokens: usize) -> f64 {
+        (input_tokens as f64 * self.input_per_million / 1_000_000.0)
+            + (output_tokens as f64 * self.output_per_million / 1_000_000.0)
+    }
+}
+
 #[async_trait]
 pub trait LlmBackend: Send + Sync {
     async fn send_message(&self, message: &str) -> Result<String>;
@@ -52,6 +65,9 @@ pub trait LlmBackend: Send + Sync {
 
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
+    fn pricing(&self) -> Option<TokenPricing> {
+        None
+    }
 
     async fn send_message_with_events(
         &self,

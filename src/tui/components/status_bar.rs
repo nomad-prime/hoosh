@@ -79,16 +79,16 @@ impl WidgetRenderer for StatusBarRenderer {
 
         let token_text = if state.input_tokens > 0 || state.output_tokens > 0 {
             format!(
-                "Tokens: {} ↑ | {} ↓ ",
-                state.input_tokens, state.output_tokens
+                "Tokens: {} ↑ | {} ↓ (${:.4}) ",
+                state.input_tokens, state.output_tokens, state.total_cost
             )
         } else {
             "Tokens: 0 ↑ | 0 ↓ ".to_string()
         };
 
-        let token_color = Color::DarkGray;
+        let token_color = Color::LightCyan;
 
-        let areas = Layout::horizontal([Constraint::Fill(1), Constraint::Length(30)]).split(area);
+        let areas = Layout::horizontal([Constraint::Fill(1), Constraint::Length(36)]).split(area);
 
         if !status_text.is_empty() {
             let status_line =

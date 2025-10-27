@@ -15,7 +15,7 @@ pub struct ContextManagerConfig {
 impl Default for ContextManagerConfig {
     fn default() -> Self {
         Self {
-            max_tokens: 10000,
+            max_tokens: 128_000,
             compression_threshold: 0.80,
             preserve_recent_percentage: 0.50,
             warning_threshold: 0.70,
@@ -48,7 +48,7 @@ impl ContextManagerConfig {
 pub struct ContextManager {
     pub config: ContextManagerConfig,
     summarizer: Arc<MessageSummarizer>,
-    token_accountant: Arc<TokenAccountant>,
+    pub token_accountant: Arc<TokenAccountant>,
 }
 
 impl ContextManager {
@@ -75,30 +75,34 @@ impl ContextManager {
         )
     }
 
-    /// Get current token pressure based on actual usage
     pub fn get_token_pressure(&self) -> f32 {
-        let total = self.token_accountant.total_tokens();
-        (total as f32 / self.config.max_tokens as f32).min(1.0)
+        let current = self.token_accountant.current_context_tokens();
+        (current as f32 / self.config.max_tokens as f32).min(1.0)
     }
 
-    /// Check if token pressure warrants a warning
     pub fn should_warn_about_pressure(&self) -> bool {
         self.get_token_pressure() > self.config.warning_threshold
     }
 
-    /// Check if we should trigger compression based on current token usage
-    pub fn should_compress(&self, current_context_tokens: usize) -> bool {
+    pub fn should_compress(&self) -> bool {
+        let current = self.token_accountant.current_context_tokens();
         let threshold =
             (self.config.max_tokens as f32 * self.config.compression_threshold) as usize;
-        current_context_tokens > threshold
+        current > threshold
     }
 
-    /// Get calibration statistics
     pub fn get_token_stats(&self) -> crate::conversations::TokenAccountantStats {
         self.token_accountant.statistics()
     }
 
-    /// Split messages into old and recent sections
+    pub fn record_token_usage(&self, input_tokens: usize, output_tokens: usize) {
+        self.token_accountant
+            .record_usage(crate::conversations::TokenUsageRecord::from_backend(
+                input_tokens,
+                output_tokens,
+            ));
+    }
+
     fn split_messages(
         &self,
         messages: &[ConversationMessage],
@@ -143,15 +147,11 @@ impl ContextManager {
         Ok(compressed)
     }
 
-    /// Apply context compression to messages if needed
     pub async fn apply_context_compression(
         &self,
         messages: &[ConversationMessage],
     ) -> Result<Vec<ConversationMessage>> {
-        // Use actual token count from accountant
-        let current_tokens = self.token_accountant.total_tokens();
-
-        if self.should_compress(current_tokens) {
+        if self.should_compress() {
             self.compress_messages(messages).await
         } else {
             Ok(messages.to_vec())
@@ -194,14 +194,11 @@ mod tests {
     fn test_token_pressure_with_data() {
         let mock_backend = Arc::new(MockBackend::new());
         let summarizer = Arc::new(crate::conversations::MessageSummarizer::new(mock_backend));
-        let mut accountant = TokenAccountant::new();
+        let accountant = TokenAccountant::new();
 
-        // Add some actual token usage data
-        for _ in 0..5 {
-            accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
-                10_000, 5_000,
-            ));
-        }
+        accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
+            5_000, 2_000,
+        ));
 
         let accountant = Arc::new(accountant);
         let config = ContextManagerConfig::default();
@@ -216,14 +213,11 @@ mod tests {
     fn test_should_warn_about_pressure() {
         let mock_backend = Arc::new(MockBackend::new());
         let summarizer = Arc::new(crate::conversations::MessageSummarizer::new(mock_backend));
-        let mut accountant = TokenAccountant::new();
+        let accountant = TokenAccountant::new();
 
-        // Add usage that will create high pressure
-        for _ in 0..5 {
-            accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
-                50_000, 25_000,
-            ));
-        }
+        accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
+            8_000, 2_000,
+        ));
 
         let accountant = Arc::new(accountant);
         let config = ContextManagerConfig::default().with_warning_threshold(0.5);
@@ -236,17 +230,22 @@ mod tests {
     fn test_get_token_stats() {
         let mock_backend = Arc::new(MockBackend::new());
         let summarizer = Arc::new(crate::conversations::MessageSummarizer::new(mock_backend));
-        let mut accountant = TokenAccountant::new();
+        let accountant = TokenAccountant::new();
 
-        accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(80, 20));
-        accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(90, 10));
+        accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
+            100, 50,
+        ));
+        accountant.record_usage(crate::conversations::TokenUsageRecord::from_backend(
+            150, 40,
+        ));
 
         let accountant = Arc::new(accountant);
         let config = ContextManagerConfig::default();
         let manager = ContextManager::new(config, summarizer, accountant);
 
         let stats = manager.get_token_stats();
-        assert_eq!(stats.total_tokens, 200);
+        assert_eq!(stats.current_context_size, 190);
+        assert_eq!(stats.total_consumed, 340);
         assert_eq!(stats.record_count, 2);
     }
 }

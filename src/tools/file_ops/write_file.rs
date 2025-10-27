@@ -27,7 +27,7 @@ impl WriteFileTool {
         }
     }
 
-    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
         let args: WriteFileArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "write_file".to_string(),
@@ -76,7 +76,7 @@ struct WriteFileArgs {
 
 #[async_trait]
 impl Tool for WriteFileTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+    async fn execute(&self, args: &Value) -> Result<String> {
         self.execute_impl(args)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))
@@ -132,7 +132,7 @@ impl Tool for WriteFileTool {
 
     async fn check_permission(
         &self,
-        args: &serde_json::Value,
+        args: &Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
         let args: WriteFileArgs = serde_json::from_value(args.clone())
@@ -148,7 +148,7 @@ impl Tool for WriteFileTool {
         permission_manager.check_permission(&operation).await
     }
 
-    async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
+    async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: WriteFileArgs = serde_json::from_value(args.clone()).ok()?;
         let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
 

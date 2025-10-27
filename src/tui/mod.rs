@@ -23,7 +23,7 @@ use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
-use crate::conversations::MessageSummarizer;
+use crate::conversations::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
@@ -142,6 +142,14 @@ pub async fn run(
 
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
 
+    let context_manager_config = config.get_context_manager_config();
+    let token_accountant = Arc::new(crate::conversations::TokenAccountant::new());
+    let context_manager = Arc::new(ContextManager::new(
+        context_manager_config,
+        Arc::clone(&summarizer),
+        token_accountant,
+    ));
+
     let context = EventLoopContext {
         system: SystemResources {
             backend,
@@ -154,6 +162,7 @@ pub async fn run(
         conversation: ConversationState {
             conversation,
             summarizer,
+            context_manager,
             current_agent_name: default_agent
                 .as_ref()
                 .map(|a| a.name.clone())

@@ -23,3 +23,15 @@ current context.
 #### Status Flaky
 
 after approval rejection status line stucks on processing
+
+#### Large Diffs
+
+currently when there are large diffs in files, the entire file is shown in the diff view. It would be better to
+only show the relevant changes with some context lines around them, similar to how git shows diffs
+
+#### Running Todos
+
+![img.png](img.png)
+
+currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
+CRUDing todos could also be a tool call for the model

@@ -76,6 +76,7 @@ pub enum AgentEvent {
     TokenUsage {
         input_tokens: usize,
         output_tokens: usize,
+        cost: Option<f64>,
     },
 }
 
@@ -183,9 +184,7 @@ impl ConversationHandler {
             });
         }
 
-        // Apply compression if needed (based on actual token usage from accountant)
-        let stats = context_manager.get_token_stats();
-        if context_manager.should_compress(stats.total_tokens) {
+        if context_manager.should_compress() {
             let original_count = conversation.messages.len();
             self.send_event(AgentEvent::ContextCompressionTriggered {
                 original_message_count: original_count,
@@ -223,13 +222,21 @@ impl ConversationHandler {
         response: LlmResponse,
         step: usize,
     ) -> Result<TurnStatus> {
-        // Emit token usage event if available
+        // Record token usage in context manager if available
         if let (Some(input_tokens), Some(output_tokens)) =
             (response.input_tokens, response.output_tokens)
         {
+            if let Some(context_manager) = &self.context_manager {
+                context_manager.record_token_usage(input_tokens, output_tokens);
+            }
+            let cost = self
+                .backend
+                .pricing()
+                .map(|p| p.calculate_cost(input_tokens, output_tokens));
             self.send_event(AgentEvent::TokenUsage {
                 input_tokens,
                 output_tokens,
+                cost,
             });
         }
 

@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Records actual token usage from a backend response
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,99 +24,117 @@ impl TokenUsageRecord {
     }
 }
 
-/// Accumulates actual token usage across a conversation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TokenAccountant {
-    /// Total input tokens accumulated
-    total_input_tokens: usize,
-    /// Total output tokens accumulated
-    total_output_tokens: usize,
-    /// Total tokens accumulated
-    total_tokens: usize,
-    /// Number of API calls recorded
-    call_count: usize,
+    current_input_tokens: Arc<AtomicUsize>,
+    current_output_tokens: Arc<AtomicUsize>,
+    total_input_consumed: Arc<AtomicUsize>,
+    total_output_consumed: Arc<AtomicUsize>,
+    call_count: Arc<AtomicUsize>,
 }
 
 impl TokenAccountant {
     pub fn new() -> Self {
         Self {
-            total_input_tokens: 0,
-            total_output_tokens: 0,
-            total_tokens: 0,
-            call_count: 0,
+            current_input_tokens: Arc::new(AtomicUsize::new(0)),
+            current_output_tokens: Arc::new(AtomicUsize::new(0)),
+            total_input_consumed: Arc::new(AtomicUsize::new(0)),
+            total_output_consumed: Arc::new(AtomicUsize::new(0)),
+            call_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 
-    /// Record actual token usage from backend response
-    pub fn record_usage(&mut self, record: TokenUsageRecord) {
-        self.total_input_tokens += record.input_tokens;
-        self.total_output_tokens += record.output_tokens;
-        self.total_tokens += record.total_tokens;
-        self.call_count += 1;
+    pub fn record_usage(&self, record: TokenUsageRecord) {
+        self.current_input_tokens
+            .store(record.input_tokens, Ordering::Relaxed);
+        self.current_output_tokens
+            .store(record.output_tokens, Ordering::Relaxed);
+        self.total_input_consumed
+            .fetch_add(record.input_tokens, Ordering::Relaxed);
+        self.total_output_consumed
+            .fetch_add(record.output_tokens, Ordering::Relaxed);
+        self.call_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Get total actual tokens across all records
-    pub fn total_tokens(&self) -> usize {
-        self.total_tokens
+    pub fn current_context_tokens(&self) -> usize {
+        self.current_input_tokens.load(Ordering::Relaxed)
+            + self.current_output_tokens.load(Ordering::Relaxed)
     }
 
-    /// Get total input tokens
-    pub fn total_input_tokens(&self) -> usize {
-        self.total_input_tokens
+    pub fn current_input_tokens(&self) -> usize {
+        self.current_input_tokens.load(Ordering::Relaxed)
     }
 
-    /// Get total output tokens
-    pub fn total_output_tokens(&self) -> usize {
-        self.total_output_tokens
+    pub fn current_output_tokens(&self) -> usize {
+        self.current_output_tokens.load(Ordering::Relaxed)
     }
 
-    /// Get average tokens per API call
+    pub fn total_consumed_tokens(&self) -> usize {
+        self.total_input_consumed.load(Ordering::Relaxed)
+            + self.total_output_consumed.load(Ordering::Relaxed)
+    }
+
+    pub fn total_input_consumed(&self) -> usize {
+        self.total_input_consumed.load(Ordering::Relaxed)
+    }
+
+    pub fn total_output_consumed(&self) -> usize {
+        self.total_output_consumed.load(Ordering::Relaxed)
+    }
+
     pub fn average_tokens_per_call(&self) -> usize {
-        if self.call_count == 0 {
+        let call_count = self.call_count.load(Ordering::Relaxed);
+        if call_count == 0 {
             0
         } else {
-            self.total_tokens / self.call_count
+            self.total_consumed_tokens() / call_count
         }
     }
 
-    /// Get statistics summary
     pub fn statistics(&self) -> TokenAccountantStats {
         TokenAccountantStats {
-            total_input_tokens: self.total_input_tokens,
-            total_output_tokens: self.total_output_tokens,
-            total_tokens: self.total_tokens,
+            current_input_tokens: self.current_input_tokens(),
+            current_output_tokens: self.current_output_tokens(),
+            current_context_size: self.current_context_tokens(),
+            total_input_consumed: self.total_input_consumed(),
+            total_output_consumed: self.total_output_consumed(),
+            total_consumed: self.total_consumed_tokens(),
             average_tokens_per_call: self.average_tokens_per_call(),
-            record_count: self.call_count,
+            record_count: self.call_count.load(Ordering::Relaxed),
         }
     }
 
-    /// Clear all records
-    pub fn reset(&mut self) {
-        self.total_input_tokens = 0;
-        self.total_output_tokens = 0;
-        self.total_tokens = 0;
-        self.call_count = 0;
+    pub fn reset(&self) {
+        self.current_input_tokens.store(0, Ordering::Relaxed);
+        self.current_output_tokens.store(0, Ordering::Relaxed);
+        self.total_input_consumed.store(0, Ordering::Relaxed);
+        self.total_output_consumed.store(0, Ordering::Relaxed);
+        self.call_count.store(0, Ordering::Relaxed);
     }
 }
 
-/// Summary of token accounting statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenAccountantStats {
-    pub total_input_tokens: usize,
-    pub total_output_tokens: usize,
-    pub total_tokens: usize,
+    pub current_input_tokens: usize,
+    pub current_output_tokens: usize,
+    pub current_context_size: usize,
+    pub total_input_consumed: usize,
+    pub total_output_consumed: usize,
+    pub total_consumed: usize,
     pub average_tokens_per_call: usize,
     pub record_count: usize,
 }
 
 impl TokenAccountantStats {
-    /// Get human-readable summary
     pub fn summary_string(&self) -> String {
         format!(
-            "Token Usage: {} total ({} in, {} out) | Avg: {}/call | Records: {}",
-            self.total_tokens,
-            self.total_input_tokens,
-            self.total_output_tokens,
+            "Context: {} ({} in, {} out) | Consumed: {} ({} in, {} out) | Avg: {}/call | Calls: {}",
+            self.current_context_size,
+            self.current_input_tokens,
+            self.current_output_tokens,
+            self.total_consumed,
+            self.total_input_consumed,
+            self.total_output_consumed,
             self.average_tokens_per_call,
             self.record_count
         )
@@ -141,18 +161,21 @@ mod tests {
 
     #[test]
     fn test_token_accountant_record_usage() {
-        let mut accountant = TokenAccountant::new();
-        accountant.record_usage(TokenUsageRecord::from_backend(90, 10));
-        accountant.record_usage(TokenUsageRecord::from_backend(95, 5));
+        let accountant = TokenAccountant::new();
+        accountant.record_usage(TokenUsageRecord::from_backend(100, 50));
+        accountant.record_usage(TokenUsageRecord::from_backend(150, 40));
 
-        assert_eq!(accountant.total_tokens(), 200);
-        assert_eq!(accountant.total_input_tokens(), 185);
-        assert_eq!(accountant.total_output_tokens(), 15);
+        assert_eq!(accountant.current_context_tokens(), 190);
+        assert_eq!(accountant.current_input_tokens(), 150);
+        assert_eq!(accountant.current_output_tokens(), 40);
+        assert_eq!(accountant.total_consumed_tokens(), 340);
+        assert_eq!(accountant.total_input_consumed(), 250);
+        assert_eq!(accountant.total_output_consumed(), 90);
     }
 
     #[test]
     fn test_average_tokens_per_call() {
-        let mut accountant = TokenAccountant::new();
+        let accountant = TokenAccountant::new();
         accountant.record_usage(TokenUsageRecord::from_backend(100, 50));
         accountant.record_usage(TokenUsageRecord::from_backend(100, 50));
 
@@ -161,43 +184,50 @@ mod tests {
 
     #[test]
     fn test_statistics() {
-        let mut accountant = TokenAccountant::new();
-        accountant.record_usage(TokenUsageRecord::from_backend(80, 20));
-        accountant.record_usage(TokenUsageRecord::from_backend(90, 10));
+        let accountant = TokenAccountant::new();
+        accountant.record_usage(TokenUsageRecord::from_backend(100, 50));
+        accountant.record_usage(TokenUsageRecord::from_backend(150, 40));
 
         let stats = accountant.statistics();
-        assert_eq!(stats.total_tokens, 200);
-        assert_eq!(stats.total_input_tokens, 170);
-        assert_eq!(stats.total_output_tokens, 30);
-        assert_eq!(stats.average_tokens_per_call, 100);
+        assert_eq!(stats.current_context_size, 190);
+        assert_eq!(stats.current_input_tokens, 150);
+        assert_eq!(stats.current_output_tokens, 40);
+        assert_eq!(stats.total_consumed, 340);
+        assert_eq!(stats.total_input_consumed, 250);
+        assert_eq!(stats.total_output_consumed, 90);
+        assert_eq!(stats.average_tokens_per_call, 170);
         assert_eq!(stats.record_count, 2);
     }
 
     #[test]
     fn test_reset() {
-        let mut accountant = TokenAccountant::new();
+        let accountant = TokenAccountant::new();
         accountant.record_usage(TokenUsageRecord::from_backend(100, 10));
-        assert_eq!(accountant.total_tokens(), 110);
+        assert_eq!(accountant.current_context_tokens(), 110);
+        assert_eq!(accountant.total_consumed_tokens(), 110);
 
         accountant.reset();
-        assert_eq!(accountant.total_tokens(), 0);
+        assert_eq!(accountant.current_context_tokens(), 0);
+        assert_eq!(accountant.total_consumed_tokens(), 0);
         assert_eq!(accountant.statistics().record_count, 0);
     }
 
     #[test]
     fn test_summary_string() {
         let stats = TokenAccountantStats {
-            total_input_tokens: 700,
-            total_output_tokens: 250,
-            total_tokens: 950,
+            current_input_tokens: 200,
+            current_output_tokens: 50,
+            current_context_size: 250,
+            total_input_consumed: 700,
+            total_output_consumed: 250,
+            total_consumed: 950,
             average_tokens_per_call: 95,
             record_count: 10,
         };
 
         let summary = stats.summary_string();
-        assert!(summary.contains("950 total"));
-        assert!(summary.contains("700 in"));
-        assert!(summary.contains("250 out"));
+        assert!(summary.contains("Context: 250"));
+        assert!(summary.contains("Consumed: 950"));
         assert!(summary.contains("95/call"));
     }
 }
