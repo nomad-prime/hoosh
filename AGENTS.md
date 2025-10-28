@@ -4,15 +4,7 @@
 
 ### Comments
 
-- Only use comments when necessary and add them where they provide clarity or context
-- try to avoid redundant comments that state the obvious
-
-e.g.
-BAD: the comment does not provide any value
-/// This function calculates the sum of two numbers
-fn add(a: i32, b: i32) -> i32 {
-a + b
-}
+- DO NOT ADD comments stating the obvious in the code
 
 ### Module Organization
 

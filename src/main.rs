@@ -52,6 +52,8 @@ async fn handle_chat(
 
     let backend: Box<dyn LlmBackend> = create_backend(&backend_name, config)?;
 
+    backend.initialize().await?;
+
     let working_dir = if !add_dirs.is_empty() {
         PathBuf::from(&add_dirs[0])
     } else {
