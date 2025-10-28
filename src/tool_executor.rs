@@ -14,8 +14,10 @@ fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> Res
 
     compiled_schema.validate(args).map_err(|e| {
         let errors: Vec<String> = e.map(|err| err.to_string()).collect();
+        let provided_args = args.to_string();
         anyhow::Error::new(ToolExecutionError::invalid_arguments(
             tool_name,
+            provided_args,
             errors.join("; "),
         ))
     })?;
@@ -102,14 +104,14 @@ impl ToolExecutor {
             }
         };
 
+        // Get the display name from the tool (before validation, so we have it even if validation fails)
+        let display_name = tool.format_call_display(&args);
+
         // Validate arguments against the tool's schema
         let schema = tool.parameter_schema();
         if let Err(e) = validate_against_schema(&args, &schema, tool_name) {
-            return ToolResult::error(tool_call_id, tool_name.clone(), tool_name.clone(), e);
+            return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
         }
-
-        // Get the display name from the tool
-        let display_name = tool.format_call_display(&args);
 
         if let Err(e) = self.check_tool_permissions(tool, &args).await {
             return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);

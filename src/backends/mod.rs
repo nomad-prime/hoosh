@@ -65,6 +65,11 @@ pub trait LlmBackend: Send + Sync {
 
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
+
+    async fn initialize(&self) -> Result<()> {
+        Ok(())
+    }
+
     fn pricing(&self) -> Option<TokenPricing> {
         None
     }

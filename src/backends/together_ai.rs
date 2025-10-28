@@ -6,9 +6,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
@@ -74,12 +72,6 @@ struct ResponseMessage {
 }
 
 #[derive(Debug, Deserialize)]
-struct ModelsResponse {
-    #[serde(default)]
-    data: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Deserialize)]
 struct ModelInfo {
     id: String,
     #[serde(default)]
@@ -88,85 +80,11 @@ struct ModelInfo {
 
 #[derive(Debug, Deserialize)]
 struct ModelPricing {
-    #[serde(default)]
-    input: Option<f64>,
-    #[serde(default)]
-    output: Option<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct PricingCacheEntry {
-    pricing: crate::backends::TokenPricing,
-    cached_at: SystemTime,
-}
-
-impl PricingCacheEntry {
-    fn is_expired(&self, ttl: Duration) -> bool {
-        SystemTime::now()
-            .duration_since(self.cached_at)
-            .map(|age| age > ttl)
-            .unwrap_or(true)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-struct PricingCache {
-    entries: std::collections::HashMap<String, PricingCacheEntry>,
-}
-
-impl PricingCache {
-    fn cache_path() -> PathBuf {
-        let cache_dir = dirs::cache_dir()
-            .or_else(|| dirs::home_dir().map(|h| h.join(".cache")))
-            .unwrap_or_else(|| PathBuf::from("."));
-        cache_dir.join("hoosh").join("together_ai_pricing.json")
-    }
-
-    fn load() -> Self {
-        let path = Self::cache_path();
-        if !path.exists() {
-            return Self::default();
-        }
-
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|content| serde_json::from_str(&content).ok())
-            .unwrap_or_default()
-    }
-
-    fn save(&self) {
-        let path = Self::cache_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        if let Ok(content) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(&path, content);
-        }
-    }
-
-    fn get(&self, model: &str, ttl: Duration) -> Option<crate::backends::TokenPricing> {
-        let entry = self.entries.get(model)?;
-        if entry.is_expired(ttl) {
-            return None;
-        }
-        Some(entry.pricing)
-    }
-
-    fn set(&mut self, model: String, pricing: crate::backends::TokenPricing) {
-        self.entries.insert(
-            model,
-            PricingCacheEntry {
-                pricing,
-                cached_at: SystemTime::now(),
-            },
-        );
-    }
+    input: f64,
+    output: f64,
 }
 
 impl TogetherAiBackend {
-    const PRICING_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-
     pub fn new(config: TogetherAiConfig) -> Result<Self> {
         let mut client_builder = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
@@ -200,7 +118,7 @@ impl TogetherAiBackend {
         })
     }
 
-    async fn fetch_pricing(&self) -> Option<crate::backends::TokenPricing> {
+    async fn fetch_and_cache_pricing(&self) -> Result<()> {
         let url = format!("{}/models", self.config.base_url);
 
         let response = self
@@ -209,18 +127,26 @@ impl TogetherAiBackend {
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .send()
             .await
-            .ok()?;
+            .context("Failed to fetch pricing from Together AI")?;
 
-        let models: ModelsResponse = response.json().await.ok()?;
+        let models: Vec<ModelInfo> = response
+            .json()
+            .await
+            .context("Failed to parse models response")?;
 
-        let model_info = models.data.iter().find(|m| m.id == self.config.model)?;
+        if let Some(model_info) = models.iter().find(|m| m.id == self.config.model)
+            && let Some(pricing_info) = &model_info.pricing
+        {
+            let pricing = crate::backends::TokenPricing {
+                input_per_million: pricing_info.input,
+                output_per_million: pricing_info.output,
+            };
 
-        let pricing = model_info.pricing.as_ref()?;
+            let mut pricing_write = self.pricing.write().await;
+            *pricing_write = Some(pricing);
+        }
 
-        Some(crate::backends::TokenPricing {
-            input_per_million: pricing.input?,
-            output_per_million: pricing.output?,
-        })
+        Ok(())
     }
 
     fn http_error_to_llm_error(status: reqwest::StatusCode, error_text: String) -> LlmError {
@@ -398,7 +324,7 @@ impl TogetherAiBackend {
                 tool_call_id: None,
                 name: None,
             }],
-            max_tokens: Some(4096),
+            max_tokens: Some(8192),
             temperature: Some(0.7),
             tools: None,
             tool_choice: None,
@@ -416,7 +342,7 @@ impl TogetherAiBackend {
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: conversation.get_messages_for_api().clone(),
-            max_tokens: Some(4096),
+            max_tokens: Some(8192),
             temperature: Some(0.7),
             tools: if has_tools { Some(tool_schemas) } else { None },
             tool_choice: if has_tools {
@@ -494,30 +420,14 @@ impl LlmBackend for TogetherAiBackend {
         &self.config.model
     }
 
+    async fn initialize(&self) -> Result<()> {
+        // Fetch pricing at initialization
+        self.fetch_and_cache_pricing().await?;
+        Ok(())
+    }
+
     fn pricing(&self) -> Option<crate::backends::TokenPricing> {
-        let pricing = self.pricing.blocking_read();
-        if pricing.is_some() {
-            return *pricing;
-        }
-        drop(pricing);
-
-        let mut cache = PricingCache::load();
-        if let Some(cached_pricing) = cache.get(&self.config.model, Self::PRICING_TTL) {
-            let mut pricing_write = self.pricing.blocking_write();
-            *pricing_write = Some(cached_pricing);
-            return Some(cached_pricing);
-        }
-
-        let runtime = tokio::runtime::Handle::try_current().ok()?;
-        runtime.block_on(async {
-            let fetched = self.fetch_pricing().await?;
-
-            cache.set(self.config.model.clone(), fetched);
-            cache.save();
-
-            let mut pricing_write = self.pricing.write().await;
-            *pricing_write = Some(fetched);
-            Some(fetched)
-        })
+        // Simple read from memory
+        self.pricing.try_read().ok().and_then(|guard| *guard)
     }
 }

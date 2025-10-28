@@ -494,17 +494,15 @@ impl LlmBackend for AnthropicBackend {
 
     fn pricing(&self) -> Option<crate::backends::TokenPricing> {
         let pricing = match self.config.model.as_str() {
-            "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-20240620" => {
-                crate::backends::TokenPricing {
-                    input_per_million: 3.0,
-                    output_per_million: 15.0,
-                }
-            }
-            "claude-3-5-haiku-20241022" => crate::backends::TokenPricing {
+            "claude-sonnet-4-5" => crate::backends::TokenPricing {
+                input_per_million: 3.0,
+                output_per_million: 15.0,
+            },
+            "claude-haiku-4-5" => crate::backends::TokenPricing {
                 input_per_million: 0.8,
                 output_per_million: 4.0,
             },
-            "claude-3-opus-20240229" => crate::backends::TokenPricing {
+            "claude-opus-4-1" => crate::backends::TokenPricing {
                 input_per_million: 15.0,
                 output_per_million: 75.0,
             },

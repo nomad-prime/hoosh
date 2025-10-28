@@ -8,7 +8,11 @@ pub enum ToolExecutionError {
     /// Tool is unknown or not available
     UnknownTool { name: String },
     /// Tool arguments don't match the schema
-    InvalidArguments { tool_name: String, details: String },
+    InvalidArguments {
+        tool_name: String,
+        provided_args: String,
+        details: String,
+    },
     /// Permission denied for the operation
     PermissionDenied { operation: String },
     /// Generic execution error
@@ -26,9 +30,14 @@ impl ToolExecutionError {
         Self::UnknownTool { name: name.into() }
     }
 
-    pub fn invalid_arguments(tool_name: impl Into<String>, details: impl Into<String>) -> Self {
+    pub fn invalid_arguments(
+        tool_name: impl Into<String>,
+        provided_args: impl Into<String>,
+        details: impl Into<String>,
+    ) -> Self {
         Self::InvalidArguments {
             tool_name: tool_name.into(),
+            provided_args: provided_args.into(),
             details: details.into(),
         }
     }
@@ -66,11 +75,15 @@ impl fmt::Display for ToolExecutionError {
             ToolExecutionError::UnknownTool { name } => {
                 write!(f, "Unknown tool: {}", name)
             }
-            ToolExecutionError::InvalidArguments { tool_name, details } => {
+            ToolExecutionError::InvalidArguments {
+                tool_name,
+                provided_args,
+                details,
+            } => {
                 write!(
                     f,
-                    "Tool '{}' arguments do not match schema: {}",
-                    tool_name, details
+                    "Tool '{}' arguments '{}' do not match schema: {}",
+                    tool_name, provided_args, details
                 )
             }
             ToolExecutionError::PermissionDenied { operation } => {
