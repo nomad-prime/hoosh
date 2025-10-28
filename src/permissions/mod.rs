@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod storage;
 
 use anyhow::{Context, Result};
 use cache::{OperationKind, PermissionCacheKey};
@@ -7,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+
 
 /// Permission level for different operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +141,10 @@ pub struct PermissionManager {
     request_counter: Arc<AtomicU64>,
     /// Trusted project directory (session-only)
     trusted_project: Arc<Mutex<Option<PathBuf>>>,
+    /// Project root for persistent storage
+    project_root: Arc<Mutex<Option<PathBuf>>>,
+    /// Persistent permissions file
+    permissions_file: Arc<Mutex<storage::PermissionsFile>>,
 }
 
 impl PermissionManager {
@@ -154,6 +160,89 @@ impl PermissionManager {
             response_receiver: Arc::new(Mutex::new(response_receiver)),
             request_counter: Arc::new(AtomicU64::new(0)),
             trusted_project: Arc::new(Mutex::new(None)),
+            project_root: Arc::new(Mutex::new(None)),
+            permissions_file: Arc::new(Mutex::new(storage::PermissionsFile::default())),
+        }
+    }
+
+    /// Initialize with project root and load permissions from disk
+    pub fn with_project_root(self, project_root: PathBuf) -> Self {
+        // Load permissions file from disk if it exists
+        let permissions = storage::PermissionsFile::load_permissions_safe(&project_root);
+
+        // If project is marked as trusted, set trusted_project
+        if permissions.trusted {
+            if let Ok(mut trusted) = self.trusted_project.lock() {
+                *trusted = Some(project_root.clone());
+            }
+        }
+
+        // Store project root and permissions file
+        if let Ok(mut root) = self.project_root.lock() {
+            *root = Some(project_root);
+        }
+        if let Ok(mut perms) = self.permissions_file.lock() {
+            *perms = permissions;
+        }
+
+        self
+    }
+
+    /// Save current permissions to disk
+    pub fn save_permissions(&self) -> Result<()> {
+        let project_root = self.project_root.lock()
+            .ok()
+            .and_then(|r| r.clone())
+            .context("No project root set")?;
+
+        let permissions_file = self.permissions_file.lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
+
+        permissions_file.save_permissions(&project_root)
+    }
+
+    /// Add a permission rule and save to disk
+    pub fn add_permission_rule(&self, operation: &OperationType, scope: &PermissionScope, allowed: bool) -> Result<()> {
+        let mut permissions_file = self.permissions_file.lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
+
+        let rule = self.create_permission_rule(operation, scope);
+        permissions_file.add_permission(rule, allowed);
+
+        // Update trusted flag if ProjectWide scope
+        if let PermissionScope::ProjectWide(_) = scope {
+            permissions_file.trusted = allowed;
+        }
+
+        drop(permissions_file);
+        self.save_permissions()
+    }
+
+    /// Create a permission rule from operation and scope
+    fn create_permission_rule(&self, operation: &OperationType, scope: &PermissionScope) -> storage::PermissionRule {
+        let operation_str = operation.operation_kind().to_string();
+
+        match scope {
+            PermissionScope::Specific(target) => {
+                storage::PermissionRule::file_rule(operation_str, target.clone())
+            }
+            PermissionScope::Directory(dir) => {
+                // Create a glob pattern for the directory
+                let pattern = format!("{}/**", dir.trim_end_matches('/'));
+                storage::PermissionRule::file_rule(operation_str, pattern)
+            }
+            PermissionScope::Global => {
+                // For bash operations, use a wildcard pattern
+                if operation.operation_kind() == "bash" {
+                    storage::PermissionRule::bash_rule("*")
+                } else {
+                    storage::PermissionRule::file_rule(operation_str, "**")
+                }
+            }
+            PermissionScope::ProjectWide(_) => {
+                // Project-wide is handled by the trusted flag
+                storage::PermissionRule::file_rule(operation_str, "**")
+            }
         }
     }
 
@@ -316,43 +405,46 @@ impl PermissionManager {
             ));
     }
 
-    /// Check if an operation is allowed
     pub async fn check_permission(&self, operation: &OperationType) -> Result<bool> {
-        // If permissions are skipped, allow everything
         if self.skip_permissions {
             return Ok(true);
         }
 
-        // Safe operations are always allowed
         if operation.is_safe_operation() {
             return Ok(true);
         }
 
-        // Check if operation is within a trusted project (highest priority)
         if let Some(trusted_path) = self.get_trusted_project()
             && PermissionCacheKey::is_within_project_static(operation.target(), &trusted_path)
         {
             return Ok(true);
         }
 
-        // Check cache (hierarchical: project-wide -> specific -> directory -> global)
         if let Some(cached_decision) = self.check_cache(operation) {
             return Ok(cached_decision);
         }
 
-        // Handle based on default permission level
+        if let Some(persistent_decision) = self.check_persistent_permissions(operation) {
+            return Ok(persistent_decision);
+        }
+
         let (allowed, scope) = match self.default_permission {
             PermissionLevel::Allow => (true, None),
             PermissionLevel::Deny => (false, None),
             PermissionLevel::Ask => self.ask_user_permission(operation).await?,
         };
 
-        // Cache the decision if user chose to remember it
-        if let Some(scope) = scope {
-            self.cache_decision(operation, scope, allowed);
+        if let Some(ref scope) = scope {
+            self.cache_decision(operation, scope.clone(), allowed);
+            let _ = self.add_permission_rule(operation, scope, allowed);
         }
 
         Ok(allowed)
+    }
+
+    fn check_persistent_permissions(&self, operation: &OperationType) -> Option<bool> {
+        let permissions_file = self.permissions_file.lock().ok()?;
+        permissions_file.check_permission(operation)
     }
 
     /// Ask user for permission interactively via TUI event system
@@ -790,15 +882,11 @@ mod tests {
 
         let manager = create_test_manager().with_skip_permissions(false);
 
-        // Create a temporary directory to use as project root
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().to_path_buf();
 
-        // Set trusted project
         manager.set_trusted_project(project_path.clone());
 
-        // Test that operations on NON-EXISTENT files within the project are auto-approved
-        // This is the critical test case - files that don't exist yet
         let new_file_path = project_path.join("new_file_that_does_not_exist.txt");
         let operation = OperationType::WriteFile(new_file_path.to_string_lossy().to_string());
 
@@ -807,7 +895,6 @@ mod tests {
             "New file in trusted project should be auto-approved even if it doesn't exist yet"
         );
 
-        // Test nested new file
         let nested_new_file = project_path.join("subdir/nested_new_file.txt");
         let operation_nested =
             OperationType::WriteFile(nested_new_file.to_string_lossy().to_string());
@@ -816,5 +903,33 @@ mod tests {
             manager.check_permission(&operation_nested).await.unwrap(),
             "New nested file in trusted project should be auto-approved"
         );
+    }
+
+    #[tokio::test]
+    async fn test_permission_persistence() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().to_path_buf();
+
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let manager = PermissionManager::new(event_tx, response_rx)
+            .with_project_root(project_path.clone());
+
+        let test_file = project_path.join("test.txt");
+        std::fs::write(&test_file, "test").unwrap();
+
+        let operation = OperationType::WriteFile(test_file.to_string_lossy().to_string());
+        let scope = PermissionScope::Specific(test_file.to_string_lossy().to_string());
+
+        let result = manager.add_permission_rule(&operation, &scope, true);
+        assert!(result.is_ok(), "Should save permission successfully");
+
+        let permissions_file_path = storage::PermissionsFile::get_permissions_path(&project_path);
+        assert!(permissions_file_path.exists(), "Permissions file should be created");
+
+        let loaded = storage::PermissionsFile::load_permissions(&project_path).unwrap();
+        assert!(!loaded.allow.is_empty(), "Should have at least one allow rule");
     }
 }

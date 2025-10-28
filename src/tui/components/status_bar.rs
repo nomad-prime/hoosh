@@ -1,6 +1,6 @@
 use crate::tui::app::AppState;
+use crate::tui::component::Component;
 use crate::tui::events::AgentState;
-use crate::tui::layout_builder::WidgetRenderer;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -9,9 +9,9 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 
-pub struct StatusBarRenderer;
+pub struct StatusBar;
 
-impl WidgetRenderer for StatusBarRenderer {
+impl Component for StatusBar {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {

@@ -3,13 +3,17 @@ mod app;
 mod app_layout;
 mod app_layout_builder;
 mod clipboard;
+mod component;
 pub mod components;
 mod event_loop;
 mod events;
 mod handler_result;
 pub mod handlers;
 mod header;
+mod init;
+mod initial_permission_layout;
 mod input_handler;
+mod layout;
 mod layout_builder;
 mod message_renderer;
 mod terminal;
@@ -21,7 +25,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
 use crate::conversations::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
@@ -34,8 +38,8 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
-    run_event_loop,
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
 };
 
 pub async fn run(
@@ -77,13 +81,34 @@ pub async fn run(
     let agent_manager = Arc::new(agent_manager);
     let default_agent = agent_manager.get_default_agent();
 
-    // Initialize permission manager with proper channels
+    use crate::permissions::storage::PermissionsFile;
+    let permissions_path = PermissionsFile::get_permissions_path(&working_dir);
+    let should_show_initial_dialog = !skip_permissions && !permissions_path.exists();
+
+    let terminal = if should_show_initial_dialog {
+        use crate::tui::app::InitialPermissionChoice;
+        let (terminal, choice) = init::run(terminal, working_dir.clone()).await?;
+
+        if choice.is_none() || matches!(choice, Some(InitialPermissionChoice::Deny)) {
+            restore_terminal(terminal)?;
+            return Ok(());
+        }
+
+        // Clear the terminal to remove any remnants from the permission dialog
+        let mut terminal = terminal;
+        terminal.clear()?;
+        terminal
+    } else {
+        terminal
+    };
+
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
     let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let permission_manager = PermissionManager::new(event_tx.clone(), permission_response_rx)
-        .with_skip_permissions(skip_permissions);
+        .with_skip_permissions(skip_permissions)
+        .with_project_root(working_dir.clone());
 
     // Wrap backend in Arc for shared ownership
     let backend: Arc<dyn LlmBackend> = Arc::from(backend);

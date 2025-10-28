@@ -41,32 +41,26 @@ impl OperationKind {
     }
 }
 
-/// Structured cache key instead of string-based keys
-/// Provides type-safe permission caching with clear hierarchy
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PermissionCacheKey {
-    /// Project-wide permission: applies to all operations in a project
     ProjectWide {
         operation: OperationKind,
         project_root: PathBuf,
     },
-    /// Specific file/target permission
     Specific {
         operation: OperationKind,
         target: PathBuf,
     },
-    /// Directory-level permission: applies to all files in directory
     Directory {
         operation: OperationKind,
         directory: PathBuf,
     },
-    /// Global permission: applies to all targets for this operation type
-    Global { operation: OperationKind },
+    Global {
+        operation: OperationKind,
+    },
 }
 
 impl PermissionCacheKey {
-    /// Get the precedence order (higher number = higher precedence)
-    /// Used to determine which cached permission takes priority
     pub fn precedence(&self) -> u8 {
         match self {
             Self::ProjectWide { .. } => 4,
@@ -76,7 +70,6 @@ impl PermissionCacheKey {
         }
     }
 
-    /// Check if this key matches the given operation
     pub fn matches(&self, operation_kind: OperationKind, target: &str) -> bool {
         match self {
             Self::ProjectWide {

@@ -1,6 +1,6 @@
 use crate::permissions::OperationType;
 use crate::tui::app::{AppState, PermissionOption};
-use crate::tui::layout_builder::WidgetRenderer;
+use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -9,9 +9,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-pub struct PermissionDialogRenderer;
+pub struct PermissionDialog;
 
-impl WidgetRenderer for PermissionDialogRenderer {
+impl Component for PermissionDialog {
     type State = AppState;
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {

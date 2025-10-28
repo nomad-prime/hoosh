@@ -1,5 +1,5 @@
 use crate::tui::app::AppState;
-use crate::tui::layout_builder::WidgetRenderer;
+use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -8,9 +8,9 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
 };
 
-pub struct ApprovalDialogRenderer;
+pub struct ApprovalDialog;
 
-impl WidgetRenderer for ApprovalDialogRenderer {
+impl Component for ApprovalDialog {
     type State = AppState;
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
