@@ -67,20 +67,6 @@ impl InputHandler for PermissionHandler {
                 KeyCode::Enter => selected_option.as_ref().map(|opt| match opt {
                     crate::tui::app::PermissionOption::YesOnce => (true, None),
                     crate::tui::app::PermissionOption::No => (false, None),
-                    crate::tui::app::PermissionOption::AlwaysForFile => {
-                        let target = operation.target().to_string();
-                        (
-                            true,
-                            Some(crate::permissions::PermissionScope::Specific(target)),
-                        )
-                    }
-                    crate::tui::app::PermissionOption::AlwaysForDirectory(dir) => (
-                        true,
-                        Some(crate::permissions::PermissionScope::Directory(dir.clone())),
-                    ),
-                    crate::tui::app::PermissionOption::AlwaysForType => {
-                        (true, Some(crate::permissions::PermissionScope::Global))
-                    }
                     crate::tui::app::PermissionOption::TrustProject(project_path) => (
                         true,
                         Some(crate::permissions::PermissionScope::ProjectWide(
@@ -97,24 +83,7 @@ impl InputHandler for PermissionHandler {
                         Some(crate::permissions::PermissionScope::Specific(target)),
                     ))
                 }
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    if let Some(dir) = operation.parent_directory() {
-                        Some((
-                            true,
-                            Some(crate::permissions::PermissionScope::Directory(dir)),
-                        ))
-                    } else {
-                        let target = operation.target().to_string();
-                        Some((
-                            true,
-                            Some(crate::permissions::PermissionScope::Specific(target)),
-                        ))
-                    }
-                }
-                KeyCode::Char('A') => {
-                    Some((true, Some(crate::permissions::PermissionScope::Global)))
-                }
-                KeyCode::Char('T') => {
+                KeyCode::Char('t') | KeyCode::Char('T') => {
                     if let Ok(current_dir) = std::env::current_dir() {
                         Some((
                             true,

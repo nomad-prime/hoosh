@@ -68,7 +68,7 @@ impl InitialPermissionDialogState {
 #[derive(Clone, Debug)]
 pub enum InitialPermissionChoice {
     ReadOnly,
-    TrustProject,
+    EnableWriteEdit,
     Deny,
 }
 
@@ -76,9 +76,6 @@ pub enum InitialPermissionChoice {
 pub enum PermissionOption {
     YesOnce,
     No,
-    AlwaysForFile,
-    AlwaysForDirectory(String),
-    AlwaysForType,
     TrustProject(std::path::PathBuf),
 }
 
@@ -240,23 +237,15 @@ impl AppState {
     }
 
     pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
-        let mut options = vec![
-            PermissionOption::YesOnce,
-            PermissionOption::No,
-            PermissionOption::AlwaysForFile,
-        ];
-
-        if let Some(dir) = operation.parent_directory() {
-            options.push(PermissionOption::AlwaysForDirectory(dir));
-        }
-
-        options.push(PermissionOption::AlwaysForType);
-
-        if operation.operation_kind() != "bash"
-            && let Ok(current_dir) = std::env::current_dir()
-        {
-            options.push(PermissionOption::TrustProject(current_dir));
-        }
+        let options = if let Ok(current_dir) = std::env::current_dir() {
+            vec![
+                PermissionOption::YesOnce,
+                PermissionOption::TrustProject(current_dir),
+                PermissionOption::No,
+            ]
+        } else {
+            vec![PermissionOption::YesOnce, PermissionOption::No]
+        };
 
         self.permission_dialog_state = Some(PermissionDialogState {
             operation,
@@ -320,7 +309,7 @@ impl AppState {
             .as_ref()
             .map(|dialog| match dialog.selected_index {
                 0 => InitialPermissionChoice::ReadOnly,
-                1 => InitialPermissionChoice::TrustProject,
+                1 => InitialPermissionChoice::EnableWriteEdit,
                 2 => InitialPermissionChoice::Deny,
                 _ => InitialPermissionChoice::ReadOnly,
             })

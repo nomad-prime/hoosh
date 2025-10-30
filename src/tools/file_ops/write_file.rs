@@ -1,11 +1,11 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -147,12 +147,26 @@ impl Tool for WriteFileTool {
 
         let is_destructive = file_path.exists();
 
+        let project_path = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "this project".to_string());
+
         Ok(OperationType::new(
-            "write file",
-            normalized_path,
+            "write_file",
+            normalized_path.clone(),
             false,
             is_destructive,
             parent_dir,
+            OperationDisplay {
+                name: "Write".to_string(),
+                approval_title: format!("Write({})", args.path),
+                approval_prompt: format!("Write to file: {}", args.path),
+                persistent_approval: format!(
+                    "don't ask me again for writing files in {}",
+                    project_path
+                ),
+            },
         ))
     }
 
@@ -182,6 +196,10 @@ impl Tool for WriteFileTool {
 
     fn read_only(&self) -> bool {
         false
+    }
+
+    fn writes_safe(&self) -> bool {
+        true
     }
 }
 

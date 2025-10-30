@@ -16,9 +16,15 @@ pub enum PermissionLevel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionScope {
     Specific(String),
-    Directory(String),
-    Global,
     ProjectWide(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationDisplay {
+    pub name: String,
+    pub approval_title: String,
+    pub approval_prompt: String,
+    pub persistent_approval: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +34,7 @@ pub struct OperationType {
     is_safe: bool,
     is_destructive: bool,
     parent_dir: Option<String>,
+    display: OperationDisplay,
 }
 
 impl OperationType {
@@ -37,13 +44,16 @@ impl OperationType {
         is_safe: bool,
         is_destructive: bool,
         parent_dir: Option<String>,
+        display: OperationDisplay,
     ) -> Self {
+        let operation = operation.into();
         Self {
-            operation: operation.into(),
+            operation,
             target: target.into(),
             is_safe,
             is_destructive,
             parent_dir,
+            display,
         }
     }
 
@@ -51,7 +61,7 @@ impl OperationType {
         format!("{} '{}'", self.operation, self.target)
     }
 
-    pub fn operation_kind(&self) -> &str {
+    pub fn kind(&self) -> &str {
         &self.operation
     }
 
@@ -69,6 +79,10 @@ impl OperationType {
 
     pub fn is_destructive(&self) -> bool {
         self.is_destructive
+    }
+
+    pub fn display(&self) -> &OperationDisplay {
+        &self.display
     }
 }
 
@@ -149,20 +163,22 @@ impl PermissionManager {
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
         if let PermissionScope::ProjectWide(_) = scope {
-            permissions_file
-                .add_permission(storage::PermissionRule::ops_rule("read_file", "*"), allowed);
-            permissions_file.add_permission(
-                storage::PermissionRule::ops_rule("write_file", "*"),
-                allowed,
-            );
-            permissions_file
-                .add_permission(storage::PermissionRule::ops_rule("edit_file", "*"), allowed);
-            permissions_file.add_permission(
-                storage::PermissionRule::ops_rule("list_directory", "*"),
-                allowed,
-            );
-            permissions_file
-                .add_permission(storage::PermissionRule::ops_rule("bash", "*"), allowed);
+            match operation.kind() {
+                "bash" => {
+                    permissions_file
+                        .add_permission(storage::PermissionRule::ops_rule("bash", "*"), allowed);
+                }
+                "write" | "edit" => {
+                    permissions_file
+                        .add_permission(storage::PermissionRule::ops_rule("write", "*"), allowed);
+                    permissions_file
+                        .add_permission(storage::PermissionRule::ops_rule("edit", "*"), allowed);
+                }
+                _ => {
+                    let rule = self.create_permission_rule(operation, scope);
+                    permissions_file.add_permission(rule, allowed);
+                }
+            }
         } else {
             let rule = self.create_permission_rule(operation, scope);
             permissions_file.add_permission(rule, allowed);
@@ -177,17 +193,12 @@ impl PermissionManager {
         operation: &OperationType,
         scope: &PermissionScope,
     ) -> storage::PermissionRule {
-        let operation_str = operation.operation_kind();
+        let operation_str = operation.kind();
 
         match scope {
             PermissionScope::Specific(target) => {
                 storage::PermissionRule::ops_rule(operation_str, target.clone())
             }
-            PermissionScope::Directory(dir) => {
-                let pattern = format!("{}/**", dir.trim_end_matches('/'));
-                storage::PermissionRule::ops_rule(operation_str, pattern)
-            }
-            PermissionScope::Global => storage::PermissionRule::ops_rule("bash", "*"),
             PermissionScope::ProjectWide(_) => {
                 storage::PermissionRule::ops_rule(operation_str, "*")
             }
@@ -367,20 +378,84 @@ mod tests {
 
     #[test]
     fn test_operation_safety_classification() {
-        let read_op =
-            OperationType::new("read_file", "test.txt", true, false, Some("./".to_string()));
+        let read_op = OperationType::new(
+            "read_file",
+            "test.txt",
+            true,
+            false,
+            Some("./".to_string()),
+            OperationDisplay {
+                name: "Read".to_string(),
+                approval_title: "Read File".to_string(),
+                approval_prompt: "Read File Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
         let write_op = OperationType::new(
             "write_file",
             "test.txt",
             false,
             true,
             Some("./".to_string()),
+            OperationDisplay {
+                name: "Write".to_string(),
+                approval_title: "Write File".to_string(),
+                approval_prompt: "Write File Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
         );
-        let edit_op =
-            OperationType::new("edit_file", "test.txt", false, true, Some("./".to_string()));
-        let list_op = OperationType::new("list_directory", "./", true, false, None);
-        let bash_safe = OperationType::new("bash", "echo hello", false, false, None);
-        let bash_dangerous = OperationType::new("bash", "rm -rf /", false, true, None);
+        let edit_op = OperationType::new(
+            "edit_file",
+            "test.txt",
+            false,
+            true,
+            Some("./".to_string()),
+            OperationDisplay {
+                name: "Edit".to_string(),
+                approval_title: "Edit File".to_string(),
+                approval_prompt: "Edit File Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
+        let list_op = OperationType::new(
+            "list_directory",
+            "./",
+            true,
+            false,
+            None,
+            OperationDisplay {
+                name: "List".to_string(),
+                approval_title: "List Directory".to_string(),
+                approval_prompt: "List Directory Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
+        let bash_safe = OperationType::new(
+            "bash",
+            "echo hello",
+            false,
+            false,
+            None,
+            OperationDisplay {
+                name: "Bash".to_string(),
+                approval_title: "Bash Command".to_string(),
+                approval_prompt: "Bash Command Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
+        let bash_dangerous = OperationType::new(
+            "bash",
+            "rm -rf /",
+            false,
+            true,
+            None,
+            OperationDisplay {
+                name: "Bash".to_string(),
+                approval_title: "Bash Command".to_string(),
+                approval_prompt: "Bash Command Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
 
         assert!(read_op.is_safe_operation());
         assert!(list_op.is_safe_operation());
@@ -402,6 +477,12 @@ mod tests {
             false,
             true,
             Some("./".to_string()),
+            OperationDisplay {
+                name: "Write".to_string(),
+                approval_title: "Write File".to_string(),
+                approval_prompt: "Write File Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
         );
 
         let result = manager.check_permission(&operation).await.unwrap();
@@ -411,9 +492,32 @@ mod tests {
     #[tokio::test]
     async fn test_permission_manager_safe_operations() {
         let manager = create_test_manager();
-        let read_op =
-            OperationType::new("read_file", "test.txt", true, false, Some("./".to_string()));
-        let list_op = OperationType::new("list_directory", "./", true, false, None);
+        let read_op = OperationType::new(
+            "read_file",
+            "test.txt",
+            true,
+            false,
+            Some("./".to_string()),
+            OperationDisplay {
+                name: "Read".to_string(),
+                approval_title: "Read File".to_string(),
+                approval_prompt: "Read File Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
+        let list_op = OperationType::new(
+            "list_directory",
+            "./",
+            true,
+            false,
+            None,
+            OperationDisplay {
+                name: "List".to_string(),
+                approval_title: "List Directory".to_string(),
+                approval_prompt: "List Directory Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
+        );
 
         assert!(manager.check_permission(&read_op).await.unwrap());
         assert!(manager.check_permission(&list_op).await.unwrap());
@@ -422,17 +526,71 @@ mod tests {
     #[test]
     fn test_operation_description() {
         let ops = vec![
-            OperationType::new("read_file", "file.txt", true, false, Some(".".to_string())),
-            OperationType::new("write_file", "file.txt", false, true, Some(".".to_string())),
-            OperationType::new("edit_file", "new.txt", false, true, Some(".".to_string())),
+            OperationType::new(
+                "read_file",
+                "file.txt",
+                true,
+                false,
+                Some(".".to_string()),
+                OperationDisplay {
+                    name: "Read".to_string(),
+                    approval_title: "Read File".to_string(),
+                    approval_prompt: "Read File Operation".to_string(),
+                    persistent_approval: "Don't ask again".to_string(),
+                },
+            ),
+            OperationType::new(
+                "write_file",
+                "file.txt",
+                false,
+                true,
+                Some(".".to_string()),
+                OperationDisplay {
+                    name: "Write".to_string(),
+                    approval_title: "Write File".to_string(),
+                    approval_prompt: "Write File Operation".to_string(),
+                    persistent_approval: "Don't ask again".to_string(),
+                },
+            ),
+            OperationType::new(
+                "edit_file",
+                "new.txt",
+                false,
+                true,
+                Some(".".to_string()),
+                OperationDisplay {
+                    name: "Edit".to_string(),
+                    approval_title: "Edit File".to_string(),
+                    approval_prompt: "Edit File Operation".to_string(),
+                    persistent_approval: "Don't ask again".to_string(),
+                },
+            ),
             OperationType::new(
                 "list_directory",
                 "/home",
                 true,
                 false,
                 Some("/".to_string()),
+                OperationDisplay {
+                    name: "List".to_string(),
+                    approval_title: "List Directory".to_string(),
+                    approval_prompt: "List Directory Operation".to_string(),
+                    persistent_approval: "Don't ask again".to_string(),
+                },
             ),
-            OperationType::new("bash", "ls -la", false, false, None),
+            OperationType::new(
+                "bash",
+                "ls -la",
+                false,
+                false,
+                None,
+                OperationDisplay {
+                    name: "Bash".to_string(),
+                    approval_title: "Bash Command".to_string(),
+                    approval_prompt: "Bash Command Operation".to_string(),
+                    persistent_approval: "Don't ask again".to_string(),
+                },
+            ),
         ];
 
         for op in ops {
@@ -466,6 +624,12 @@ mod tests {
                 .parent()
                 .and_then(|p| p.to_str())
                 .map(|s| s.to_string()),
+            OperationDisplay {
+                name: "Write".to_string(),
+                approval_title: "Write File".to_string(),
+                approval_prompt: "Write File Operation".to_string(),
+                persistent_approval: "Don't ask again".to_string(),
+            },
         );
         let scope = PermissionScope::Specific(test_file.to_string_lossy().to_string());
 

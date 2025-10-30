@@ -15,23 +15,27 @@ impl Component for InitialPermissionDialog {
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
         if let Some(dialog_state) = &state.initial_permission_dialog_state {
-            let mut lines = vec![];
+            let mut lines = vec![
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("Project: ", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::raw(dialog_state.project_path.display().to_string()),
+                ]),
+                Line::from(""),
+                Line::from("Choose initial permission level:"),
+                Line::from(""),
+            ];
 
-            lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("Project: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(dialog_state.project_path.display().to_string()),
-            ]));
-            lines.push(Line::from(""));
-            lines.push(Line::from("Choose initial permission level:"));
-            lines.push(Line::from(""));
-
-            let options = vec![
-                ("1", "Read-Only Access", "Grant read permissions only"),
+            let options = [
+                (
+                    "1",
+                    "Read Only",
+                    "For exploring code base (no write/edit or bash tools)",
+                ),
                 (
                     "2",
-                    "Trust Project",
-                    "Grant all permissions (use with caution!)",
+                    "Enable Write/Edit",
+                    "All write/edit will be allowed for this project",
                 ),
                 ("3", "Deny", "Exit without granting permissions"),
             ];
@@ -63,22 +67,6 @@ impl Component for InitialPermissionDialog {
             }
 
             lines.push(Line::from(""));
-
-            if dialog_state.selected_index == 1 {
-                lines.push(Line::from(Span::styled(
-                    "⚠️  Warning: Trusting a project grants permission for all file operations,",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )));
-                lines.push(Line::from(Span::styled(
-                    "   bash commands, and network access. Only trust projects you control.",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )));
-                lines.push(Line::from(""));
-            }
 
             lines.push(Line::from(Span::styled(
                 "↑/↓ navigate, Enter/key to choose, Esc cancel",

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::permissions::{OperationType, PermissionManager};
@@ -69,6 +69,8 @@ pub trait Tool: Send + Sync {
     }
 
     fn read_only(&self) -> bool;
+
+    fn writes_safe(&self) -> bool;
 }
 
 pub mod bash;
@@ -177,6 +179,7 @@ impl Default for ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permissions::OperationDisplay;
     struct MockTool {
         name: &'static str,
         description: &'static str,
@@ -222,6 +225,12 @@ mod tests {
                 true,
                 false,
                 None,
+                OperationDisplay {
+                    name: "mock".to_string(),
+                    approval_title: "Mock Approval".to_string(),
+                    approval_prompt: "Mock approval prompt".to_string(),
+                    persistent_approval: "mock persistent approval".to_string(),
+                },
             ))
         }
 
@@ -234,6 +243,10 @@ mod tests {
         }
 
         fn read_only(&self) -> bool {
+            true
+        }
+
+        fn writes_safe(&self) -> bool {
             true
         }
     }

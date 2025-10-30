@@ -8,7 +8,7 @@ use crate::tui::layout::Layout;
 use crate::tui::terminal::{resize_terminal, HooshTerminal};
 use anyhow::Result;
 use crossterm::event;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::time::Duration;
 
@@ -66,26 +66,31 @@ async fn run_dialog_loop(
     }
 }
 
-fn save_permission_choice(choice: &InitialPermissionChoice, project_root: &PathBuf) -> Result<()> {
+fn save_permission_choice(choice: &InitialPermissionChoice, project_root: &Path) -> Result<()> {
     let mut perms_file = PermissionsFile::default();
 
-    let registry =
-        ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(project_root.clone())));
+    let registry = ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(
+        project_root.to_path_buf(),
+    )));
 
     match choice {
         InitialPermissionChoice::ReadOnly => {
             for (tool_name, _) in registry.list_tools() {
-                if let Some(tool) = registry.get_tool(tool_name) {
-                    if tool.read_only() {
-                        perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
-                    }
+                if let Some(tool) = registry.get_tool(tool_name)
+                    && tool.read_only()
+                {
+                    perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
                 }
             }
             perms_file.save_permissions(project_root)?;
         }
-        InitialPermissionChoice::TrustProject => {
+        InitialPermissionChoice::EnableWriteEdit => {
             for (tool_name, _) in registry.list_tools() {
-                perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+                if let Some(tool) = registry.get_tool(tool_name)
+                    && tool.writes_safe()
+                {
+                    perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+                }
             }
             perms_file.save_permissions(project_root)?;
         }

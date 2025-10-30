@@ -1,10 +1,10 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -228,12 +228,26 @@ impl Tool for ListDirectoryTool {
             .and_then(|p| p.to_str())
             .map(|s| s.to_string());
 
+        let project_path = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "this project".to_string());
+
         Ok(OperationType::new(
-            "list directory",
-            normalized_path,
+            "list_directory",
+            normalized_path.clone(),
             true,
             false,
             parent_dir,
+            OperationDisplay {
+                name: "List".to_string(),
+                approval_title: format!("List directory {}", args.path),
+                approval_prompt: format!("Can I list the contents of directory {}", args.path),
+                persistent_approval: format!(
+                    "don't ask me again for listing directories in {}",
+                    project_path
+                ),
+            },
         ))
     }
 
@@ -247,6 +261,10 @@ impl Tool for ListDirectoryTool {
     }
 
     fn read_only(&self) -> bool {
+        true
+    }
+
+    fn writes_safe(&self) -> bool {
         true
     }
 }

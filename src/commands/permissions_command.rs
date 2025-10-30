@@ -38,7 +38,7 @@ impl Command for PermissionsCommand {
                 // Check if there's a permissions file loaded
                 let perms_info = permission_manager.get_permissions_info();
                 if perms_info.allow_count > 0 || perms_info.deny_count > 0 {
-                    output.push_str(&format!("✓ Permissions loaded from storage\n"));
+                    output.push_str("✓ Permissions loaded from storage\n");
                     output.push_str(&format!("  Allow rules: {}\n", perms_info.allow_count));
                     output.push_str(&format!("  Deny rules: {}\n", perms_info.deny_count));
                 } else {

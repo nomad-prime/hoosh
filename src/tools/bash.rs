@@ -3,7 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -354,18 +354,32 @@ impl Tool for BashTool {
         let command = self.sanitize_command(&args.command);
         let is_destructive = self.is_dangerous_command(&command);
 
+        let project_path = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "this project".to_string());
+
         Ok(OperationType::new(
             "bash",
-            args.command,
+            args.command.clone(),
             false,
             is_destructive,
             None,
+            crate::permissions::OperationDisplay {
+                name: "Bash Command".to_string(),
+                approval_title: "Run Bash Command".to_string(),
+                approval_prompt: format!("Can I run this bash command: `{}`?", args.command),
+                persistent_approval: format!(
+                    "don't ask me again for running bash commands in {}",
+                    project_path
+                ),
+            },
         ))
     }
 
     async fn check_permission(
         &self,
-        args: &serde_json::Value,
+        args: &Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
         let operation = self.to_operation_type(args)?;
@@ -373,6 +387,10 @@ impl Tool for BashTool {
     }
 
     fn read_only(&self) -> bool {
+        false
+    }
+
+    fn writes_safe(&self) -> bool {
         false
     }
 }

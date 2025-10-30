@@ -17,16 +17,13 @@ impl Component for PermissionDialog {
         if let Some(dialog_state) = &state.permission_dialog_state {
             let operation = &dialog_state.operation;
 
-            // Build the dialog content
             let mut lines = vec![];
 
-            // Operation description
-            lines.push(Line::from(vec![
-                Span::styled("Operation: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(operation.description()),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                operation.display().approval_prompt.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            )]));
 
-            // Destructive warning
             if operation.is_destructive() {
                 lines.push(Line::from(vec![Span::styled(
                     "⚠️  WARNING: Destructive!",
@@ -36,32 +33,16 @@ impl Component for PermissionDialog {
 
             lines.push(Line::from(""));
 
-            // Render each option with selection highlight
             for (idx, option) in dialog_state.options.iter().enumerate() {
                 let is_selected = idx == dialog_state.selected_index;
                 let (key, label) = match option {
                     PermissionOption::YesOnce => ("y", "Yes, once".to_string()),
                     PermissionOption::No => ("n", "No".to_string()),
-                    PermissionOption::AlwaysForFile => {
-                        let label = if operation.operation_kind() == "bash" {
-                            "Always for this command"
-                        } else {
-                            "Always for this file"
-                        };
-                        ("a", label.to_string())
-                    }
-                    PermissionOption::AlwaysForDirectory(dir) => {
-                        ("d", format!("Always for dir ({})", dir))
-                    }
-                    PermissionOption::AlwaysForType => (
-                        "A",
-                        format!("Always for all {}", operation.operation_kind()),
-                    ),
-                    PermissionOption::TrustProject(project_path) => (
-                        "T",
+                    PermissionOption::TrustProject(_) => (
+                        "t",
                         format!(
-                            "Trust entire project with all commands ({})",
-                            project_path.display()
+                            "yes, and {}",
+                            operation.display().persistent_approval.clone()
                         ),
                     ),
                 };
@@ -94,7 +75,7 @@ impl Component for PermissionDialog {
             };
 
             let block = Block::default()
-                .title(" Permission Required ")
+                .title(operation.display().approval_title.clone())
                 .borders(Borders::ALL)
                 .border_style(border_style)
                 .style(Style::default().bg(Color::Black));

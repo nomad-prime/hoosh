@@ -1,6 +1,6 @@
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Persistent permission file format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,11 +30,11 @@ pub struct PermissionRule {
 }
 
 impl PermissionsFile {
-    pub fn get_permissions_path(project_root: &PathBuf) -> PathBuf {
+    pub fn get_permissions_path(project_root: &Path) -> PathBuf {
         project_root.join(".hoosh").join("permissions.json")
     }
 
-    pub fn save_permissions(&self, project_root: &PathBuf) -> Result<(), anyhow::Error> {
+    pub fn save_permissions(&self, project_root: &Path) -> Result<(), anyhow::Error> {
         let path = Self::get_permissions_path(project_root);
 
         if let Some(parent) = path.parent() {
@@ -46,19 +46,19 @@ impl PermissionsFile {
         Ok(())
     }
 
-    pub fn load_permissions(project_root: &PathBuf) -> Result<PermissionsFile, anyhow::Error> {
+    pub fn load_permissions(project_root: &Path) -> Result<PermissionsFile, anyhow::Error> {
         let path = Self::get_permissions_path(project_root);
         let content = std::fs::read_to_string(&path)?;
         let file: PermissionsFile = serde_json::from_str(&content)?;
         Ok(file)
     }
 
-    pub fn load_permissions_safe(project_root: &PathBuf) -> PermissionsFile {
+    pub fn load_permissions_safe(project_root: &Path) -> PermissionsFile {
         Self::load_permissions(project_root).unwrap_or_default()
     }
 
     pub fn check_permission(&self, operation: &super::OperationType) -> Option<bool> {
-        let operation_str = operation.operation_kind();
+        let operation_str = operation.kind();
         let target = operation.target();
 
         for rule in &self.deny {
@@ -87,12 +87,12 @@ impl PermissionsFile {
     pub fn remove_permission(&mut self, operation: &str, pattern: Option<&str>) {
         self.allow.retain(|rule| {
             !(rule.operation == operation
-                && pattern.map_or(true, |p| rule.pattern.as_deref() == Some(p)))
+                && pattern.is_none_or(|p| rule.pattern.as_deref() == Some(p)))
         });
 
         self.deny.retain(|rule| {
             !(rule.operation == operation
-                && pattern.map_or(true, |p| rule.pattern.as_deref() == Some(p)))
+                && pattern.is_none_or(|p| rule.pattern.as_deref() == Some(p)))
         });
     }
 }
@@ -131,8 +131,7 @@ impl PermissionRule {
         if pattern == "*" {
             return true;
         }
-        if pattern.ends_with('*') {
-            let prefix = &pattern[..pattern.len() - 1];
+        if let Some(prefix) = pattern.strip_suffix('*') {
             command.starts_with(prefix)
         } else {
             pattern == command

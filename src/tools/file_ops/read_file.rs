@@ -1,10 +1,10 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -173,12 +173,26 @@ impl Tool for ReadFileTool {
             .and_then(|p| p.to_str())
             .map(|s| s.to_string());
 
+        let project_path = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "this project".to_string());
+
         Ok(OperationType::new(
-            "read file",
-            normalized_path,
+            "read_file",
+            normalized_path.clone(),
             true,
             false,
             parent_dir,
+            OperationDisplay {
+                name: "Read".to_string(),
+                approval_title: format!("Read {}", args.path),
+                approval_prompt: format!("Can I read {}", args.path),
+                persistent_approval: format!(
+                    "don't ask me again for reading files in {}",
+                    project_path
+                ),
+            },
         ))
     }
 
@@ -192,6 +206,10 @@ impl Tool for ReadFileTool {
     }
 
     fn read_only(&self) -> bool {
+        true
+    }
+
+    fn writes_safe(&self) -> bool {
         true
     }
 }
@@ -216,7 +234,7 @@ mod tests {
         fs::write(&test_file, content).await.unwrap();
 
         let tool = ReadFileTool::with_working_directory(temp_dir.path().to_path_buf());
-        let args = serde_json::json!({
+        let args = json!({
             "path": "test.txt"
         });
 

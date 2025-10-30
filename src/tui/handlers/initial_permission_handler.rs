@@ -53,7 +53,7 @@ impl InputHandler for InitialPermissionHandler {
             }
             KeyCode::Enter => app.get_selected_initial_permission_choice(),
             KeyCode::Char('1') => Some(InitialPermissionChoice::ReadOnly),
-            KeyCode::Char('2') => Some(InitialPermissionChoice::TrustProject),
+            KeyCode::Char('2') => Some(InitialPermissionChoice::EnableWriteEdit),
             KeyCode::Char('3') | KeyCode::Esc => Some(InitialPermissionChoice::Deny),
             _ => None,
         };

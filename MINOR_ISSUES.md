@@ -31,7 +31,20 @@ only show the relevant changes with some context lines around them, similar to h
 
 #### Running Todos
 
-![img.png](img.png)
-
 currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
 CRUDing todos could also be a tool call for the model
+
+### System Reminder
+
+Claude code uses system reminder to observe the changes done in the system in realtime
+
+### switch backend
+
+currently switching models and backends is only possible through configs. lets make it into a command
+
+### Tool Status
+
+currently I add the tool and then append tool result (preview) in messages. Ideally there is a space above status and
+keeps tool calls there
+(especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
+then I keep it above status bar

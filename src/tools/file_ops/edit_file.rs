@@ -1,11 +1,11 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use similar::{ChangeTag, TextDiff};
 use std::path::PathBuf;
 use tokio::fs;
@@ -209,12 +209,26 @@ impl Tool for EditFileTool {
             .and_then(|p| p.to_str())
             .map(|s| s.to_string());
 
+        let project_path = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "this project".to_string());
+
         Ok(OperationType::new(
-            "edit file",
-            normalized_path,
+            "edit_file",
+            normalized_path.clone(),
             false,
-            true,
+            false,
             parent_dir,
+            OperationDisplay {
+                name: "edits".to_string(),
+                approval_title: "Edit File".to_string(),
+                approval_prompt: format!("Can I edit file {}", normalized_path),
+                persistent_approval: format!(
+                    "don't ask me again for editing files in {}",
+                    project_path
+                ),
+            },
         ))
     }
 
@@ -245,6 +259,10 @@ impl Tool for EditFileTool {
 
     fn read_only(&self) -> bool {
         false
+    }
+
+    fn writes_safe(&self) -> bool {
+        true
     }
 }
 
