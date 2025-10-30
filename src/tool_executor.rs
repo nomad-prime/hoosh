@@ -177,30 +177,27 @@ impl ToolExecutor {
 
         // Wait for response
         if let Some(receiver) = &self.approval_receiver {
-            let response = loop {
-                let mut rx = receiver.lock().await;
-                if let Ok(response) = rx.try_recv() {
-                    // Verify tool_call_id matches
-                    if response.tool_call_id == tool_call_id {
-                        break response;
+            let mut rx = receiver.lock().await;
+
+            loop {
+                let response = rx
+                    .recv()
+                    .await
+                    .ok_or_else(|| anyhow::anyhow!("Approval channel closed"))?;
+
+                if response.tool_call_id == tool_call_id {
+                    if !response.approved {
+                        let reason = response
+                            .rejection_reason
+                            .unwrap_or_else(|| "User rejected".to_string());
+                        return Err(anyhow::Error::new(ToolExecutionError::user_rejected(
+                            reason,
+                        )));
                     }
+                    break;
                 }
-                drop(rx); // Explicitly drop the lock before sleeping
-
-                // Sleep briefly to avoid busy-waiting
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            };
-
-            if !response.approved {
-                let reason = response
-                    .rejection_reason
-                    .unwrap_or_else(|| "User rejected".to_string());
-                return Err(anyhow::Error::new(ToolExecutionError::user_rejected(
-                    reason,
-                )));
             }
         }
-
         Ok(())
     }
 

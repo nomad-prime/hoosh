@@ -3,8 +3,9 @@ pub mod storage;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionLevel {
@@ -121,14 +122,12 @@ impl PermissionManager {
     }
 
     pub fn with_project_root(self, project_root: PathBuf) -> Self {
-        // Load permissions file from disk if it exists
         let permissions = storage::PermissionsFile::load_permissions_safe(&project_root);
 
-        // Store project root and permissions file
-        if let Ok(mut root) = self.project_root.lock() {
+        if let Ok(mut root) = self.project_root.try_lock() {
             *root = Some(project_root);
         }
-        if let Ok(mut perms) = self.permissions_file.lock() {
+        if let Ok(mut perms) = self.permissions_file.try_lock() {
             *perms = permissions;
         }
 
@@ -138,14 +137,14 @@ impl PermissionManager {
     pub fn save_permissions(&self) -> Result<()> {
         let project_root = self
             .project_root
-            .lock()
+            .try_lock()
             .ok()
             .and_then(|r| r.clone())
             .context("No project root set")?;
 
         let permissions_file = self
             .permissions_file
-            .lock()
+            .try_lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
         permissions_file.save_permissions(&project_root)
@@ -159,7 +158,7 @@ impl PermissionManager {
     ) -> Result<()> {
         let mut permissions_file = self
             .permissions_file
-            .lock()
+            .try_lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
         if let PermissionScope::ProjectWide(_) = scope {
@@ -223,9 +222,8 @@ impl PermissionManager {
         self.default_permission
     }
 
-    /// Get information about the current permissions
     pub fn get_permissions_info(&self) -> PermissionsInfo {
-        let permissions_file = self.permissions_file.lock().ok();
+        let permissions_file = self.permissions_file.try_lock().ok();
         match permissions_file {
             Some(perms) => PermissionsInfo {
                 allow_count: perms.allow.len(),
@@ -241,7 +239,7 @@ impl PermissionManager {
     pub fn clear_all_permissions(&self) -> Result<()> {
         let mut permissions_file = self
             .permissions_file
-            .lock()
+            .try_lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
         permissions_file.allow.clear();
@@ -278,63 +276,34 @@ impl PermissionManager {
     }
 
     fn check_persistent_permissions(&self, operation: &OperationType) -> Option<bool> {
-        let permissions_file = self.permissions_file.lock().ok()?;
+        let permissions_file = self.permissions_file.try_lock().ok()?;
         permissions_file.check_permission(operation)
     }
 
-    /// Ask user for permission interactively via TUI event system
-    /// Returns (allowed, optional_scope)
     async fn ask_user_permission(
         &self,
         operation: &OperationType,
     ) -> Result<(bool, Option<PermissionScope>)> {
-        self.ask_user_permission_via_tui(operation, &self.event_sender, &self.response_receiver)
-            .await
-    }
-
-    /// Ask user for permission via TUI event system
-    async fn ask_user_permission_via_tui(
-        &self,
-        operation: &OperationType,
-        sender: &mpsc::UnboundedSender<crate::conversations::AgentEvent>,
-        receiver: &Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
-    ) -> Result<(bool, Option<PermissionScope>)> {
-        // Generate unique request ID
         let request_id = self
             .request_counter
             .fetch_add(1, Ordering::SeqCst)
             .to_string();
 
-        // Send permission request event
         let event = crate::conversations::AgentEvent::PermissionRequest {
             operation: operation.clone(),
             request_id: request_id.clone(),
         };
-        sender
+        self.event_sender
             .send(event)
             .context("Failed to send permission request event")?;
 
-        // Wait for response
-        // Need to avoid holding lock across await by using a loop with try_recv
-        let receiver_clone = Arc::clone(receiver);
-        let response = loop {
-            // Try to receive in a block that drops the lock immediately
-            let maybe_response = {
-                let mut rx = receiver_clone
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Failed to lock receiver: {}", e))?;
-                rx.try_recv().ok()
-            };
+        let mut receiver = self.response_receiver.lock().await;
 
-            if let Some(response) = maybe_response {
-                break response;
-            }
+        let response = receiver
+            .recv()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Permission response channel closed"))?;
 
-            // Small sleep to avoid busy-waiting
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        };
-
-        // Verify request ID matches
         if response.request_id != request_id {
             anyhow::bail!("Permission response ID mismatch");
         }
@@ -342,7 +311,6 @@ impl PermissionManager {
         Ok((response.allowed, response.scope))
     }
 
-    /// Check if permissions are being enforced
     pub fn is_enforcing(&self) -> bool {
         !self.skip_permissions
     }

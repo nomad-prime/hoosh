@@ -1,82 +1,10 @@
 ## 1. Architecture Overview
 
-### 2.2 🔴 SYNCHRONOUS PERMISSION CHECKS IN ASYNC CONTEXT
-
-**Problem:** The permission check uses a busy-wait loop with `try_recv()` instead of proper async waiting.
-
-**Location:** `src/permissions/mod.rs:325-348`
-
-  ```rust
-  let response = loop {
-let maybe_response = {
-let mut rx = receiver_clone.lock()
-.map_err( | e | anyhow::anyhow ! ("Failed to lock receiver: {}", e)) ?;
-rx.try_recv().ok()  // ⚠️ BUSY WAITING
-};
-
-if let Some(response) = maybe_response {
-break response;
-}
-
-// Small sleep to avoid busy-waiting
-tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;  // ⚠️ POLLING
-};
-  ```
-
-**Why this is bad:**
-
-- **CPU waste:** Polls every 10ms instead of waiting for event
-- **Latency:** 10ms delay even when response is immediate
-- **Anti-pattern:** Using `try_recv()` + sleep instead of `recv().await`
-- **Lock contention:** Repeatedly locks/unlocks mutex
-
-**Impact:** MEDIUM - Wastes CPU, adds latency, not idiomatic async Rust
-
-**Recommendation:**
-
-  ```rust
-  // Proper async approach
-let response = receiver_clone.lock().await.recv().await
-.ok_or_else( | | anyhow::anyhow!("Channel closed")) ?;
-  ```
-
-  ---
-
-### 2.4 🔴 MISSING ERROR HANDLING IN PERMISSION PERSISTENCE
-
-**Problem:** Permission save failures are silently ignored in many places.
-
-**Location:** `src/permissions/mod.rs:169-173`
-
-  ```rust
-  if let Some( ref scope) = scope {
-let _ = self.add_permission_rule(operation, scope, allowed);  // ⚠️ IGNORED
-}
-  ```
-
-**Why this is bad:**
-
-- User thinks permission is saved, but it's not
-- Silent failures are debugging nightmares
-- No feedback to user about persistence issues
-- Could lead to repeated permission prompts
-
-**Impact:** HIGH - User experience degradation, data loss
-
-**Recommendation:**
-
-- Return Result from permission operations
-- Log errors at minimum
-- Show user notification on save failure
-- Consider retry logic for transient failures
-
-  ---
-
 ## 3. Design Issues
 
 ### 3.1 🟡 TIGHT COUPLING TO EVENT SYSTEM
 
-**Problem:** `PermissionManager` is tightly coupled to the TUI event system.
+**Problem:** `PermissionManager` is tightly coupled to the event system.
 
 **Location:** `src/permissions/mod.rs:98-108`
 
@@ -92,19 +20,19 @@ let _ = self.add_permission_rule(operation, scope, allowed);  // ⚠️ IGNORED
 
 **Issues:**
 
-- Can't use PermissionManager without TUI
+- Can't use PermissionManager without AgentEvents
 - Hard to test in isolation
 - Violates Dependency Inversion Principle
-- Couples domain logic to UI layer
+- Couples domain logic to event layer
 
 **Impact:** MEDIUM - Reduces testability, flexibility
 
 **Recommendation:**
 
 - Extract permission decision interface
-- Use trait for permission UI: `trait PermissionUI`
-- Inject UI implementation via dependency injection
-- Make PermissionManager UI-agnostic
+- Use trait for permission events: `trait PermissionEvents`
+- Inject events implementation via dependency injection
+- Make PermissionManager events-agnostic
 
   ---
 
