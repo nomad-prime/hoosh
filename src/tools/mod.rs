@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::OperationType;
 
 /// Core trait for all tools in the hoosh system
 #[async_trait]
@@ -41,17 +41,8 @@ pub trait Tool: Send + Sync {
         }
     }
 
-    fn to_operation_type(&self, args: &Value) -> Result<OperationType>;
+    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType>;
 
-    async fn check_permission(
-        &self,
-        _args: &Value,
-        _permission_manager: &PermissionManager,
-    ) -> Result<bool>;
-
-    /// Generate a preview of what this tool will do (e.g., a diff for edits)
-    /// This is shown to the user before requesting permission
-    /// Default implementation returns None (most tools don't need previews)
     async fn generate_preview(&self, _args: &Value) -> Option<String> {
         None
     }
@@ -67,10 +58,6 @@ pub trait Tool: Send + Sync {
             }
         })
     }
-
-    fn read_only(&self) -> bool;
-
-    fn writes_safe(&self) -> bool;
 }
 
 pub mod bash;
@@ -213,28 +200,12 @@ mod tests {
             })
         }
 
-        async fn execute(&self, _args: &serde_json::Value) -> Result<String> {
+        async fn execute(&self, _args: &Value) -> Result<String> {
             Ok(self.response.to_string())
         }
 
-        fn to_operation_type(&self, _args: &Value) -> Result<OperationType> {
+        fn to_operation_type(&self, _args: &Option<Value>) -> Result<OperationType> {
             Ok(OperationType::new("mock"))
-        }
-
-        async fn check_permission(
-            &self,
-            _args: &Value,
-            _permission_manager: &PermissionManager,
-        ) -> Result<bool> {
-            Ok(false)
-        }
-
-        fn read_only(&self) -> bool {
-            true
-        }
-
-        fn writes_safe(&self) -> bool {
-            true
         }
     }
 

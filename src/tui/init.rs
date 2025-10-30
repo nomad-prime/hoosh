@@ -77,7 +77,7 @@ fn save_permission_choice(choice: &InitialPermissionChoice, project_root: &Path)
         InitialPermissionChoice::ReadOnly => {
             for (tool_name, _) in registry.list_tools() {
                 if let Some(tool) = registry.get_tool(tool_name)
-                    && tool.read_only()
+                    && tool.to_operation_type(&None)?.is_read_only()
                 {
                     perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
                 }
@@ -87,7 +87,7 @@ fn save_permission_choice(choice: &InitialPermissionChoice, project_root: &Path)
         InitialPermissionChoice::EnableWriteEdit => {
             for (tool_name, _) in registry.list_tools() {
                 if let Some(tool) = registry.get_tool(tool_name)
-                    && tool.writes_safe()
+                    && tool.to_operation_type(&None)?.is_write_safe()
                 {
                     perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
                 }

@@ -1,4 +1,4 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::OperationType;
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -194,29 +194,27 @@ impl Tool for EditFileTool {
         "File edited successfully".to_string()
     }
 
-    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
-        let args: EditFileArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
+    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType> {
+        if let Some(value) = args {
+            let args: EditFileArgs = serde_json::from_value(value.clone())
+                .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
 
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
+            let file_path = self.path_validator.validate_and_resolve(&args.path)?;
 
-        Ok(OperationType::new("edit_file")
-            .with_target_path(&file_path)
-            .into_destructive()
-            .with_display_name("Edit")
-            .build()?)
+            Ok(OperationType::new("edit_file")
+                .with_target_path(&file_path)
+                .into_destructive()
+                .with_display_name("Edit")
+                .build()?)
+        } else {
+            Ok(OperationType::new("edit_file")
+                .into_destructive()
+                .with_display_name("Edit")
+                .build()?)
+        }
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let operation = self.to_operation_type(args)?;
-        permission_manager.check_permission(&operation).await
-    }
-
-    async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
+    async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: EditFileArgs = serde_json::from_value(args.clone()).ok()?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
@@ -230,14 +228,6 @@ impl Tool for EditFileTool {
             args.replace_all,
         );
         Some(preview)
-    }
-
-    fn read_only(&self) -> bool {
-        false
-    }
-
-    fn writes_safe(&self) -> bool {
-        true
     }
 }
 

@@ -1,9 +1,9 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::OperationType;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -347,45 +347,37 @@ impl Tool for BashTool {
         }
     }
 
-    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
-        let args: BashArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for bash tool: {}", e))?;
+    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType> {
+        if let Some(value) = args {
+            let args: BashArgs = serde_json::from_value(value.clone())
+                .map_err(|e| anyhow::anyhow!("Invalid arguments for bash tool: {}", e))?;
 
-        let command = self.sanitize_command(&args.command);
-        let is_destructive = self.is_dangerous_command(&command);
+            let command = self.sanitize_command(&args.command);
+            let is_destructive = self.is_dangerous_command(&command);
 
-        let cmd: String = command.into();
-        let op_type = OperationType::new("bash")
-            .with_target(cmd.clone())
-            .with_display_name("Bash")
-            .with_approval_title(format!("Execute: {}", cmd))
-            .with_approval_prompt(format!("Can I run: {}", cmd))
-            .with_persistent_approval(
-                "don't ask me again for bash commands in this project".to_string(),
-            );
+            let cmd: String = command.into();
+            let op_type = OperationType::new("bash")
+                .with_target(cmd.clone())
+                .with_display_name("Bash")
+                .with_approval_title(format!("Execute: {}", cmd))
+                .with_approval_prompt(format!("Can I run: {}", cmd))
+                .with_persistent_approval(
+                    "don't ask me again for bash commands in this project".to_string(),
+                );
 
-        if is_destructive {
-            Ok(op_type.into_destructive().build()?)
+            if is_destructive {
+                Ok(op_type.into_destructive().build()?)
+            } else {
+                Ok(op_type.build()?)
+            }
         } else {
-            Ok(op_type.build()?)
+            Ok(OperationType::new("bash")
+                .with_display_name("Bash")
+                .with_persistent_approval(
+                    "don't ask me again for bash commands in this project".to_string(),
+                )
+                .build()?)
         }
-    }
-
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let operation = self.to_operation_type(args)?;
-        permission_manager.check_permission(&operation).await
-    }
-
-    fn read_only(&self) -> bool {
-        false
-    }
-
-    fn writes_safe(&self) -> bool {
-        false
     }
 }
 

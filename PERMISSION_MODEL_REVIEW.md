@@ -1,48 +1,4 @@
-## 1. Architecture Overview
-
-## 3. Design Issues
-
-### 3.2 🟡 OPERATION TYPE CONSTRUCTION IS VERBOSE AND ERROR-PRONE
-
-**Problem:** Every tool must manually construct `OperationType` with 6 parameters including nested `OperationDisplay`.
-
-**Location:** Example from `write_file.rs:158-173`
-
-  ```rust
-  Ok(OperationType::new(
-"write_file",
-normalized_path.clone(),
-false,
-is_destructive,
-parent_dir,
-OperationDisplay {
-name: "Write".to_string(),
-approval_title: format!("Write({})", args.path),
-approval_prompt: format!("Write to file: {}", args.path),
-persistent_approval: format!("don't ask me again..."),
-},
-))
-  ```
-
-**Issues:**
-
-- Boilerplate repeated in every tool
-- Easy to make mistakes (wrong flags, inconsistent messages)
-- No compile-time validation
-- Hard to maintain consistency
-
-**Impact:** MEDIUM - Code duplication, maintenance burden
-
-**Recommendation:**
-
-- Use builder pattern: `OperationType::builder()`
-- Provide sensible defaults
-- Create helper methods for common patterns
-- Consider deriving from tool metadata
-
-  ---
-
-### 3.3 🟡 PERMISSION STORAGE FORMAT IS NOT VERSIONED PROPERLY
+### 1 🟡 PERMISSION STORAGE FORMAT IS NOT VERSIONED PROPERLY
 
 **Problem:** While there's a `version` field, there's no migration logic or version checking.
 
@@ -74,7 +30,7 @@ persistent_approval: format!("don't ask me again..."),
 
   ---
 
-### 3.4 🟡 PATTERN MATCHING LOGIC IS FRAGMENTED
+### 2 🟡 PATTERN MATCHING LOGIC IS FRAGMENTED
 
 **Problem:** Pattern matching logic exists in multiple places with different implementations.
 
@@ -102,9 +58,7 @@ persistent_approval: format!("don't ask me again..."),
 
   ---
 
-## 4. Code Smells
-
-### 4.1 🟡 GOD OBJECT: PermissionManager
+### 3 🟡 GOD OBJECT: PermissionManager
 
 **Problem:** `PermissionManager` does too many things.
 
@@ -127,66 +81,7 @@ persistent_approval: format!("don't ask me again..."),
 - Use composition over god object
 - Each class has single, clear responsibility
 
-  ---
-
-### 4.3 🟡 SHOTGUN SURGERY
-
-**Problem:** Changing permission behavior requires touching many files.
-
-**Example:** To add a new permission scope type:
-
-- `permissions/mod.rs` - Add enum variant
-- `permissions/storage.rs` - Update pattern matching
-- `tool_executor.rs` - Update permission checks
-- Multiple tools - Update to_operation_type
-- TUI handlers - Update UI
-
-**Impact:** MEDIUM - High change cost, error-prone
-
-**Recommendation:**
-
-- Centralize permission logic
-- Use visitor pattern or strategy pattern
-- Reduce coupling between components
-
-  ---
-
-### 4.5 🟡 INCOMPLETE ABSTRACTION
-
-**Problem:** `Tool` trait exposes implementation details.
-
-**Location:** `src/tools/mod.rs:13-73`
-
-  ```rust
-  pub trait Tool: Send + Sync {
-    fn to_operation_type(&self, args: &Value) -> Result<OperationType>;  // ⚠️ Leaky
-    async fn check_permission(&self, args: &Value, pm: &PermissionManager) -> Result<bool>;
-    fn read_only(&self) -> bool;  // ⚠️ Redundant with to_operation_type
-    fn writes_safe(&self) -> bool;  // ⚠️ Redundant
-}
-  ```
-
-**Issues:**
-
-- Tool needs to know about PermissionManager (coupling)
-- Redundant methods (`read_only` vs operation type flags)
-- Leaks permission implementation details to tools
-- Hard to change permission system without updating all tools
-
-**Impact:** MEDIUM - Tight coupling, hard to evolve
-
-**Recommendation:**
-
-- Remove permission logic from Tool trait
-- Use decorator pattern for permission checking
-- Keep Tool focused on execution
-- Let PermissionManager inspect tool metadata
-
-  ---
-
-## 5. Security Issues
-
-### 5.1 🔴 PATH VALIDATOR: INCOMPLETE SYMLINK PROTECTION
+### 4 🔴 PATH VALIDATOR: INCOMPLETE SYMLINK PROTECTION
 
 **Problem:** Path validation doesn't fully protect against symlink attacks.
 
@@ -215,7 +110,7 @@ working directory.
 
   ---
 
-### 5.2 🟡 BASH TOOL: BYPASSABLE DANGEROUS COMMAND DETECTION
+### 5 🟡 BASH TOOL: BYPASSABLE DANGEROUS COMMAND DETECTION
 
 **Problem:** Blacklist approach to dangerous commands is easily bypassed.
 
@@ -241,25 +136,7 @@ working directory.
 
   ---
 
-### 5.3 🟡 NO RATE LIMITING ON PERMISSION REQUESTS
-
-**Problem:** No protection against permission request spam.
-
-**Scenario:** Malicious or buggy code could flood user with permission requests.
-
-**Impact:** LOW-MEDIUM - UX degradation, potential DoS
-
-**Recommendation:**
-
-- Add rate limiting: max N requests per minute
-- Batch similar requests
-- Add "deny all for session" option
-
-  ---
-
-## 6. Testing Issues
-
-### 6.1 🟡 INSUFFICIENT TEST COVERAGE
+### 6 🟡 INSUFFICIENT TEST COVERAGE
 
 **Current state:**
 
@@ -285,25 +162,3 @@ working directory.
 - Test error paths explicitly
 
   ---
-
-### 6.2 🟡 TESTS USE MOCKS INSTEAD OF REAL COMPONENTS
-
-**Problem:** Tests create test-specific mocks rather than using production code.
-
-**Example:** `src/permissions/mod.rs:397-420`
-
-  ```rust
-  fn create_test_manager() -> PermissionManager {
-    let (event_tx, _) = mpsc::unbounded_channel();  // ⚠️ Fake channel
-    let (_, response_rx) = mpsc::unbounded_channel();
-    PermissionManager::new(event_tx, response_rx)
-}
-  ```
-
-**Issues:**
-
-- Tests don't exercise real behavior
-- Mocks can drift from production
-- Integration issues not caught
-
-**

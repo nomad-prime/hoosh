@@ -210,16 +210,19 @@ impl ToolExecutor {
     async fn check_tool_permissions(
         &self,
         tool: &dyn crate::tools::Tool,
-        args: &serde_json::Value,
+        args: &Value,
     ) -> Result<()> {
-        // Skip permission checks if enforcement is disabled
         if !self.permission_manager.is_enforcing() {
             return Ok(());
         }
 
-        // Ask the tool to check its own permissions
-        let allowed = tool
-            .check_permission(args, &self.permission_manager)
+        let operation_type = tool
+            .to_operation_type(&Some(args.clone()))
+            .expect("could not get operation type of tool");
+
+        let allowed = self
+            .permission_manager
+            .check_permission(&operation_type)
             .await?;
 
         if !allowed {

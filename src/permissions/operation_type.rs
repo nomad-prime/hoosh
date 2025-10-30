@@ -5,6 +5,7 @@ pub struct OperationType {
     kind: String,
     target: String,
     read_only: bool,
+    is_write_safe: bool,
     is_destructive: bool,
     parent_directory: Option<String>,
     display_name: String,
@@ -26,6 +27,7 @@ impl OperationType {
             approval_title: String::new(),
             approval_prompt: String::new(),
             persistent_approval: String::new(),
+            is_write_safe: false,
         }
     }
 
@@ -122,6 +124,10 @@ impl OperationType {
 
     pub fn is_read_only(&self) -> bool {
         self.read_only
+    }
+
+    pub fn is_write_safe(&self) -> bool {
+        self.is_write_safe
     }
 
     pub fn is_destructive(&self) -> bool {

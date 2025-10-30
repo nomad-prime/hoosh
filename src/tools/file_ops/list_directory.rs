@@ -1,4 +1,4 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::OperationType;
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -213,34 +213,24 @@ impl Tool for ListDirectoryTool {
         }
     }
 
-    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
-        let args: ListDirectoryArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
+    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType> {
+        if let Some(value) = args {
+            let args: ListDirectoryArgs = serde_json::from_value(value.clone())
+                .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
 
-        let dir_path = self.resolve_path(&args.path);
+            let dir_path = self.resolve_path(&args.path);
 
-        Ok(OperationType::new("list_directory")
-            .with_target_path(&dir_path)
-            .into_read_only()
-            .with_display_name("List")
-            .build()?)
-    }
-
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let operation = self.to_operation_type(args)?;
-        permission_manager.check_permission(&operation).await
-    }
-
-    fn read_only(&self) -> bool {
-        true
-    }
-
-    fn writes_safe(&self) -> bool {
-        true
+            Ok(OperationType::new("list_directory")
+                .with_target_path(&dir_path)
+                .into_read_only()
+                .with_display_name("List")
+                .build()?)
+        } else {
+            Ok(OperationType::new("list_directory")
+                .into_read_only()
+                .with_display_name("List")
+                .build()?)
+        }
     }
 }
 
