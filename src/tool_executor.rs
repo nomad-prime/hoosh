@@ -179,25 +179,30 @@ impl ToolExecutor {
         if let Some(receiver) = &self.approval_receiver {
             let mut rx = receiver.lock().await;
 
-            loop {
-                let response = rx
-                    .recv()
-                    .await
-                    .ok_or_else(|| anyhow::anyhow!("Approval channel closed"))?;
+            let response = rx
+                .recv()
+                .await
+                .ok_or_else(|| anyhow::anyhow!("Approval channel closed"))?;
 
-                if response.tool_call_id == tool_call_id {
-                    if !response.approved {
-                        let reason = response
-                            .rejection_reason
-                            .unwrap_or_else(|| "User rejected".to_string());
-                        return Err(anyhow::Error::new(ToolExecutionError::user_rejected(
-                            reason,
-                        )));
-                    }
-                    break;
-                }
+            // Verify tool_call_id matches
+            if response.tool_call_id != tool_call_id {
+                anyhow::bail!(
+                    "Approval response ID mismatch: expected {}, got {}",
+                    tool_call_id,
+                    response.tool_call_id
+                );
+            }
+
+            if !response.approved {
+                let reason = response
+                    .rejection_reason
+                    .unwrap_or_else(|| "User rejected".to_string());
+                return Err(anyhow::Error::new(ToolExecutionError::user_rejected(
+                    reason,
+                )));
             }
         }
+
         Ok(())
     }
 
