@@ -130,11 +130,7 @@ impl Tool for WriteFileTool {
         "File written successfully".to_string()
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
+    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
         let args: WriteFileArgs = serde_json::from_value(args.clone())
             .map_err(|e| anyhow::anyhow!("Invalid arguments for write_file tool: {}", e))?;
 
@@ -144,7 +140,28 @@ impl Tool for WriteFileTool {
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
             .to_string();
 
-        let operation = OperationType::WriteFile(normalized_path);
+        let parent_dir = file_path
+            .parent()
+            .and_then(|p| p.to_str())
+            .map(|s| s.to_string());
+
+        let is_destructive = file_path.exists();
+
+        Ok(OperationType::new(
+            "write file",
+            normalized_path,
+            false,
+            is_destructive,
+            parent_dir,
+        ))
+    }
+
+    async fn check_permission(
+        &self,
+        args: &Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let operation = self.to_operation_type(args)?;
         permission_manager.check_permission(&operation).await
     }
 
@@ -161,6 +178,10 @@ impl Tool for WriteFileTool {
             // Show preview of new file content
             Some(self.generate_new_file_preview(&args.content, &args.path))
         }
+    }
+
+    fn read_only(&self) -> bool {
+        false
     }
 }
 

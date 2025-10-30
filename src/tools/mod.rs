@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 
-use crate::permissions::PermissionManager;
+use crate::permissions::{OperationType, PermissionManager};
 
 /// Core trait for all tools in the hoosh system
 #[async_trait]
@@ -41,6 +41,8 @@ pub trait Tool: Send + Sync {
         }
     }
 
+    fn to_operation_type(&self, args: &Value) -> Result<OperationType>;
+
     async fn check_permission(
         &self,
         _args: &Value,
@@ -65,6 +67,8 @@ pub trait Tool: Send + Sync {
             }
         })
     }
+
+    fn read_only(&self) -> bool;
 }
 
 pub mod bash;
@@ -211,12 +215,26 @@ mod tests {
             Ok(self.response.to_string())
         }
 
+        fn to_operation_type(&self, _args: &Value) -> Result<OperationType> {
+            Ok(OperationType::new(
+                self.name,
+                "mock_target",
+                true,
+                false,
+                None,
+            ))
+        }
+
         async fn check_permission(
             &self,
             _args: &Value,
             _permission_manager: &PermissionManager,
         ) -> Result<bool> {
             Ok(false)
+        }
+
+        fn read_only(&self) -> bool {
+            true
         }
     }
 

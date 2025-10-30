@@ -1,149 +1,92 @@
-pub mod cache;
 pub mod storage;
 
 use anyhow::{Context, Result};
-use cache::{OperationKind, PermissionCacheKey};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
-
-/// Permission level for different operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionLevel {
-    /// Allow operation without asking
     Allow,
-    /// Ask user for confirmation
     Ask,
-    /// Deny operation
     Deny,
 }
 
-/// Scope of a permission decision
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionScope {
-    /// Permission applies to a specific file/command
     Specific(String),
-    /// Permission applies to all operations in a directory
     Directory(String),
-    /// Permission applies to all operations of this type
     Global,
-    /// Permission applies to all operations within a project directory
-    ProjectWide(std::path::PathBuf),
+    ProjectWide(PathBuf),
 }
 
-/// Types of operations that require permission
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OperationType {
-    ReadFile(String),
-    WriteFile(String),
-    CreateFile(String),
-    DeleteFile(String),
-    ExecuteBash(String),
-    ListDirectory(String),
+pub struct OperationType {
+    operation: String,
+    target: String,
+    is_safe: bool,
+    is_destructive: bool,
+    parent_dir: Option<String>,
 }
 
 impl OperationType {
+    pub fn new(
+        operation: impl Into<String>,
+        target: impl Into<String>,
+        is_safe: bool,
+        is_destructive: bool,
+        parent_dir: Option<String>,
+    ) -> Self {
+        Self {
+            operation: operation.into(),
+            target: target.into(),
+            is_safe,
+            is_destructive,
+            parent_dir,
+        }
+    }
+
     pub fn description(&self) -> String {
-        match self {
-            OperationType::ReadFile(path) => format!("read file '{}'", path),
-            OperationType::WriteFile(path) => format!("write to file '{}'", path),
-            OperationType::CreateFile(path) => format!("create file '{}'", path),
-            OperationType::DeleteFile(path) => format!("delete file '{}'", path),
-            OperationType::ExecuteBash(cmd) => format!("execute bash command: '{}'", cmd),
-            OperationType::ListDirectory(path) => format!("list directory '{}'", path),
-        }
+        format!("{} '{}'", self.operation, self.target)
     }
 
-    /// Get the base operation type (without the specific path/command)
-    pub fn operation_kind(&self) -> &'static str {
-        match self {
-            OperationType::ReadFile(_) => "read",
-            OperationType::WriteFile(_) => "write",
-            OperationType::CreateFile(_) => "create",
-            OperationType::DeleteFile(_) => "delete",
-            OperationType::ExecuteBash(_) => "bash",
-            OperationType::ListDirectory(_) => "list",
-        }
+    pub fn operation_kind(&self) -> &str {
+        &self.operation
     }
 
-    /// Get the target (path or command) of this operation
     pub fn target(&self) -> &str {
-        match self {
-            OperationType::ReadFile(path) => path,
-            OperationType::WriteFile(path) => path,
-            OperationType::CreateFile(path) => path,
-            OperationType::DeleteFile(path) => path,
-            OperationType::ExecuteBash(cmd) => cmd,
-            OperationType::ListDirectory(path) => path,
-        }
+        &self.target
     }
 
-    /// Get the directory containing this operation's target (for file operations)
     pub fn parent_directory(&self) -> Option<String> {
-        match self {
-            OperationType::ReadFile(path)
-            | OperationType::WriteFile(path)
-            | OperationType::CreateFile(path)
-            | OperationType::DeleteFile(path)
-            | OperationType::ListDirectory(path) => std::path::Path::new(path)
-                .parent()
-                .and_then(|p| p.to_str())
-                .map(|s| s.to_string()),
-            OperationType::ExecuteBash(_) => None,
-        }
+        self.parent_dir.clone()
     }
 
     pub fn is_safe_operation(&self) -> bool {
-        matches!(
-            self,
-            OperationType::ReadFile(_) | OperationType::ListDirectory(_)
-        )
+        self.is_safe
     }
 
     pub fn is_destructive(&self) -> bool {
-        matches!(self, OperationType::DeleteFile(_))
-            || match self {
-                OperationType::ExecuteBash(cmd) => Self::is_destructive_command(cmd),
-                _ => false,
-            }
-    }
-
-    fn is_destructive_command(command: &str) -> bool {
-        let dangerous_patterns = [
-            "rm", "rmdir", "del", "delete", "unlink", "truncate", "dd", "mkfs", "format",
-            "shutdown", "reboot", "halt", "poweroff",
-        ];
-
-        let command_lower = command.to_lowercase();
-        dangerous_patterns
-            .iter()
-            .any(|&pattern| command_lower.contains(pattern))
+        self.is_destructive
     }
 }
 
-/// Permission manager for handling operation permissions
+#[derive(Debug, Clone)]
+pub struct PermissionsInfo {
+    pub allow_count: usize,
+    pub deny_count: usize,
+}
+
 #[derive(Clone)]
 pub struct PermissionManager {
     skip_permissions: bool,
     default_permission: PermissionLevel,
-    /// Cache of permission decisions for this session
-    /// Uses structured PermissionCacheKey instead of string-based keys
-    session_cache: Arc<Mutex<HashMap<PermissionCacheKey, bool>>>,
-    /// Event sender for sending permission requests to UI
     event_sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
-    /// Response receiver for receiving permission responses from UI
     response_receiver:
         Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
-    /// Request ID counter for generating unique permission request IDs
     request_counter: Arc<AtomicU64>,
-    /// Trusted project directory (session-only)
-    trusted_project: Arc<Mutex<Option<PathBuf>>>,
-    /// Project root for persistent storage
     project_root: Arc<Mutex<Option<PathBuf>>>,
-    /// Persistent permissions file
     permissions_file: Arc<Mutex<storage::PermissionsFile>>,
 }
 
@@ -155,27 +98,17 @@ impl PermissionManager {
         Self {
             skip_permissions: false,
             default_permission: PermissionLevel::Ask,
-            session_cache: Arc::new(Mutex::new(HashMap::new())),
             event_sender,
             response_receiver: Arc::new(Mutex::new(response_receiver)),
             request_counter: Arc::new(AtomicU64::new(0)),
-            trusted_project: Arc::new(Mutex::new(None)),
             project_root: Arc::new(Mutex::new(None)),
             permissions_file: Arc::new(Mutex::new(storage::PermissionsFile::default())),
         }
     }
 
-    /// Initialize with project root and load permissions from disk
     pub fn with_project_root(self, project_root: PathBuf) -> Self {
         // Load permissions file from disk if it exists
         let permissions = storage::PermissionsFile::load_permissions_safe(&project_root);
-
-        // If project is marked as trusted, set trusted_project
-        if permissions.trusted {
-            if let Ok(mut trusted) = self.trusted_project.lock() {
-                *trusted = Some(project_root.clone());
-            }
-        }
 
         // Store project root and permissions file
         if let Ok(mut root) = self.project_root.lock() {
@@ -188,60 +121,75 @@ impl PermissionManager {
         self
     }
 
-    /// Save current permissions to disk
     pub fn save_permissions(&self) -> Result<()> {
-        let project_root = self.project_root.lock()
+        let project_root = self
+            .project_root
+            .lock()
             .ok()
             .and_then(|r| r.clone())
             .context("No project root set")?;
 
-        let permissions_file = self.permissions_file.lock()
+        let permissions_file = self
+            .permissions_file
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
         permissions_file.save_permissions(&project_root)
     }
 
-    /// Add a permission rule and save to disk
-    pub fn add_permission_rule(&self, operation: &OperationType, scope: &PermissionScope, allowed: bool) -> Result<()> {
-        let mut permissions_file = self.permissions_file.lock()
+    pub fn add_permission_rule(
+        &self,
+        operation: &OperationType,
+        scope: &PermissionScope,
+        allowed: bool,
+    ) -> Result<()> {
+        let mut permissions_file = self
+            .permissions_file
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
-        let rule = self.create_permission_rule(operation, scope);
-        permissions_file.add_permission(rule, allowed);
-
-        // Update trusted flag if ProjectWide scope
         if let PermissionScope::ProjectWide(_) = scope {
-            permissions_file.trusted = allowed;
+            permissions_file
+                .add_permission(storage::PermissionRule::ops_rule("read_file", "*"), allowed);
+            permissions_file.add_permission(
+                storage::PermissionRule::ops_rule("write_file", "*"),
+                allowed,
+            );
+            permissions_file
+                .add_permission(storage::PermissionRule::ops_rule("edit_file", "*"), allowed);
+            permissions_file.add_permission(
+                storage::PermissionRule::ops_rule("list_directory", "*"),
+                allowed,
+            );
+            permissions_file
+                .add_permission(storage::PermissionRule::ops_rule("bash", "*"), allowed);
+        } else {
+            let rule = self.create_permission_rule(operation, scope);
+            permissions_file.add_permission(rule, allowed);
         }
 
         drop(permissions_file);
         self.save_permissions()
     }
 
-    /// Create a permission rule from operation and scope
-    fn create_permission_rule(&self, operation: &OperationType, scope: &PermissionScope) -> storage::PermissionRule {
-        let operation_str = operation.operation_kind().to_string();
+    fn create_permission_rule(
+        &self,
+        operation: &OperationType,
+        scope: &PermissionScope,
+    ) -> storage::PermissionRule {
+        let operation_str = operation.operation_kind();
 
         match scope {
             PermissionScope::Specific(target) => {
-                storage::PermissionRule::file_rule(operation_str, target.clone())
+                storage::PermissionRule::ops_rule(operation_str, target.clone())
             }
             PermissionScope::Directory(dir) => {
-                // Create a glob pattern for the directory
                 let pattern = format!("{}/**", dir.trim_end_matches('/'));
-                storage::PermissionRule::file_rule(operation_str, pattern)
+                storage::PermissionRule::ops_rule(operation_str, pattern)
             }
-            PermissionScope::Global => {
-                // For bash operations, use a wildcard pattern
-                if operation.operation_kind() == "bash" {
-                    storage::PermissionRule::bash_rule("*")
-                } else {
-                    storage::PermissionRule::file_rule(operation_str, "**")
-                }
-            }
+            PermissionScope::Global => storage::PermissionRule::ops_rule("bash", "*"),
             PermissionScope::ProjectWide(_) => {
-                // Project-wide is handled by the trusted flag
-                storage::PermissionRule::file_rule(operation_str, "**")
+                storage::PermissionRule::ops_rule(operation_str, "*")
             }
         }
     }
@@ -256,153 +204,40 @@ impl PermissionManager {
         self
     }
 
-    /// Get the current skip_permissions setting
     pub fn skip_permissions(&self) -> bool {
         self.skip_permissions
     }
 
-    /// Get the current default permission level
     pub fn default_permission(&self) -> PermissionLevel {
         self.default_permission
     }
 
-    /// Clear the session cache
-    pub fn clear_cache(&self) {
-        if let Ok(mut cache) = self.session_cache.lock() {
-            cache.clear();
-        }
-    }
-
-    /// Enable project-wide trust for a specific directory
-    pub fn set_trusted_project(&self, project_path: PathBuf) {
-        if let Ok(mut trusted) = self.trusted_project.lock() {
-            *trusted = Some(project_path.clone());
-        }
-        // Also cache the project-wide permission using structured key
-        let key = PermissionCacheKey::ProjectWide {
-            operation: OperationKind::Write,
-            project_root: project_path.clone(),
-        };
-        if let Ok(mut cache) = self.session_cache.lock() {
-            cache.insert(key, true);
-        }
-    }
-
-    /// Disable project-wide trust
-    pub fn clear_trusted_project(&self) {
-        // First get the current trusted project path
-        let project_path = if let Ok(mut trusted) = self.trusted_project.lock() {
-            trusted.take()
-        } else {
-            None
-        };
-
-        // Remove the project-wide permission from cache
-        if let Some(path) = project_path {
-            let key = PermissionCacheKey::ProjectWide {
-                operation: OperationKind::Write,
-                project_root: path,
-            };
-            if let Ok(mut cache) = self.session_cache.lock() {
-                cache.remove(&key);
-            }
-        }
-    }
-
-    /// Get the currently trusted project directory
-    pub fn get_trusted_project(&self) -> Option<PathBuf> {
-        self.trusted_project.lock().ok()?.clone()
-    }
-
-    /// Check if operation was previously allowed in this session
-    /// Uses hierarchical permission checking with structured keys
-    fn check_cache(&self, operation: &OperationType) -> Option<bool> {
-        let cache = self.session_cache.lock().ok()?;
-        let operation_kind = operation.operation_kind().parse::<OperationKind>().ok()?;
-        let target = operation.target();
-
-        self.send_debug(&format!(
-            "Checking cache for operation: {} ({})",
-            operation.operation_kind(),
-            target
-        ));
-        self.send_debug("Cache contents:");
-        for (key, &value) in cache.iter() {
-            self.send_debug(&format!("  {:?} => {}", key, value));
-        }
-
-        // Collect all matching cache entries with their precedence
-        let mut matches: Vec<(u8, bool)> = cache
-            .iter()
-            .filter(|(key, _)| key.matches(operation_kind, target))
-            .map(|(key, &decision)| (key.precedence(), decision))
-            .collect();
-
-        // Sort by precedence (highest first)
-        matches.sort_by(|a, b| b.0.cmp(&a.0));
-
-        // Return the decision from the highest precedence match
-        if let Some((precedence, decision)) = matches.first() {
-            self.send_debug(&format!(
-                "Found cached permission with precedence {}: {}",
-                precedence, decision
-            ));
-            Some(*decision)
-        } else {
-            self.send_debug("No cached permission found");
-            None
-        }
-    }
-
-    /// Store permission decision in cache with the specified scope
-    fn cache_decision(&self, operation: &OperationType, scope: PermissionScope, allowed: bool) {
-        // If this is a ProjectWide scope, also update the trusted_project field
-        if let PermissionScope::ProjectWide(ref path) = scope
-            && allowed
-            && let Ok(mut trusted) = self.trusted_project.lock()
-        {
-            *trusted = Some(path.clone());
-        }
-
-        // Convert to structured cache key
-        let operation_kind = match operation.operation_kind().parse::<OperationKind>() {
-            Ok(kind) => kind,
-            Err(_) => return,
-        };
-
-        let key = match &scope {
-            PermissionScope::Specific(target) => PermissionCacheKey::Specific {
-                operation: operation_kind,
-                target: PathBuf::from(target),
+    /// Get information about the current permissions
+    pub fn get_permissions_info(&self) -> PermissionsInfo {
+        let permissions_file = self.permissions_file.lock().ok();
+        match permissions_file {
+            Some(perms) => PermissionsInfo {
+                allow_count: perms.allow.len(),
+                deny_count: perms.deny.len(),
             },
-            PermissionScope::Directory(dir) => PermissionCacheKey::Directory {
-                operation: operation_kind,
-                directory: PathBuf::from(dir),
+            None => PermissionsInfo {
+                allow_count: 0,
+                deny_count: 0,
             },
-            PermissionScope::Global => PermissionCacheKey::Global {
-                operation: operation_kind,
-            },
-            PermissionScope::ProjectWide(path) => PermissionCacheKey::ProjectWide {
-                operation: operation_kind,
-                project_root: path.clone(),
-            },
-        };
-
-        self.send_debug(&format!(
-            "Caching decision: {:?} => {} (scope: {:?})",
-            key, allowed, scope
-        ));
-        if let Ok(mut cache) = self.session_cache.lock() {
-            cache.insert(key, allowed);
         }
     }
 
-    fn send_debug(&self, message: &str) {
-        let _ = self
-            .event_sender
-            .send(crate::conversations::AgentEvent::DebugMessage(
-                message.to_string(),
-            ));
+    pub fn clear_all_permissions(&self) -> Result<()> {
+        let mut permissions_file = self
+            .permissions_file
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
+
+        permissions_file.allow.clear();
+        permissions_file.deny.clear();
+
+        drop(permissions_file);
+        self.save_permissions()
     }
 
     pub async fn check_permission(&self, operation: &OperationType) -> Result<bool> {
@@ -412,16 +247,6 @@ impl PermissionManager {
 
         if operation.is_safe_operation() {
             return Ok(true);
-        }
-
-        if let Some(trusted_path) = self.get_trusted_project()
-            && PermissionCacheKey::is_within_project_static(operation.target(), &trusted_path)
-        {
-            return Ok(true);
-        }
-
-        if let Some(cached_decision) = self.check_cache(operation) {
-            return Ok(cached_decision);
         }
 
         if let Some(persistent_decision) = self.check_persistent_permissions(operation) {
@@ -435,7 +260,6 @@ impl PermissionManager {
         };
 
         if let Some(ref scope) = scope {
-            self.cache_decision(operation, scope.clone(), allowed);
             let _ = self.add_permission_rule(operation, scope, allowed);
         }
 
@@ -521,7 +345,6 @@ impl Default for PermissionManager {
     }
 }
 
-/// Custom error types for permission operations
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionError {
     #[error("Permission denied for operation: {0}")]
@@ -544,18 +367,28 @@ mod tests {
 
     #[test]
     fn test_operation_safety_classification() {
-        let read_op = OperationType::ReadFile("test.txt".to_string());
-        let write_op = OperationType::WriteFile("test.txt".to_string());
-        let delete_op = OperationType::DeleteFile("test.txt".to_string());
-        let bash_safe = OperationType::ExecuteBash("echo hello".to_string());
-        let bash_dangerous = OperationType::ExecuteBash("rm -rf /".to_string());
+        let read_op =
+            OperationType::new("read_file", "test.txt", true, false, Some("./".to_string()));
+        let write_op = OperationType::new(
+            "write_file",
+            "test.txt",
+            false,
+            true,
+            Some("./".to_string()),
+        );
+        let edit_op =
+            OperationType::new("edit_file", "test.txt", false, true, Some("./".to_string()));
+        let list_op = OperationType::new("list_directory", "./", true, false, None);
+        let bash_safe = OperationType::new("bash", "echo hello", false, false, None);
+        let bash_dangerous = OperationType::new("bash", "rm -rf /", false, true, None);
 
         assert!(read_op.is_safe_operation());
+        assert!(list_op.is_safe_operation());
         assert!(!write_op.is_safe_operation());
-        assert!(!delete_op.is_safe_operation());
+        assert!(!edit_op.is_safe_operation());
 
         assert!(!read_op.is_destructive());
-        assert!(delete_op.is_destructive());
+        assert!(write_op.is_destructive());
         assert!(!bash_safe.is_destructive());
         assert!(bash_dangerous.is_destructive());
     }
@@ -563,19 +396,25 @@ mod tests {
     #[tokio::test]
     async fn test_permission_manager_skip_permissions() {
         let manager = create_test_manager().with_skip_permissions(true);
-        let operation = OperationType::WriteFile("test.txt".to_string());
+        let operation = OperationType::new(
+            "write_file",
+            "test.txt",
+            false,
+            true,
+            Some("./".to_string()),
+        );
 
         let result = manager.check_permission(&operation).await.unwrap();
-        assert!(result); // Should allow when permissions are skipped
+        assert!(result);
     }
 
     #[tokio::test]
     async fn test_permission_manager_safe_operations() {
-        let manager = create_test_manager(); // Default: ask for permission
-        let read_op = OperationType::ReadFile("test.txt".to_string());
-        let list_op = OperationType::ListDirectory("./".to_string());
+        let manager = create_test_manager();
+        let read_op =
+            OperationType::new("read_file", "test.txt", true, false, Some("./".to_string()));
+        let list_op = OperationType::new("list_directory", "./", true, false, None);
 
-        // Safe operations should be allowed without asking
         assert!(manager.check_permission(&read_op).await.unwrap());
         assert!(manager.check_permission(&list_op).await.unwrap());
     }
@@ -583,326 +422,24 @@ mod tests {
     #[test]
     fn test_operation_description() {
         let ops = vec![
-            OperationType::ReadFile("file.txt".to_string()),
-            OperationType::WriteFile("file.txt".to_string()),
-            OperationType::CreateFile("new.txt".to_string()),
-            OperationType::DeleteFile("old.txt".to_string()),
-            OperationType::ExecuteBash("ls -la".to_string()),
-            OperationType::ListDirectory("/home".to_string()),
+            OperationType::new("read_file", "file.txt", true, false, Some(".".to_string())),
+            OperationType::new("write_file", "file.txt", false, true, Some(".".to_string())),
+            OperationType::new("edit_file", "new.txt", false, true, Some(".".to_string())),
+            OperationType::new(
+                "list_directory",
+                "/home",
+                true,
+                false,
+                Some("/".to_string()),
+            ),
+            OperationType::new("bash", "ls -la", false, false, None),
         ];
 
         for op in ops {
             let desc = op.description();
             assert!(!desc.is_empty());
-            assert!(desc.len() > 5); // Should have meaningful descriptions
+            assert!(desc.len() > 5);
         }
-    }
-
-    #[test]
-    fn test_permission_cache_stores_decisions() {
-        let manager = create_test_manager().with_skip_permissions(false);
-
-        // Use Cargo.toml which exists in the project root
-        let test_file = "Cargo.toml";
-        let operation = OperationType::WriteFile(test_file.to_string());
-
-        // Initially should not be cached
-        assert!(manager.check_cache(&operation).is_none());
-
-        // Store a specific file decision
-        manager.cache_decision(
-            &operation,
-            PermissionScope::Specific(test_file.to_string()),
-            true,
-        );
-
-        // Should now be cached
-        assert_eq!(manager.check_cache(&operation), Some(true));
-
-        // Same operation should return same cached value
-        assert_eq!(manager.check_cache(&operation), Some(true));
-
-        // Different operation should not be cached
-        let other_operation = OperationType::WriteFile("README.md".to_string());
-        assert!(manager.check_cache(&other_operation).is_none());
-    }
-
-    #[test]
-    fn test_permission_cache_directory_scope() {
-        use tempfile::TempDir;
-
-        let manager = create_test_manager();
-
-        // Create a temporary directory for testing
-        let temp_dir = TempDir::new().unwrap();
-        let dir_path = temp_dir.path().to_string_lossy().to_string();
-
-        // Create test files
-        let file1_path = format!("{}/file1.txt", dir_path);
-        let file2_path = format!("{}/file2.txt", dir_path);
-        std::fs::write(&file1_path, "test").unwrap();
-        std::fs::write(&file2_path, "test").unwrap();
-
-        // Cache a directory-level permission
-        let operation = OperationType::WriteFile(file1_path.clone());
-        manager.cache_decision(
-            &operation,
-            PermissionScope::Directory(dir_path.clone()),
-            true,
-        );
-
-        // Should match for files in the same directory
-        assert_eq!(
-            manager.check_cache(&OperationType::WriteFile(file1_path.clone())),
-            Some(true)
-        );
-        assert_eq!(
-            manager.check_cache(&OperationType::WriteFile(file2_path.clone())),
-            Some(true)
-        );
-
-        // Should NOT match for files in different directory
-        assert!(
-            manager
-                .check_cache(&OperationType::WriteFile("/other/dir/file.txt".to_string()))
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn test_permission_cache_global_scope() {
-        let manager = create_test_manager();
-
-        // Cache a global permission for write operations
-        let operation = OperationType::WriteFile("/path/to/file.txt".to_string());
-        manager.cache_decision(&operation, PermissionScope::Global, true);
-
-        // Should match for any write operation
-        assert_eq!(
-            manager.check_cache(&OperationType::WriteFile("/any/path/file.txt".to_string())),
-            Some(true)
-        );
-        assert_eq!(
-            manager.check_cache(&OperationType::WriteFile("/other/file.txt".to_string())),
-            Some(true)
-        );
-
-        // Should NOT match for different operation types
-        assert!(
-            manager
-                .check_cache(&OperationType::ReadFile("/any/path/file.txt".to_string()))
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn test_permission_cache_hierarchy() {
-        use tempfile::TempDir;
-
-        let manager = create_test_manager();
-
-        // Create a temporary directory for testing
-        let temp_dir = TempDir::new().unwrap();
-        let dir_path = temp_dir.path().to_string_lossy().to_string();
-        let file_path = format!("{}/test.txt", dir_path);
-        std::fs::write(&file_path, "test").unwrap();
-
-        // Set up hierarchy: global < directory < specific
-        manager.cache_decision(
-            &OperationType::WriteFile(file_path.clone()),
-            PermissionScope::Global,
-            true, // Global: allow all writes
-        );
-        manager.cache_decision(
-            &OperationType::WriteFile(file_path.clone()),
-            PermissionScope::Directory(dir_path.clone()),
-            false, // Directory: deny writes in dir
-        );
-
-        // Directory permission should override global
-        assert_eq!(
-            manager.check_cache(&OperationType::WriteFile(file_path.clone())),
-            Some(false)
-        );
-
-        // Now add specific permission
-        manager.cache_decision(
-            &OperationType::WriteFile(file_path.clone()),
-            PermissionScope::Specific(file_path.clone()),
-            true, // Specific: allow this one file
-        );
-
-        // Specific permission should override directory
-        assert_eq!(
-            manager.check_cache(&OperationType::WriteFile(file_path.clone())),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn test_permission_cache_cleared() {
-        let manager = create_test_manager();
-
-        // Cache some decisions at different scopes
-        manager.cache_decision(
-            &OperationType::WriteFile("/path/file.txt".to_string()),
-            PermissionScope::Specific("/path/file.txt".to_string()),
-            true,
-        );
-        manager.cache_decision(
-            &OperationType::WriteFile("/path/file.txt".to_string()),
-            PermissionScope::Global,
-            true,
-        );
-
-        assert!(
-            manager
-                .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
-                .is_some()
-        );
-
-        // Clear cache
-        manager.clear_cache();
-
-        // Should no longer be cached
-        assert!(
-            manager
-                .check_cache(&OperationType::WriteFile("/path/file.txt".to_string()))
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn test_project_wide_trust() {
-        use tempfile::TempDir;
-
-        let manager = create_test_manager().with_skip_permissions(true); // Skip permissions to avoid prompts
-
-        // Create a temporary directory to use as project root
-        let temp_dir = TempDir::new().unwrap();
-        let project_path = temp_dir.path().to_path_buf();
-
-        // Set trusted project
-        manager.set_trusted_project(project_path.clone());
-
-        // Create a file path within the project
-        let file_in_project = project_path.join("test_file.txt");
-        std::fs::write(&file_in_project, "test").unwrap();
-        let operation = OperationType::WriteFile(file_in_project.to_string_lossy().to_string());
-
-        // Operation within trusted project should be auto-approved
-        assert!(manager.check_permission(&operation).await.unwrap());
-
-        // Create a file path outside the project
-        let file_outside = std::env::temp_dir().join("outside_file_hoosh_test.txt");
-        let operation_outside =
-            OperationType::WriteFile(file_outside.to_string_lossy().to_string());
-
-        // Operation outside trusted project should check cache (will return None since not cached)
-        // We can't test the full flow without mocking user input, but we can verify the cache check
-        assert!(manager.check_cache(&operation_outside).is_none());
-    }
-
-    #[test]
-    fn test_clear_trusted_project() {
-        let manager = create_test_manager();
-
-        // Create a temporary directory
-        let temp_dir = std::env::temp_dir().join("hoosh_test_clear_project");
-        std::fs::create_dir_all(&temp_dir).unwrap();
-
-        // Set trusted project
-        manager.set_trusted_project(temp_dir.clone());
-        assert!(manager.get_trusted_project().is_some());
-
-        // Clear trusted project
-        manager.clear_trusted_project();
-        assert!(manager.get_trusted_project().is_none());
-
-        // Verify the cache entry was also removed
-        let file_in_project = temp_dir.join("test_file.txt");
-        let operation = OperationType::WriteFile(file_in_project.to_string_lossy().to_string());
-        assert!(manager.check_cache(&operation).is_none());
-
-        // Clean up
-        let _ = std::fs::remove_dir_all(&temp_dir);
-    }
-
-    #[tokio::test]
-    async fn test_project_wide_trust_entire_project() {
-        use tempfile::TempDir;
-
-        let manager = create_test_manager().with_skip_permissions(false);
-
-        // Create a temporary directory to use as project root
-        let temp_dir = TempDir::new().unwrap();
-        let project_path = temp_dir.path().to_path_buf();
-
-        // Create test files in the project
-        let file1_path = project_path.join("file1.txt");
-        let file2_path = project_path.join("subdir/file2.txt");
-        std::fs::write(&file1_path, "test1").unwrap();
-        std::fs::create_dir_all(project_path.join("subdir")).unwrap();
-        std::fs::write(&file2_path, "test2").unwrap();
-
-        // Set trusted project
-        manager.set_trusted_project(project_path.clone());
-
-        // Test that operations within the project are auto-approved
-        let operation1 = OperationType::WriteFile(file1_path.to_string_lossy().to_string());
-        assert!(
-            manager.check_permission(&operation1).await.unwrap(),
-            "File in project root should be allowed"
-        );
-
-        let operation2 = OperationType::WriteFile(file2_path.to_string_lossy().to_string());
-        assert!(
-            manager.check_permission(&operation2).await.unwrap(),
-            "File in project subdirectory should be allowed"
-        );
-
-        // Test that operations outside the project are NOT auto-approved
-        let file_outside = std::env::temp_dir().join("outside_file_hoosh_test.txt");
-        std::fs::write(&file_outside, "outside").unwrap();
-        let operation_outside =
-            OperationType::WriteFile(file_outside.to_string_lossy().to_string());
-
-        // This should not be approved by project trust (will check cache, find nothing, and ask user)
-        // Since we're in test mode without user interaction, it will fail
-        // But the important thing is that it doesn't panic and respects the project boundary
-        let _ = manager.check_permission(&operation_outside).await;
-
-        // Clean up
-        let _ = std::fs::remove_file(&file_outside);
-    }
-
-    #[tokio::test]
-    async fn test_project_wide_trust_new_files() {
-        use tempfile::TempDir;
-
-        let manager = create_test_manager().with_skip_permissions(false);
-
-        let temp_dir = TempDir::new().unwrap();
-        let project_path = temp_dir.path().to_path_buf();
-
-        manager.set_trusted_project(project_path.clone());
-
-        let new_file_path = project_path.join("new_file_that_does_not_exist.txt");
-        let operation = OperationType::WriteFile(new_file_path.to_string_lossy().to_string());
-
-        assert!(
-            manager.check_permission(&operation).await.unwrap(),
-            "New file in trusted project should be auto-approved even if it doesn't exist yet"
-        );
-
-        let nested_new_file = project_path.join("subdir/nested_new_file.txt");
-        let operation_nested =
-            OperationType::WriteFile(nested_new_file.to_string_lossy().to_string());
-
-        assert!(
-            manager.check_permission(&operation_nested).await.unwrap(),
-            "New nested file in trusted project should be auto-approved"
-        );
     }
 
     #[tokio::test]
@@ -914,22 +451,37 @@ mod tests {
 
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let manager = PermissionManager::new(event_tx, response_rx)
-            .with_project_root(project_path.clone());
+        let manager =
+            PermissionManager::new(event_tx, response_rx).with_project_root(project_path.clone());
 
         let test_file = project_path.join("test.txt");
         std::fs::write(&test_file, "test").unwrap();
 
-        let operation = OperationType::WriteFile(test_file.to_string_lossy().to_string());
+        let operation = OperationType::new(
+            "write_file",
+            test_file.to_string_lossy().to_string(),
+            false,
+            true,
+            test_file
+                .parent()
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string()),
+        );
         let scope = PermissionScope::Specific(test_file.to_string_lossy().to_string());
 
         let result = manager.add_permission_rule(&operation, &scope, true);
         assert!(result.is_ok(), "Should save permission successfully");
 
         let permissions_file_path = storage::PermissionsFile::get_permissions_path(&project_path);
-        assert!(permissions_file_path.exists(), "Permissions file should be created");
+        assert!(
+            permissions_file_path.exists(),
+            "Permissions file should be created"
+        );
 
         let loaded = storage::PermissionsFile::load_permissions(&project_path).unwrap();
-        assert!(!loaded.allow.is_empty(), "Should have at least one allow rule");
+        assert!(
+            !loaded.allow.is_empty(),
+            "Should have at least one allow rule"
+        );
     }
 }

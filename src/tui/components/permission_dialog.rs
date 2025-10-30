@@ -1,4 +1,3 @@
-use crate::permissions::OperationType;
 use crate::tui::app::{AppState, PermissionOption};
 use crate::tui::component::Component;
 use ratatui::{
@@ -44,9 +43,10 @@ impl Component for PermissionDialog {
                     PermissionOption::YesOnce => ("y", "Yes, once".to_string()),
                     PermissionOption::No => ("n", "No".to_string()),
                     PermissionOption::AlwaysForFile => {
-                        let label = match operation {
-                            OperationType::ExecuteBash(_) => "Always for this command",
-                            _ => "Always for this file",
+                        let label = if operation.operation_kind() == "bash" {
+                            "Always for this command"
+                        } else {
+                            "Always for this file"
                         };
                         ("a", label.to_string())
                     }
@@ -59,7 +59,10 @@ impl Component for PermissionDialog {
                     ),
                     PermissionOption::TrustProject(project_path) => (
                         "T",
-                        format!("Trust entire project ({})", project_path.display()),
+                        format!(
+                            "Trust entire project with all commands ({})",
+                            project_path.display()
+                        ),
                     ),
                 };
 

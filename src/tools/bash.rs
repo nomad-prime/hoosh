@@ -278,7 +278,7 @@ struct BashArgs {
 
 #[async_trait]
 impl Tool for BashTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+    async fn execute(&self, args: &Value) -> Result<String> {
         self.execute_impl(args)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))
@@ -347,16 +347,33 @@ impl Tool for BashTool {
         }
     }
 
+    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
+        let args: BashArgs = serde_json::from_value(args.clone())
+            .map_err(|e| anyhow::anyhow!("Invalid arguments for bash tool: {}", e))?;
+
+        let command = self.sanitize_command(&args.command);
+        let is_destructive = self.is_dangerous_command(&command);
+
+        Ok(OperationType::new(
+            "bash",
+            args.command,
+            false,
+            is_destructive,
+            None,
+        ))
+    }
+
     async fn check_permission(
         &self,
         args: &serde_json::Value,
         permission_manager: &PermissionManager,
     ) -> Result<bool> {
-        let args: BashArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for bash tool: {}", e))?;
-
-        let operation = OperationType::ExecuteBash(args.command);
+        let operation = self.to_operation_type(args)?;
         permission_manager.check_permission(&operation).await
+    }
+
+    fn read_only(&self) -> bool {
+        false
     }
 }
 

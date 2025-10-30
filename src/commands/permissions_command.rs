@@ -35,26 +35,26 @@ impl Command for PermissionsCommand {
             "list" => {
                 let mut output = String::from("Current permissions:\n\n");
 
-                if let Some(project) = permission_manager.get_trusted_project() {
-                    output.push_str(&format!(
-                        "✓ Trusted project: {}\n",
-                        project.display()
-                    ));
+                // Check if there's a permissions file loaded
+                let perms_info = permission_manager.get_permissions_info();
+                if perms_info.allow_count > 0 || perms_info.deny_count > 0 {
+                    output.push_str(&format!("✓ Permissions loaded from storage\n"));
+                    output.push_str(&format!("  Allow rules: {}\n", perms_info.allow_count));
+                    output.push_str(&format!("  Deny rules: {}\n", perms_info.deny_count));
                 } else {
-                    output.push_str("✗ Project not trusted\n");
+                    output.push_str("✗ No persistent permissions saved\n");
                 }
 
                 if permission_manager.skip_permissions() {
-                    output.push_str("⚠️  Permission checks are disabled (--skip-permissions)\n");
+                    output.push_str("\n⚠️  Permission checks are disabled (--skip-permissions)\n");
                 }
 
                 Ok(CommandResult::Success(output))
             }
             "reset" => {
-                permission_manager.clear_cache();
-                permission_manager.clear_trusted_project();
+                permission_manager.clear_all_permissions()?;
                 Ok(CommandResult::Success(
-                    "Permission cache cleared. All future operations will require approval.".to_string(),
+                    "All permissions cleared. Future operations will require approval.".to_string(),
                 ))
             }
             _ => Ok(CommandResult::Success(format!(

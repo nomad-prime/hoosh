@@ -213,11 +213,7 @@ impl Tool for ListDirectoryTool {
         }
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
+    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
         let args: ListDirectoryArgs = serde_json::from_value(args.clone())
             .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
 
@@ -227,8 +223,31 @@ impl Tool for ListDirectoryTool {
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
             .to_string();
 
-        let operation = OperationType::ListDirectory(normalized_path);
+        let parent_dir = dir_path
+            .parent()
+            .and_then(|p| p.to_str())
+            .map(|s| s.to_string());
+
+        Ok(OperationType::new(
+            "list directory",
+            normalized_path,
+            true,
+            false,
+            parent_dir,
+        ))
+    }
+
+    async fn check_permission(
+        &self,
+        args: &Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let operation = self.to_operation_type(args)?;
         permission_manager.check_permission(&operation).await
+    }
+
+    fn read_only(&self) -> bool {
+        true
     }
 }
 

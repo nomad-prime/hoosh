@@ -158,11 +158,7 @@ impl Tool for ReadFileTool {
         format!("Read {} lines", lines)
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
+    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
         let args: ReadFileArgs = serde_json::from_value(args.clone())
             .map_err(|e| anyhow::anyhow!("Invalid arguments for read_file tool: {}", e))?;
 
@@ -172,8 +168,31 @@ impl Tool for ReadFileTool {
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
             .to_string();
 
-        let operation = OperationType::ReadFile(normalized_path);
+        let parent_dir = file_path
+            .parent()
+            .and_then(|p| p.to_str())
+            .map(|s| s.to_string());
+
+        Ok(OperationType::new(
+            "read file",
+            normalized_path,
+            true,
+            false,
+            parent_dir,
+        ))
+    }
+
+    async fn check_permission(
+        &self,
+        args: &Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let operation = self.to_operation_type(args)?;
         permission_manager.check_permission(&operation).await
+    }
+
+    fn read_only(&self) -> bool {
+        true
     }
 }
 

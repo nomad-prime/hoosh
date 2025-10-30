@@ -1,4 +1,5 @@
 use crate::permissions::storage::{PermissionRule, PermissionsFile};
+use crate::tools::{BuiltinToolProvider, ToolRegistry};
 use crate::tui::app::{AppState, InitialPermissionChoice};
 use crate::tui::handlers::InitialPermissionHandler;
 use crate::tui::initial_permission_layout::InitialPermissionLayout;
@@ -8,6 +9,7 @@ use crate::tui::terminal::{resize_terminal, HooshTerminal};
 use anyhow::Result;
 use crossterm::event;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::time::Duration;
 
 pub async fn run(
@@ -67,20 +69,27 @@ async fn run_dialog_loop(
 fn save_permission_choice(choice: &InitialPermissionChoice, project_root: &PathBuf) -> Result<()> {
     let mut perms_file = PermissionsFile::default();
 
+    let registry =
+        ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(project_root.clone())));
+
     match choice {
         InitialPermissionChoice::ReadOnly => {
-            perms_file.add_permission(PermissionRule::global_rule("read"), true);
-            perms_file.add_permission(PermissionRule::global_rule("glob"), true);
-            perms_file.add_permission(PermissionRule::global_rule("grep"), true);
+            for (tool_name, _) in registry.list_tools() {
+                if let Some(tool) = registry.get_tool(tool_name) {
+                    if tool.read_only() {
+                        perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+                    }
+                }
+            }
             perms_file.save_permissions(project_root)?;
         }
         InitialPermissionChoice::TrustProject => {
-            perms_file.trusted = true;
+            for (tool_name, _) in registry.list_tools() {
+                perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+            }
             perms_file.save_permissions(project_root)?;
         }
-        InitialPermissionChoice::Deny => {
-            // Don't save anything for Deny - just return
-        }
+        InitialPermissionChoice::Deny => {}
     }
 
     Ok(())

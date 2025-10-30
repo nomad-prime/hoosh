@@ -131,10 +131,9 @@ impl InputHandler for PermissionHandler {
 
             if let Some((allowed, scope)) = response {
                 // Update app state if ProjectWide scope was selected
-                if let Some(crate::permissions::PermissionScope::ProjectWide(ref path)) = scope
+                if let Some(crate::permissions::PermissionScope::ProjectWide(ref _path)) = scope
                     && allowed
                 {
-                    app.set_trusted_project(path.clone());
                     app.add_status_message("Project trusted");
                 }
 

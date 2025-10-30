@@ -28,7 +28,7 @@ impl EditFileTool {
         }
     }
 
-    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
         let args: EditFileArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "edit_file".to_string(),
@@ -132,7 +132,7 @@ struct EditFileArgs {
 
 #[async_trait]
 impl Tool for EditFileTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
+    async fn execute(&self, args: &Value) -> Result<String> {
         self.execute_impl(args)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))
@@ -194,11 +194,7 @@ impl Tool for EditFileTool {
         "File edited successfully".to_string()
     }
 
-    async fn check_permission(
-        &self,
-        args: &serde_json::Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
+    fn to_operation_type(&self, args: &Value) -> Result<OperationType> {
         let args: EditFileArgs = serde_json::from_value(args.clone())
             .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
 
@@ -208,7 +204,26 @@ impl Tool for EditFileTool {
             .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
             .to_string();
 
-        let operation = OperationType::WriteFile(normalized_path);
+        let parent_dir = file_path
+            .parent()
+            .and_then(|p| p.to_str())
+            .map(|s| s.to_string());
+
+        Ok(OperationType::new(
+            "edit file",
+            normalized_path,
+            false,
+            true,
+            parent_dir,
+        ))
+    }
+
+    async fn check_permission(
+        &self,
+        args: &Value,
+        permission_manager: &PermissionManager,
+    ) -> Result<bool> {
+        let operation = self.to_operation_type(args)?;
         permission_manager.check_permission(&operation).await
     }
 
@@ -226,6 +241,10 @@ impl Tool for EditFileTool {
             args.replace_all,
         );
         Some(preview)
+    }
+
+    fn read_only(&self) -> bool {
+        false
     }
 }
 

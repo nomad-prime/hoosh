@@ -144,7 +144,6 @@ pub struct AppState {
     pub current_thinking_spinner: usize,
     pub current_executing_spinner: usize,
     pub clipboard: ClipboardManager,
-    pub trusted_project: Option<std::path::PathBuf>,
     pub current_retry_status: Option<String>,
     pub input_tokens: usize,
     pub output_tokens: usize,
@@ -181,7 +180,6 @@ impl AppState {
             current_thinking_spinner,
             current_executing_spinner,
             clipboard: ClipboardManager::new(),
-            trusted_project: None,
             current_retry_status: None,
             input_tokens: 0,
             output_tokens: 0,
@@ -221,10 +219,6 @@ impl AppState {
             .store(!current, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub fn set_trusted_project(&mut self, path: std::path::PathBuf) {
-        self.trusted_project = Some(path);
-    }
-
     pub fn show_approval_dialog(&mut self, tool_call_id: String, tool_name: String) {
         self.approval_dialog_state = Some(ApprovalDialogState::new(tool_call_id, tool_name));
     }
@@ -258,7 +252,7 @@ impl AppState {
 
         options.push(PermissionOption::AlwaysForType);
 
-        if !matches!(operation, OperationType::ExecuteBash(_))
+        if operation.operation_kind() != "bash"
             && let Ok(current_dir) = std::env::current_dir()
         {
             options.push(PermissionOption::TrustProject(current_dir));
@@ -297,7 +291,8 @@ impl AppState {
     }
 
     pub fn show_initial_permission_dialog(&mut self, project_path: std::path::PathBuf) {
-        self.initial_permission_dialog_state = Some(InitialPermissionDialogState::new(project_path));
+        self.initial_permission_dialog_state =
+            Some(InitialPermissionDialogState::new(project_path));
     }
 
     pub fn is_showing_initial_permission_dialog(&self) -> bool {
@@ -321,14 +316,14 @@ impl AppState {
     }
 
     pub fn get_selected_initial_permission_choice(&self) -> Option<InitialPermissionChoice> {
-        self.initial_permission_dialog_state.as_ref().map(|dialog| {
-            match dialog.selected_index {
+        self.initial_permission_dialog_state
+            .as_ref()
+            .map(|dialog| match dialog.selected_index {
                 0 => InitialPermissionChoice::ReadOnly,
                 1 => InitialPermissionChoice::TrustProject,
                 2 => InitialPermissionChoice::Deny,
                 _ => InitialPermissionChoice::ReadOnly,
-            }
-        })
+            })
     }
 
     pub fn hide_initial_permission_dialog(&mut self) {
