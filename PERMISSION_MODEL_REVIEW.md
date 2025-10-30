@@ -2,40 +2,6 @@
 
 ## 3. Design Issues
 
-### 3.1 🟡 TIGHT COUPLING TO EVENT SYSTEM
-
-**Problem:** `PermissionManager` is tightly coupled to the event system.
-
-**Location:** `src/permissions/mod.rs:98-108`
-
-  ```rust
-  pub struct PermissionManager {
-    skip_permissions: bool,
-    default_permission: PermissionLevel,
-    event_sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,  // ⚠️ TIGHT COUPLING
-    response_receiver: Arc<Mutex<mpsc::UnboundedReceiver<...>>>,
-    // ...
-}
-  ```
-
-**Issues:**
-
-- Can't use PermissionManager without AgentEvents
-- Hard to test in isolation
-- Violates Dependency Inversion Principle
-- Couples domain logic to event layer
-
-**Impact:** MEDIUM - Reduces testability, flexibility
-
-**Recommendation:**
-
-- Extract permission decision interface
-- Use trait for permission events: `trait PermissionEvents`
-- Inject events implementation via dependency injection
-- Make PermissionManager events-agnostic
-
-  ---
-
 ### 3.2 🟡 OPERATION TYPE CONSTRUCTION IS VERBOSE AND ERROR-PRONE
 
 **Problem:** Every tool must manually construct `OperationType` with 6 parameters including nested `OperationDisplay`.

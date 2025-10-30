@@ -1,4 +1,4 @@
-use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
+use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -199,37 +199,12 @@ impl Tool for EditFileTool {
             .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-        let normalized_path = file_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
 
-        let parent_dir = file_path
-            .parent()
-            .and_then(|p| p.to_str())
-            .map(|s| s.to_string());
-
-        let project_path = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "this project".to_string());
-
-        Ok(OperationType::new(
-            "edit_file",
-            normalized_path.clone(),
-            false,
-            false,
-            parent_dir,
-            OperationDisplay {
-                name: "edits".to_string(),
-                approval_title: "Edit File".to_string(),
-                approval_prompt: format!("Can I edit file {}", normalized_path),
-                persistent_approval: format!(
-                    "don't ask me again for editing files in {}",
-                    project_path
-                ),
-            },
-        ))
+        Ok(OperationType::new("edit_file")
+            .with_target_path(&file_path)
+            .into_destructive()
+            .with_display_name("Edit")
+            .build()?)
     }
 
     async fn check_permission(

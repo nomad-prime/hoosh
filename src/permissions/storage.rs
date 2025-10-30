@@ -1,3 +1,4 @@
+use crate::permissions::operation_type::OperationType;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -57,7 +58,7 @@ impl PermissionsFile {
         Self::load_permissions(project_root).unwrap_or_default()
     }
 
-    pub fn check_permission(&self, operation: &super::OperationType) -> Option<bool> {
+    pub fn check_permission(&self, operation: &OperationType) -> Option<bool> {
         let operation_str = operation.kind();
         let target = operation.target();
 

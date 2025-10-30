@@ -1,4 +1,4 @@
-use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
+use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -218,37 +218,12 @@ impl Tool for ListDirectoryTool {
             .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
 
         let dir_path = self.resolve_path(&args.path);
-        let normalized_path = dir_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
 
-        let parent_dir = dir_path
-            .parent()
-            .and_then(|p| p.to_str())
-            .map(|s| s.to_string());
-
-        let project_path = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "this project".to_string());
-
-        Ok(OperationType::new(
-            "list_directory",
-            normalized_path.clone(),
-            true,
-            false,
-            parent_dir,
-            OperationDisplay {
-                name: "List".to_string(),
-                approval_title: format!("List directory {}", args.path),
-                approval_prompt: format!("Can I list the contents of directory {}", args.path),
-                persistent_approval: format!(
-                    "don't ask me again for listing directories in {}",
-                    project_path
-                ),
-            },
-        ))
+        Ok(OperationType::new("list_directory")
+            .with_target_path(&dir_path)
+            .into_read_only()
+            .with_display_name("List")
+            .build()?)
     }
 
     async fn check_permission(

@@ -3,7 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -354,27 +354,21 @@ impl Tool for BashTool {
         let command = self.sanitize_command(&args.command);
         let is_destructive = self.is_dangerous_command(&command);
 
-        let project_path = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "this project".to_string());
+        let cmd: String = command.into();
+        let op_type = OperationType::new("bash")
+            .with_target(cmd.clone())
+            .with_display_name("Bash")
+            .with_approval_title(format!("Execute: {}", cmd))
+            .with_approval_prompt(format!("Can I run: {}", cmd))
+            .with_persistent_approval(
+                "don't ask me again for bash commands in this project".to_string(),
+            );
 
-        Ok(OperationType::new(
-            "bash",
-            args.command.clone(),
-            false,
-            is_destructive,
-            None,
-            crate::permissions::OperationDisplay {
-                name: "Bash Command".to_string(),
-                approval_title: "Run Bash Command".to_string(),
-                approval_prompt: format!("Can I run this bash command: `{}`?", args.command),
-                persistent_approval: format!(
-                    "don't ask me again for running bash commands in {}",
-                    project_path
-                ),
-            },
-        ))
+        if is_destructive {
+            Ok(op_type.into_destructive().build()?)
+        } else {
+            Ok(op_type.build()?)
+        }
     }
 
     async fn check_permission(

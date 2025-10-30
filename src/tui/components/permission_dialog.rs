@@ -20,7 +20,7 @@ impl Component for PermissionDialog {
             let mut lines = vec![];
 
             lines.push(Line::from(vec![Span::styled(
-                operation.display().approval_prompt.clone(),
+                operation.approval_prompt(),
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
 
@@ -38,13 +38,9 @@ impl Component for PermissionDialog {
                 let (key, label) = match option {
                     PermissionOption::YesOnce => ("y", "Yes, once".to_string()),
                     PermissionOption::No => ("n", "No".to_string()),
-                    PermissionOption::TrustProject(_) => (
-                        "t",
-                        format!(
-                            "yes, and {}",
-                            operation.display().persistent_approval.clone()
-                        ),
-                    ),
+                    PermissionOption::TrustProject(_) => {
+                        ("t", format!("yes, and {}", operation.persistent_approval()))
+                    }
                 };
 
                 let prefix = if is_selected { "> " } else { "  " };
@@ -75,7 +71,7 @@ impl Component for PermissionDialog {
             };
 
             let block = Block::default()
-                .title(operation.display().approval_title.clone())
+                .title(operation.approval_title().clone())
                 .borders(Borders::ALL)
                 .border_style(border_style)
                 .style(Style::default().bg(Color::Black));

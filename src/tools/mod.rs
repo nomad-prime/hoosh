@@ -179,7 +179,6 @@ impl Default for ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::permissions::OperationDisplay;
     struct MockTool {
         name: &'static str,
         description: &'static str,
@@ -219,19 +218,7 @@ mod tests {
         }
 
         fn to_operation_type(&self, _args: &Value) -> Result<OperationType> {
-            Ok(OperationType::new(
-                self.name,
-                "mock_target",
-                true,
-                false,
-                None,
-                OperationDisplay {
-                    name: "mock".to_string(),
-                    approval_title: "Mock Approval".to_string(),
-                    approval_prompt: "Mock approval prompt".to_string(),
-                    persistent_approval: "mock persistent approval".to_string(),
-                },
-            ))
+            Ok(OperationType::new("mock"))
         }
 
         async fn check_permission(

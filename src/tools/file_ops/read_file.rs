@@ -1,4 +1,4 @@
-use crate::permissions::{OperationDisplay, OperationType, PermissionManager};
+use crate::permissions::{OperationType, PermissionManager};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -163,37 +163,12 @@ impl Tool for ReadFileTool {
             .map_err(|e| anyhow::anyhow!("Invalid arguments for read_file tool: {}", e))?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-        let normalized_path = file_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
 
-        let parent_dir = file_path
-            .parent()
-            .and_then(|p| p.to_str())
-            .map(|s| s.to_string());
-
-        let project_path = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_else(|| "this project".to_string());
-
-        Ok(OperationType::new(
-            "read_file",
-            normalized_path.clone(),
-            true,
-            false,
-            parent_dir,
-            OperationDisplay {
-                name: "Read".to_string(),
-                approval_title: format!("Read {}", args.path),
-                approval_prompt: format!("Can I read {}", args.path),
-                persistent_approval: format!(
-                    "don't ask me again for reading files in {}",
-                    project_path
-                ),
-            },
-        ))
+        Ok(OperationType::new("read_file")
+            .with_target_path(&file_path)
+            .into_read_only()
+            .with_display_name("Read")
+            .build()?)
     }
 
     async fn check_permission(

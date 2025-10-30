@@ -159,7 +159,6 @@ impl ToolExecutor {
         results
     }
 
-    /// Request user approval for a tool execution
     async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> Result<()> {
         // Send approval request event
         if let Some(sender) = &self.approval_sender {
