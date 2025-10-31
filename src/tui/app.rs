@@ -236,7 +236,11 @@ impl AppState {
         }
     }
 
-    pub fn show_tool_permission_dialog(&mut self, descriptor: ToolPermissionDescriptor, request_id: String) {
+    pub fn show_tool_permission_dialog(
+        &mut self,
+        descriptor: ToolPermissionDescriptor,
+        request_id: String,
+    ) {
         let options = if let Ok(current_dir) = std::env::current_dir() {
             vec![
                 PermissionOption::YesOnce,

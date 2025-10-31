@@ -58,7 +58,8 @@ impl PermissionsFile {
     pub fn load_permissions(project_root: &Path) -> Result<PermissionsFile, PermissionLoadError> {
         let path = Self::get_permissions_path(project_root);
         let content = std::fs::read_to_string(&path).map_err(PermissionLoadError::Io)?;
-        let file: PermissionsFile = serde_json::from_str(&content).map_err(PermissionLoadError::Parse)?;
+        let file: PermissionsFile =
+            serde_json::from_str(&content).map_err(PermissionLoadError::Parse)?;
 
         if file.version != 1 {
             return Err(PermissionLoadError::UnsupportedVersion {

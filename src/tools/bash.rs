@@ -3,7 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -449,7 +449,10 @@ impl Tool for BashTool {
         let persistent_message = if pattern_display.is_empty() || pattern_display == "" {
             "don't ask me again for bash in this project".to_string()
         } else {
-            format!("don't ask me again for {} commands in this project", pattern_display)
+            format!(
+                "don't ask me again for {} commands in this project",
+                pattern_display
+            )
         };
 
         ToolPermissionBuilder::new(self, target_str)
@@ -617,10 +620,7 @@ mod tests {
         );
 
         // Test with npm run
-        assert_eq!(
-            BashTool::extract_bash_pattern("npm run test"),
-            "npm run*"
-        );
+        assert_eq!(BashTool::extract_bash_pattern("npm run test"), "npm run*");
 
         // Test with git command
         assert_eq!(
@@ -630,7 +630,10 @@ mod tests {
 
         // Test with command that has only flags (should include first flag)
         assert_eq!(BashTool::extract_bash_pattern("ls -la"), "ls -la*");
-        assert_eq!(BashTool::extract_bash_pattern("cargo --version"), "cargo --version*");
+        assert_eq!(
+            BashTool::extract_bash_pattern("cargo --version"),
+            "cargo --version*"
+        );
 
         // Test with python script
         assert_eq!(
@@ -666,9 +669,6 @@ mod tests {
         );
 
         // Test with echo and arguments
-        assert_eq!(
-            BashTool::extract_bash_pattern("echo test"),
-            "echo test*"
-        );
+        assert_eq!(BashTool::extract_bash_pattern("echo test"), "echo test*");
     }
 }

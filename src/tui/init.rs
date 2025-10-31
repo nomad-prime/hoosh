@@ -5,7 +5,7 @@ use crate::tui::handlers::InitialPermissionHandler;
 use crate::tui::initial_permission_layout::InitialPermissionLayout;
 use crate::tui::input_handler::InputHandler;
 use crate::tui::layout::Layout;
-use crate::tui::terminal::{resize_terminal, HooshTerminal};
+use crate::tui::terminal::{HooshTerminal, resize_terminal};
 use anyhow::Result;
 use crossterm::event;
 use std::path::{Path, PathBuf};
@@ -92,7 +92,10 @@ fn save_permission_choice(
                 if let Some(tool) = tool_registry.get_tool(tool_name) {
                     let descriptor = tool.describe_permission(None);
                     // Include read-only tools and destructive/write-safe tools
-                    if descriptor.is_read_only() || descriptor.is_destructive() || descriptor.is_write_safe() {
+                    if descriptor.is_read_only()
+                        || descriptor.is_destructive()
+                        || descriptor.is_write_safe()
+                    {
                         perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
                     }
                 }
