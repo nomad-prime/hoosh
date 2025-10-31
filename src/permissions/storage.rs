@@ -51,11 +51,31 @@ impl PermissionsFile {
         let path = Self::get_permissions_path(project_root);
         let content = std::fs::read_to_string(&path)?;
         let file: PermissionsFile = serde_json::from_str(&content)?;
+
+        if file.version != 1 {
+            anyhow::bail!(
+                "Unsupported permissions file version: {}. This version of hoosh only supports version 1. \
+                Please upgrade hoosh or delete the permissions file at: {}",
+                file.version,
+                path.display()
+            );
+        }
+
         Ok(file)
     }
 
     pub fn load_permissions_safe(project_root: &Path) -> PermissionsFile {
-        Self::load_permissions(project_root).unwrap_or_default()
+        match Self::load_permissions(project_root) {
+            Ok(perms) => perms,
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("Unsupported permissions file version") {
+                    eprintln!("Error: {}", err_msg);
+                    std::process::exit(1);
+                }
+                PermissionsFile::default()
+            }
+        }
     }
 
     pub fn check_tool_permission(&self, descriptor: &ToolPermissionDescriptor) -> Option<bool> {
@@ -260,5 +280,46 @@ mod tests {
 
         assert!(perms_file.allow.is_empty());
         assert!(perms_file.deny.is_empty());
+    }
+
+    #[test]
+    fn test_version_validation() {
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let perms_path = PermissionsFile::get_permissions_path(project_root);
+        std::fs::create_dir_all(perms_path.parent().unwrap()).unwrap();
+
+        let invalid_version_json = r#"{
+            "version": 2,
+            "allow": [],
+            "deny": []
+        }"#;
+
+        let mut file = std::fs::File::create(&perms_path).unwrap();
+        file.write_all(invalid_version_json.as_bytes()).unwrap();
+
+        let result = PermissionsFile::load_permissions(project_root);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Unsupported permissions file version: 2"));
+        assert!(err_msg.contains("only supports version 1"));
+    }
+
+    #[test]
+    fn test_load_permissions_safe_returns_default_when_file_missing() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let perms = PermissionsFile::load_permissions_safe(project_root);
+
+        assert_eq!(perms.version, 1);
+        assert!(perms.allow.is_empty());
+        assert!(perms.deny.is_empty());
     }
 }

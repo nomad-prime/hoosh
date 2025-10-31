@@ -1,35 +1,3 @@
-### 1 🟡 PERMISSION STORAGE FORMAT IS NOT VERSIONED PROPERLY
-
-**Problem:** While there's a `version` field, there's no migration logic or version checking.
-
-**Location:** `src/permissions/storage.rs:9-15`
-
-  ```rust
-  pub struct PermissionsFile {
-    pub version: u32,  // ⚠️ No migration logic
-    pub allow: Vec<PermissionRule>,
-    pub deny: Vec<PermissionRule>,
-}
-  ```
-
-**Issues:**
-
-- Version field exists but is never checked
-- No migration path if format changes
-- Could break on version mismatch
-- No validation of loaded data
-
-**Impact:** LOW-MEDIUM - Future maintenance burden
-
-**Recommendation:**
-
-- Add version validation on load
-- Implement migration framework
-- Handle unknown versions gracefully
-- Add schema validation
-
-  ---
-
 ### 2 🟡 PATTERN MATCHING LOGIC IS FRAGMENTED
 
 **Problem:** Pattern matching logic exists in multiple places with different implementations.
