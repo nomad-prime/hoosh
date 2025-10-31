@@ -14,22 +14,15 @@ impl Component for PermissionDialog {
     type State = AppState;
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        if let Some(dialog_state) = &state.permission_dialog_state {
-            let operation = &dialog_state.operation;
+        if let Some(dialog_state) = &state.tool_permission_dialog_state {
+            let descriptor = &dialog_state.descriptor;
 
             let mut lines = vec![];
 
             lines.push(Line::from(vec![Span::styled(
-                operation.approval_prompt(),
+                descriptor.approval_prompt(),
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
-
-            if operation.is_destructive() {
-                lines.push(Line::from(vec![Span::styled(
-                    "⚠️  WARNING: Destructive!",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                )]));
-            }
 
             lines.push(Line::from(""));
 
@@ -38,9 +31,10 @@ impl Component for PermissionDialog {
                 let (key, label) = match option {
                     PermissionOption::YesOnce => ("y", "Yes, once".to_string()),
                     PermissionOption::No => ("n", "No".to_string()),
-                    PermissionOption::TrustProject(_) => {
-                        ("t", format!("yes, and {}", operation.persistent_approval()))
-                    }
+                    PermissionOption::TrustProject(_) => (
+                        "t",
+                        format!("yes, and {}", descriptor.persistent_approval()),
+                    ),
                 };
 
                 let prefix = if is_selected { "> " } else { "  " };
@@ -64,14 +58,14 @@ impl Component for PermissionDialog {
                 Style::default().fg(Color::Cyan),
             )));
 
-            let border_style = if operation.is_destructive() {
+            let border_style = if descriptor.is_destructive() {
                 Style::default().fg(Color::Red)
             } else {
                 Style::default().fg(Color::Cyan)
             };
 
             let block = Block::default()
-                .title(operation.approval_title().clone())
+                .title(descriptor.approval_title())
                 .borders(Borders::ALL)
                 .border_style(border_style)
                 .style(Style::default().bg(Color::Black));

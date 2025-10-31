@@ -15,6 +15,7 @@ pub struct ToolPermissionDescriptor {
     approval_title: String,
     approval_prompt: String,
     persistent_approval: String,
+    suggested_pattern: Option<String>,
 }
 
 impl ToolPermissionDescriptor {
@@ -57,12 +58,16 @@ impl ToolPermissionDescriptor {
     pub fn persistent_approval(&self) -> &str {
         &self.persistent_approval
     }
+
+    pub fn suggested_pattern(&self) -> Option<&str> {
+        self.suggested_pattern.as_deref()
+    }
 }
 
 pub struct ToolPermissionBuilder<'a> {
     tool: &'a dyn Tool,
-    target: String,
     parent_directory: Option<String>,
+    target: String,
     read_only: bool,
     is_write_safe: bool,
     is_destructive: bool,
@@ -70,13 +75,14 @@ pub struct ToolPermissionBuilder<'a> {
     approval_title: Option<String>,
     approval_prompt: Option<String>,
     persistent_approval: Option<String>,
+    suggested_pattern: Option<String>,
 }
 
 impl<'a> ToolPermissionBuilder<'a> {
-    pub fn new(tool: &'a dyn Tool, target: String) -> Self {
+    pub fn new(tool: &'a dyn Tool, target: impl Into<String>) -> Self {
         Self {
             tool,
-            target,
+            target: target.into(),
             parent_directory: None,
             read_only: false,
             is_write_safe: false,
@@ -85,6 +91,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             approval_title: None,
             approval_prompt: None,
             persistent_approval: None,
+            suggested_pattern: None,
         }
     }
 
@@ -141,6 +148,11 @@ impl<'a> ToolPermissionBuilder<'a> {
         self
     }
 
+    pub fn with_suggested_pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.suggested_pattern = Some(pattern.into());
+        self
+    }
+
     pub fn build(self) -> Result<ToolPermissionDescriptor> {
         let kind = self.tool.tool_name().to_string();
 
@@ -154,7 +166,7 @@ impl<'a> ToolPermissionBuilder<'a> {
 
         let approval_title = self
             .approval_title
-            .unwrap_or_else(|| format!("{} {}", display_name, self.target));
+            .unwrap_or_else(|| format!(" {} {} ", display_name, self.target));
 
         let approval_prompt = self
             .approval_prompt
@@ -184,6 +196,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             approval_title,
             approval_prompt,
             persistent_approval,
+            suggested_pattern: self.suggested_pattern,
         })
     }
 }
@@ -275,7 +288,8 @@ mod tests {
 
         assert_eq!(descriptor.display_name(), "Read_file");
         assert!(descriptor.approval_title().contains("test.txt"));
-        assert!(descriptor.approval_prompt().contains("readRead_file"));
+        assert!(descriptor.approval_prompt().contains("read"));
+        assert!(descriptor.approval_prompt().contains("test.txt"));
     }
 
     #[test]

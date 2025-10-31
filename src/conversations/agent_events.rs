@@ -1,4 +1,4 @@
-use crate::permissions::OperationType;
+use crate::permissions::ToolPermissionDescriptor;
 
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
@@ -18,8 +18,8 @@ pub enum AgentEvent {
     FinalResponse(String),
     Error(String),
     MaxStepsReached(usize),
-    PermissionRequest {
-        operation: OperationType,
+    ToolPermissionRequest {
+        descriptor: ToolPermissionDescriptor,
         request_id: String,
     },
     ApprovalRequest {

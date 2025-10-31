@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
-use crate::permissions::OperationType;
+use crate::permissions::ToolPermissionDescriptor;
 
 /// Core trait for all tools in the hoosh system
 #[async_trait]
@@ -21,6 +21,13 @@ pub trait Tool: Send + Sync {
 
     /// Get the parameter schema for this tool (JSON Schema format)
     fn parameter_schema(&self) -> Value;
+
+    /// Describe the permission characteristics of this tool
+    ///
+    /// # Arguments
+    /// * `target` - Optional specific target for the permission (e.g., file path, command).
+    ///              If None, returns a generic descriptor (usually with "*" as target).
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor;
 
     /// Format the tool call for display (e.g., "Read(src/main.rs)")
     /// This is shown when the tool is invoked
@@ -42,8 +49,6 @@ pub trait Tool: Send + Sync {
             "Completed successfully".to_string()
         }
     }
-
-    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType>;
 
     async fn generate_preview(&self, _args: &Value) -> Option<String> {
         None
@@ -168,6 +173,7 @@ impl Default for ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ToolPermissionBuilder;
     struct MockTool {
         name: &'static str,
         description: &'static str,
@@ -206,12 +212,15 @@ mod tests {
             Ok(self.response.to_string())
         }
 
-        fn to_operation_type(&self, _args: &Option<Value>) -> Result<OperationType> {
-            Ok(OperationType::new("mock"))
-        }
-
         fn display_name(&self) -> &'static str {
             "mock"
+        }
+
+        fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+            ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+                .into_read_only()
+                .build()
+                .expect("Failed to build MockTool permission descriptor")
         }
     }
 

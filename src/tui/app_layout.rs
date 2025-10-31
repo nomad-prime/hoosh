@@ -9,7 +9,7 @@ pub trait AppLayout {
 
 impl AppLayout for Layout<AppState> {
     fn create(app: &AppState) -> Self {
-        let has_overlay = app.is_showing_permission_dialog()
+        let has_overlay = app.is_showing_tool_permission_dialog()
             || app.is_showing_approval_dialog()
             || app.is_showing_initial_permission_dialog()
             || app.is_completing();
@@ -22,13 +22,13 @@ impl AppLayout for Layout<AppState> {
 
         if app.is_showing_initial_permission_dialog() {
             builder = builder.initial_permission_dialog(true);
-        } else if app.is_showing_permission_dialog() {
+        } else if app.is_showing_tool_permission_dialog() {
             let lines = app
-                .permission_dialog_state
+                .tool_permission_dialog_state
                 .as_ref()
                 .map(|state| {
                     let base = 4 + state.options.len() as u16;
-                    if state.operation.is_destructive() {
+                    if state.descriptor.is_destructive() {
                         base + 1
                     } else {
                         base

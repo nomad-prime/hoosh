@@ -1,4 +1,4 @@
-use crate::permissions::OperationType;
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -162,24 +162,11 @@ impl Tool for ReadFileTool {
         format!("Read {} lines", lines)
     }
 
-    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType> {
-        if let Some(value) = args {
-            let args: ReadFileArgs = serde_json::from_value(value.clone())
-                .map_err(|e| anyhow::anyhow!("Invalid arguments for read_file tool: {}", e))?;
-
-            let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-
-            Ok(OperationType::new("read_file")
-                .with_target_path(&file_path)
-                .into_read_only()
-                .with_display_name("Read")
-                .build()?)
-        } else {
-            Ok(OperationType::new("read_file")
-                .into_read_only()
-                .with_display_name("Read")
-                .build()?)
-        }
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_read_only()
+            .build()
+            .expect("Failed to build ReadFileTool permission descriptor")
     }
 }
 

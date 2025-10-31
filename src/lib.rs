@@ -33,6 +33,7 @@ pub use conversations::{
 };
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;
+pub use permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 pub use security::PathValidator;
 pub use tool_executor::ToolExecutor;
 pub use tools::{Tool, ToolRegistry};

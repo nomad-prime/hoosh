@@ -1,4 +1,4 @@
-use crate::permissions::OperationType;
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -198,26 +198,6 @@ impl Tool for EditFileTool {
         "File edited successfully".to_string()
     }
 
-    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType> {
-        if let Some(value) = args {
-            let args: EditFileArgs = serde_json::from_value(value.clone())
-                .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
-
-            let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-
-            Ok(OperationType::new("edit_file")
-                .with_target_path(&file_path)
-                .into_destructive()
-                .with_display_name("Edit")
-                .build()?)
-        } else {
-            Ok(OperationType::new("edit_file")
-                .into_destructive()
-                .with_display_name("Edit")
-                .build()?)
-        }
-    }
-
     async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: EditFileArgs = serde_json::from_value(args.clone()).ok()?;
 
@@ -232,6 +212,13 @@ impl Tool for EditFileTool {
             args.replace_all,
         );
         Some(preview)
+    }
+
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_destructive()
+            .build()
+            .expect("Failed to build EditFileTool permission descriptor")
     }
 }
 

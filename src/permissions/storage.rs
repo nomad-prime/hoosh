@@ -1,4 +1,4 @@
-use crate::permissions::operation_type::OperationType;
+use crate::permissions::tool_permission::ToolPermissionDescriptor;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -58,9 +58,9 @@ impl PermissionsFile {
         Self::load_permissions(project_root).unwrap_or_default()
     }
 
-    pub fn check_permission(&self, operation: &OperationType) -> Option<bool> {
-        let operation_str = operation.kind();
-        let target = operation.target();
+    pub fn check_tool_permission(&self, descriptor: &ToolPermissionDescriptor) -> Option<bool> {
+        let operation_str = descriptor.kind();
+        let target = descriptor.target();
 
         for rule in &self.deny {
             if rule.matches(operation_str, target) {

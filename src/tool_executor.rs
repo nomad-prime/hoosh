@@ -205,8 +205,6 @@ impl ToolExecutor {
         Ok(())
     }
 
-    /// Check if a tool execution is permitted
-    /// Delegates to the tool's own permission check implementation
     async fn check_tool_permissions(
         &self,
         tool: &dyn crate::tools::Tool,
@@ -216,13 +214,21 @@ impl ToolExecutor {
             return Ok(());
         }
 
-        let operation_type = tool
-            .to_operation_type(&Some(args.clone()))
-            .expect("could not get operation type of tool");
+        // Extract target from args - use common patterns for file ops and bash
+        let target = if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+            Some(path)
+        } else if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
+            Some(command)
+        } else {
+            None
+        };
+
+        // Let the tool describe its own permission requirements
+        let descriptor = tool.describe_permission(target);
 
         let allowed = self
             .permission_manager
-            .check_permission(&operation_type)
+            .check_tool_permission(&descriptor)
             .await?;
 
         if !allowed {

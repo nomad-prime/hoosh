@@ -3,7 +3,7 @@ use super::events::AgentState;
 use crate::completion::Completer;
 use crate::conversations::AgentEvent;
 use crate::history::PromptHistory;
-use crate::permissions::OperationType;
+use crate::permissions::ToolPermissionDescriptor;
 use rand::Rng;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -26,8 +26,8 @@ pub struct CompletionState {
     pub completer_index: usize,
 }
 
-pub struct PermissionDialogState {
-    pub operation: OperationType,
+pub struct ToolPermissionDialogState {
+    pub descriptor: ToolPermissionDescriptor,
     pub request_id: String,
     pub selected_index: usize,
     pub options: Vec<PermissionOption>,
@@ -132,7 +132,7 @@ pub struct AppState {
     pub max_messages: usize,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
-    pub permission_dialog_state: Option<PermissionDialogState>,
+    pub tool_permission_dialog_state: Option<ToolPermissionDialogState>,
     pub approval_dialog_state: Option<ApprovalDialogState>,
     pub initial_permission_dialog_state: Option<InitialPermissionDialogState>,
     pub autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -168,7 +168,7 @@ impl AppState {
             max_messages: 1000,
             completion_state: None,
             completers: Vec::new(),
-            permission_dialog_state: None,
+            tool_permission_dialog_state: None,
             approval_dialog_state: None,
             initial_permission_dialog_state: None,
             autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -200,8 +200,8 @@ impl AppState {
         self.completion_state.is_some()
     }
 
-    pub fn is_showing_permission_dialog(&self) -> bool {
-        self.permission_dialog_state.is_some()
+    pub fn is_showing_tool_permission_dialog(&self) -> bool {
+        self.tool_permission_dialog_state.is_some()
     }
 
     pub fn is_showing_approval_dialog(&self) -> bool {
@@ -236,7 +236,7 @@ impl AppState {
         }
     }
 
-    pub fn show_permission_dialog(&mut self, operation: OperationType, request_id: String) {
+    pub fn show_tool_permission_dialog(&mut self, descriptor: ToolPermissionDescriptor, request_id: String) {
         let options = if let Ok(current_dir) = std::env::current_dir() {
             vec![
                 PermissionOption::YesOnce,
@@ -247,24 +247,24 @@ impl AppState {
             vec![PermissionOption::YesOnce, PermissionOption::No]
         };
 
-        self.permission_dialog_state = Some(PermissionDialogState {
-            operation,
+        self.tool_permission_dialog_state = Some(ToolPermissionDialogState {
+            descriptor,
             request_id,
             selected_index: 0,
             options,
         });
     }
 
-    pub fn select_next_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.permission_dialog_state
+    pub fn select_next_tool_permission_option(&mut self) {
+        if let Some(dialog) = &mut self.tool_permission_dialog_state
             && !dialog.options.is_empty()
         {
             dialog.selected_index = (dialog.selected_index + 1) % dialog.options.len();
         }
     }
 
-    pub fn select_prev_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.permission_dialog_state
+    pub fn select_prev_tool_permission_option(&mut self) {
+        if let Some(dialog) = &mut self.tool_permission_dialog_state
             && !dialog.options.is_empty()
         {
             if dialog.selected_index == 0 {
@@ -275,8 +275,8 @@ impl AppState {
         }
     }
 
-    pub fn hide_permission_dialog(&mut self) {
-        self.permission_dialog_state = None;
+    pub fn hide_tool_permission_dialog(&mut self) {
+        self.tool_permission_dialog_state = None;
     }
 
     pub fn show_initial_permission_dialog(&mut self, project_path: std::path::PathBuf) {
@@ -445,7 +445,7 @@ impl AppState {
                     max_steps
                 ));
             }
-            AgentEvent::PermissionRequest { .. } => {}
+            AgentEvent::ToolPermissionRequest { .. } => {}
             AgentEvent::ApprovalRequest { .. } => {}
             AgentEvent::UserRejection => {
                 self.agent_state = AgentState::Idle;

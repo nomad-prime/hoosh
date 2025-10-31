@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
 use crate::conversations::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
@@ -38,8 +38,8 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
-    run_event_loop,
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
 };
 
 pub async fn run(
@@ -87,7 +87,7 @@ pub async fn run(
 
     let terminal = if should_show_initial_dialog {
         use crate::tui::app::InitialPermissionChoice;
-        let (terminal, choice) = init::run(terminal, working_dir.clone()).await?;
+        let (terminal, choice) = init::run(terminal, working_dir.clone(), &tool_registry).await?;
 
         if choice.is_none() || matches!(choice, Some(InitialPermissionChoice::Deny)) {
             restore_terminal(terminal)?;
@@ -144,20 +144,17 @@ pub async fn run(
 
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager)
         .with_event_sender(event_tx.clone())
-        .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled)) // Share autopilot state
+        .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled))
         .with_approval_receiver(approval_response_rx);
 
     let input_handlers: Vec<Box<dyn input_handler::InputHandler + Send>> = vec![
-        // High priority: dialogs
         Box::new(handlers::PermissionHandler::new(
             permission_response_tx.clone(),
         )),
         Box::new(handlers::ApprovalHandler::new(approval_response_tx.clone())),
         Box::new(handlers::CompletionHandler::new()),
-        // Medium priority: special keys
         Box::new(handlers::QuitHandler::new()),
         Box::new(handlers::SubmitHandler::new()),
-        // Low priority: paste and text input (fallbacks)
         Box::new(handlers::PasteHandler::new()),
         Box::new(handlers::TextInputHandler::new()),
     ];

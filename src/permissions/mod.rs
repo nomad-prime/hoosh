@@ -1,4 +1,3 @@
-mod operation_type;
 pub mod storage;
 mod tool_permission;
 
@@ -9,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-pub use crate::permissions::operation_type::OperationType;
+pub use crate::permissions::tool_permission::{ToolPermissionBuilder, ToolPermissionDescriptor};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionLevel {
@@ -87,9 +86,9 @@ impl PermissionManager {
         permissions_file.save_permissions(&project_root)
     }
 
-    pub fn add_permission_rule(
+    pub fn add_tool_permission_rule(
         &self,
-        operation: &OperationType,
+        descriptor: &ToolPermissionDescriptor,
         scope: &PermissionScope,
         allowed: bool,
     ) -> Result<()> {
@@ -98,47 +97,28 @@ impl PermissionManager {
             .try_lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock permissions file: {}", e))?;
 
-        if let PermissionScope::ProjectWide(_) = scope {
-            match operation.kind() {
-                "bash" => {
-                    permissions_file
-                        .add_permission(storage::PermissionRule::ops_rule("bash", "*"), allowed);
-                }
-                "write" | "edit" => {
-                    permissions_file
-                        .add_permission(storage::PermissionRule::ops_rule("write", "*"), allowed);
-                    permissions_file
-                        .add_permission(storage::PermissionRule::ops_rule("edit", "*"), allowed);
-                }
-                _ => {
-                    let rule = self.create_permission_rule(operation, scope);
-                    permissions_file.add_permission(rule, allowed);
-                }
+        match scope {
+            PermissionScope::ProjectWide(_) => {
+                // Use suggested pattern if available (for bash commands), otherwise use "*"
+                let pattern = descriptor
+                    .suggested_pattern()
+                    .unwrap_or("*")
+                    .to_string();
+                permissions_file.add_permission(
+                    storage::PermissionRule::ops_rule(descriptor.kind(), pattern),
+                    allowed,
+                );
             }
-        } else {
-            let rule = self.create_permission_rule(operation, scope);
-            permissions_file.add_permission(rule, allowed);
+            PermissionScope::Specific(target) => {
+                permissions_file.add_permission(
+                    storage::PermissionRule::ops_rule(descriptor.kind(), target.clone()),
+                    allowed,
+                );
+            }
         }
 
         drop(permissions_file);
         self.save_permissions()
-    }
-
-    fn create_permission_rule(
-        &self,
-        operation: &OperationType,
-        scope: &PermissionScope,
-    ) -> storage::PermissionRule {
-        let operation_str = operation.kind();
-
-        match scope {
-            PermissionScope::Specific(target) => {
-                storage::PermissionRule::ops_rule(operation_str, target.clone())
-            }
-            PermissionScope::ProjectWide(_) => {
-                storage::PermissionRule::ops_rule(operation_str, "*")
-            }
-        }
     }
 
     pub fn with_skip_permissions(mut self, skip: bool) -> Self {
@@ -186,49 +166,55 @@ impl PermissionManager {
         self.save_permissions()
     }
 
-    pub async fn check_permission(&self, operation: &OperationType) -> Result<bool> {
+    pub async fn check_tool_permission(
+        &self,
+        descriptor: &ToolPermissionDescriptor,
+    ) -> Result<bool> {
         if self.skip_permissions {
             return Ok(true);
         }
 
-        if let Some(persistent_decision) = self.check_persistent_permissions(operation) {
+        if let Some(persistent_decision) = self.check_persistent_tool_permission(descriptor) {
             return Ok(persistent_decision);
         }
 
         let (allowed, scope) = match self.default_permission {
             PermissionLevel::Allow => (true, None),
             PermissionLevel::Deny => (false, None),
-            PermissionLevel::Ask => self.ask_user_permission(operation).await?,
+            PermissionLevel::Ask => self.ask_user_tool_permission(descriptor).await?,
         };
 
         if let Some(ref scope) = scope {
-            let _ = self.add_permission_rule(operation, scope, allowed);
+            let _ = self.add_tool_permission_rule(descriptor, scope, allowed);
         }
 
         Ok(allowed)
     }
 
-    fn check_persistent_permissions(&self, operation: &OperationType) -> Option<bool> {
+    fn check_persistent_tool_permission(
+        &self,
+        descriptor: &ToolPermissionDescriptor,
+    ) -> Option<bool> {
         let permissions_file = self.permissions_file.try_lock().ok()?;
-        permissions_file.check_permission(operation)
+        permissions_file.check_tool_permission(descriptor)
     }
 
-    async fn ask_user_permission(
+    async fn ask_user_tool_permission(
         &self,
-        operation: &OperationType,
+        descriptor: &ToolPermissionDescriptor,
     ) -> Result<(bool, Option<PermissionScope>)> {
         let request_id = self
             .request_counter
             .fetch_add(1, Ordering::SeqCst)
             .to_string();
 
-        let event = crate::conversations::AgentEvent::PermissionRequest {
-            operation: operation.clone(),
+        let event = crate::conversations::AgentEvent::ToolPermissionRequest {
+            descriptor: descriptor.clone(),
             request_id: request_id.clone(),
         };
         self.event_sender
             .send(event)
-            .context("Failed to send permission request event")?;
+            .context("Failed to send tool permission request event")?;
 
         let mut receiver = self.response_receiver.lock().await;
 

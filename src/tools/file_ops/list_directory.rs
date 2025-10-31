@@ -1,4 +1,4 @@
-use crate::permissions::OperationType;
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
@@ -217,24 +217,11 @@ impl Tool for ListDirectoryTool {
         }
     }
 
-    fn to_operation_type(&self, args: &Option<Value>) -> Result<OperationType> {
-        if let Some(value) = args {
-            let args: ListDirectoryArgs = serde_json::from_value(value.clone())
-                .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
-
-            let dir_path = self.resolve_path(&args.path);
-
-            Ok(OperationType::new("list_directory")
-                .with_target_path(&dir_path)
-                .into_read_only()
-                .with_display_name("List")
-                .build()?)
-        } else {
-            Ok(OperationType::new("list_directory")
-                .into_read_only()
-                .with_display_name("List")
-                .build()?)
-        }
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_read_only()
+            .build()
+            .expect("Failed to build ListDirectoryTool permission descriptor")
     }
 }
 

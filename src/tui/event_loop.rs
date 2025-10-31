@@ -79,11 +79,11 @@ pub async fn run_event_loop(
 
         while let Ok(event) = context.channels.event_rx.try_recv() {
             match event {
-                AgentEvent::PermissionRequest {
-                    operation,
+                AgentEvent::ToolPermissionRequest {
+                    descriptor,
                     request_id,
                 } => {
-                    app.show_permission_dialog(operation, request_id);
+                    app.show_tool_permission_dialog(descriptor, request_id);
                 }
                 AgentEvent::ApprovalRequest {
                     tool_call_id,

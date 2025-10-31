@@ -41,7 +41,7 @@ impl Component for Status {
         let (status_text, status_color) = if let Some(retry_status) = &state.current_retry_status {
             let retry_spinner = retry_spinners[state.animation_frame % retry_spinners.len()];
             (format!(" {} {}", retry_spinner, retry_status), Color::Red)
-        } else if state.is_showing_permission_dialog() || state.is_showing_approval_dialog() {
+        } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {
             let waiting_spinner = waiting_spinners[state.animation_frame % waiting_spinners.len()];
             (format!(" {} Your turn", waiting_spinner), Color::Yellow)
         } else {

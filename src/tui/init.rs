@@ -1,5 +1,5 @@
 use crate::permissions::storage::{PermissionRule, PermissionsFile};
-use crate::tools::{BuiltinToolProvider, ToolRegistry};
+use crate::tools::ToolRegistry;
 use crate::tui::app::{AppState, InitialPermissionChoice};
 use crate::tui::handlers::InitialPermissionHandler;
 use crate::tui::initial_permission_layout::InitialPermissionLayout;
@@ -9,12 +9,12 @@ use crate::tui::terminal::{resize_terminal, HooshTerminal};
 use anyhow::Result;
 use crossterm::event;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use tokio::time::Duration;
 
 pub async fn run(
     terminal: HooshTerminal,
     project_root: PathBuf,
+    tool_registry: &ToolRegistry,
 ) -> Result<(HooshTerminal, Option<InitialPermissionChoice>)> {
     let mut app = AppState::new();
     app.show_initial_permission_dialog(project_root.clone());
@@ -22,7 +22,7 @@ pub async fn run(
     let (terminal, choice) = run_dialog_loop(terminal, &mut app).await;
 
     if let Some(ref choice) = choice {
-        save_permission_choice(choice, &project_root)?;
+        save_permission_choice(choice, &project_root, tool_registry)?;
     }
 
     Ok((terminal, choice))
@@ -66,30 +66,35 @@ async fn run_dialog_loop(
     }
 }
 
-fn save_permission_choice(choice: &InitialPermissionChoice, project_root: &Path) -> Result<()> {
+fn save_permission_choice(
+    choice: &InitialPermissionChoice,
+    project_root: &Path,
+    tool_registry: &ToolRegistry,
+) -> Result<()> {
     let mut perms_file = PermissionsFile::default();
-
-    let registry = ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(
-        project_root.to_path_buf(),
-    )));
 
     match choice {
         InitialPermissionChoice::ReadOnly => {
-            for (tool_name, _) in registry.list_tools() {
-                if let Some(tool) = registry.get_tool(tool_name)
-                    && tool.to_operation_type(&None)?.is_read_only()
-                {
-                    perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+            // Add permissions for all read-only tools from the registry
+            for (tool_name, _) in tool_registry.list_tools() {
+                if let Some(tool) = tool_registry.get_tool(tool_name) {
+                    let descriptor = tool.describe_permission(None);
+                    if descriptor.is_read_only() {
+                        perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+                    }
                 }
             }
             perms_file.save_permissions(project_root)?;
         }
         InitialPermissionChoice::EnableWriteEdit => {
-            for (tool_name, _) in registry.list_tools() {
-                if let Some(tool) = registry.get_tool(tool_name)
-                    && tool.to_operation_type(&None)?.is_write_safe()
-                {
-                    perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+            // Add permissions for read-only and write-safe tools from the registry
+            for (tool_name, _) in tool_registry.list_tools() {
+                if let Some(tool) = tool_registry.get_tool(tool_name) {
+                    let descriptor = tool.describe_permission(None);
+                    // Include read-only tools and destructive/write-safe tools
+                    if descriptor.is_read_only() || descriptor.is_destructive() || descriptor.is_write_safe() {
+                        perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
+                    }
                 }
             }
             perms_file.save_permissions(project_root)?;

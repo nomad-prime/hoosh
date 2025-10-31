@@ -2,6 +2,8 @@
 
 #### Add messages midflight
 
+want to add messages as llm is working same as claude code
+
 #### Error Log
 
 Add error logs file, have option in hoosh to examine those logs
@@ -48,3 +50,23 @@ currently I add the tool and then append tool result (preview) in messages. Idea
 keeps tool calls there
 (especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
 then I keep it above status bar
+
+### File Expansion
+
+if a file is referenced in input, file read should be shown afterwards
+
+### Approve Plan
+
+very often AI creates a plan before moving on, this should be a
+
+### Low hanging fruit for context reduction
+
+rolling window (keep system and plan)
+
+fluff reduction
+
+remove file content upload and smaller diffs
+
+### ways forward
+
+have llm give forks as to possible implementations, user chooses the way
