@@ -1,7 +1,15 @@
+use crate::console::console;
 use crate::permissions::tool_permission::ToolPermissionDescriptor;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+pub enum PermissionLoadError {
+    UnsupportedVersion { version: u32, path: PathBuf },
+    Io(std::io::Error),
+    Parse(serde_json::Error),
+}
 
 /// Persistent permission file format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,35 +55,36 @@ impl PermissionsFile {
         Ok(())
     }
 
-    pub fn load_permissions(project_root: &Path) -> Result<PermissionsFile, anyhow::Error> {
+    pub fn load_permissions(project_root: &Path) -> Result<PermissionsFile, PermissionLoadError> {
         let path = Self::get_permissions_path(project_root);
-        let content = std::fs::read_to_string(&path)?;
-        let file: PermissionsFile = serde_json::from_str(&content)?;
+        let content = std::fs::read_to_string(&path).map_err(PermissionLoadError::Io)?;
+        let file: PermissionsFile = serde_json::from_str(&content).map_err(PermissionLoadError::Parse)?;
 
         if file.version != 1 {
-            anyhow::bail!(
-                "Unsupported permissions file version: {}. This version of hoosh only supports version 1. \
-                Please upgrade hoosh or delete the permissions file at: {}",
-                file.version,
-                path.display()
-            );
+            return Err(PermissionLoadError::UnsupportedVersion {
+                version: file.version,
+                path,
+            });
         }
 
         Ok(file)
     }
 
     pub fn load_permissions_safe(project_root: &Path) -> PermissionsFile {
-        match Self::load_permissions(project_root) {
-            Ok(perms) => perms,
-            Err(e) => {
-                let err_msg = e.to_string();
-                if err_msg.contains("Unsupported permissions file version") {
-                    eprintln!("Error: {}", err_msg);
+        Self::load_permissions(project_root).unwrap_or_else(|e| {
+            match e {
+                PermissionLoadError::UnsupportedVersion { version, path } => {
+                    console().error(&format!(
+                        "Unsupported permissions file version: {}. This version of hoosh only supports version 1. \
+                        Please upgrade hoosh or delete the permissions file at: {}",
+                        version,
+                        path.display()
+                    ));
                     std::process::exit(1);
                 }
-                PermissionsFile::default()
+                _ => PermissionsFile::default(),
             }
-        }
+        })
     }
 
     pub fn check_tool_permission(&self, descriptor: &ToolPermissionDescriptor) -> Option<bool> {
@@ -304,9 +313,12 @@ mod tests {
 
         let result = PermissionsFile::load_permissions(project_root);
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Unsupported permissions file version: 2"));
-        assert!(err_msg.contains("only supports version 1"));
+        match result.unwrap_err() {
+            PermissionLoadError::UnsupportedVersion { version, .. } => {
+                assert_eq!(version, 2);
+            }
+            _ => panic!("Expected UnsupportedVersion error"),
+        }
     }
 
     #[test]
