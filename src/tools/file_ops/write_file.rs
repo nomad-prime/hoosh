@@ -86,6 +86,10 @@ impl Tool for WriteFileTool {
         "write_file"
     }
 
+    fn display_name(&self) -> &'static str {
+        "write"
+    }
+
     fn description(&self) -> &'static str {
         "Write content to a file. Can create parent directories if needed."
     }

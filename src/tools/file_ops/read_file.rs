@@ -118,6 +118,10 @@ impl Tool for ReadFileTool {
         "read_file"
     }
 
+    fn display_name(&self) -> &'static str {
+        "read"
+    }
+
     fn description(&self) -> &'static str {
         "Read the contents of a file. Supports optional line range selection."
     }

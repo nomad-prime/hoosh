@@ -1,5 +1,6 @@
 mod operation_type;
 pub mod storage;
+mod tool_permission;
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;

@@ -142,6 +142,10 @@ impl Tool for EditFileTool {
         "edit_file"
     }
 
+    fn display_name(&self) -> &'static str {
+        "edit"
+    }
+
     fn description(&self) -> &'static str {
         "Edit a file by replacing exact string matches. Use this for surgical edits to existing files."
     }

@@ -288,6 +288,10 @@ impl Tool for BashTool {
         "bash"
     }
 
+    fn display_name(&self) -> &'static str {
+        "bash"
+    }
+
     fn description(&self) -> &'static str {
         "Execute bash commands safely with timeout and security restrictions."
     }

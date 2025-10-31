@@ -165,6 +165,10 @@ impl Tool for ListDirectoryTool {
         "list_directory"
     }
 
+    fn display_name(&self) -> &'static str {
+        "list"
+    }
+
     fn description(&self) -> &'static str {
         "List the contents of a directory, showing files and subdirectories."
     }

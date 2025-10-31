@@ -14,6 +14,8 @@ pub trait Tool: Send + Sync {
     /// Get the tool's name (used for identification)
     fn tool_name(&self) -> &'static str;
 
+    fn display_name(&self) -> &'static str;
+
     /// Get a description of what this tool does
     fn description(&self) -> &'static str;
 
@@ -206,6 +208,10 @@ mod tests {
 
         fn to_operation_type(&self, _args: &Option<Value>) -> Result<OperationType> {
             Ok(OperationType::new("mock"))
+        }
+
+        fn display_name(&self) -> &'static str {
+            "mock"
         }
     }
 
