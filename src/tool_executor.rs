@@ -215,13 +215,10 @@ impl ToolExecutor {
         }
 
         // Extract target from args - use common patterns for file ops and bash
-        let target = if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
-            Some(path)
-        } else if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
-            Some(command)
-        } else {
-            None
-        };
+        let target = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .or_else(|| args.get("command").and_then(|v| v.as_str()));
 
         // Let the tool describe its own permission requirements
         let descriptor = tool.describe_permission(target);

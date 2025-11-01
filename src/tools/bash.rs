@@ -3,7 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -446,7 +446,7 @@ impl Tool for BashTool {
         // Create a human-readable pattern description
         // Remove the trailing * for display
         let pattern_display = pattern.trim_end_matches('*');
-        let persistent_message = if pattern_display.is_empty() || pattern_display == "" {
+        let persistent_message = if pattern_display.is_empty() {
             "don't ask me again for bash in this project".to_string()
         } else {
             format!(
@@ -460,7 +460,7 @@ impl Tool for BashTool {
             .with_approval_prompt(format!(
                 " Can I run \"{} {}\"",
                 self.display_name(),
-                target.unwrap_or_else(|| " ")
+                target.unwrap_or(" ")
             ))
             .with_persistent_approval(persistent_message)
             .with_suggested_pattern(pattern)

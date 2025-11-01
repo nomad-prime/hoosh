@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use similar::{ChangeTag, TextDiff};
 use std::path::PathBuf;
 use tokio::fs;
@@ -217,6 +217,7 @@ impl Tool for EditFileTool {
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
         ToolPermissionBuilder::new(self, target.unwrap_or("*"))
             .into_destructive()
+            .with_display_name("Edit")
             .build()
             .expect("Failed to build EditFileTool permission descriptor")
     }

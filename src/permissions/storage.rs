@@ -92,14 +92,14 @@ impl PermissionsFile {
         let operation_str = descriptor.kind();
         let target = descriptor.target();
 
-        for rule in &self.deny {
-            if rule.matches(operation_str, target) {
+        for rule in self.deny.iter().filter(|r| r.operation == operation_str) {
+            if rule.matches_pattern(target) {
                 return Some(false);
             }
         }
 
-        for rule in &self.allow {
-            if rule.matches(operation_str, target) {
+        for rule in self.allow.iter().filter(|r| r.operation == operation_str) {
+            if rule.matches_pattern(target) {
                 return Some(true);
             }
         }
@@ -142,16 +142,12 @@ impl PermissionRule {
         self
     }
 
-    pub fn matches(&self, operation: &str, target: &str) -> bool {
-        if self.operation != operation {
-            return false;
-        }
-
+    pub fn matches_pattern(&self, target: &str) -> bool {
         let Some(ref pattern_str) = self.pattern else {
             return true;
         };
 
-        if operation == "bash" {
+        if self.operation == "bash" {
             return self.matches_bash_pattern(pattern_str, target);
         }
 
@@ -162,7 +158,7 @@ impl PermissionRule {
         if pattern == "*" {
             return true;
         }
-        if let Some(prefix) = pattern.strip_suffix('*') {
+        if let Some(prefix) = pattern.strip_suffix(":*") {
             command.starts_with(prefix)
         } else {
             pattern == command
@@ -215,37 +211,35 @@ mod tests {
     fn test_file_pattern_matching() {
         let rule = PermissionRule::ops_rule("write_file", "/src/**");
 
-        assert!(rule.matches("write_file", "/src/main.rs"));
-        assert!(rule.matches("write_file", "/src/lib/mod.rs"));
-        assert!(!rule.matches("write_file", "/tests/test.rs"));
-        assert!(!rule.matches("read_file", "/src/main.rs"));
+        assert!(rule.matches_pattern("/src/main.rs"));
+        assert!(rule.matches_pattern("/src/lib/mod.rs"));
+        assert!(!rule.matches_pattern("/tests/test.rs"));
     }
 
     #[test]
     fn test_bash_pattern_matching() {
         let rule = PermissionRule::ops_rule("bash", "cargo build*");
 
-        assert!(rule.matches("bash", "cargo build"));
-        assert!(rule.matches("bash", "cargo build --release"));
-        assert!(!rule.matches("bash", "cargo check"));
-        assert!(!rule.matches("bash", "npm build"));
+        assert!(rule.matches_pattern("cargo build"));
+        assert!(rule.matches_pattern("cargo build --release"));
+        assert!(!rule.matches_pattern("cargo check"));
+        assert!(!rule.matches_pattern("npm build"));
     }
 
     #[test]
     fn test_exact_file_match() {
         let rule = PermissionRule::ops_rule("write_file", "/config.toml");
 
-        assert!(rule.matches("write_file", "/config.toml"));
-        assert!(!rule.matches("write_file", "/src/config.toml"));
+        assert!(rule.matches_pattern("/config.toml"));
+        assert!(!rule.matches_pattern("/src/config.toml"));
     }
 
     #[test]
     fn test_global_rule() {
         let rule = PermissionRule::ops_rule("read_file", "*");
 
-        assert!(rule.matches("read_file", "anything"));
-        assert!(rule.matches("read_file", ""));
-        assert!(!rule.matches("write_file", "anything"));
+        assert!(rule.matches_pattern("anything"));
+        assert!(rule.matches_pattern(""));
     }
 
     #[test]
