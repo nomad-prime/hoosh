@@ -4,10 +4,10 @@ mod tool_permission;
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 
 pub use crate::permissions::pattern_matcher::{
     BashPatternMatcher, FilePatternMatcher, PatternMatcher,
