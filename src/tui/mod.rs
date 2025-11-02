@@ -106,9 +106,17 @@ pub async fn run(
     let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
     let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let permission_manager = PermissionManager::new(event_tx.clone(), permission_response_rx)
+    let permission_manager = match PermissionManager::new(event_tx.clone(), permission_response_rx)
         .with_skip_permissions(skip_permissions)
-        .with_project_root(working_dir.clone());
+        .with_project_root(working_dir.clone())
+    {
+        Ok(pm) => pm,
+        Err(err) => {
+            use crate::console::console;
+            console().error(&err.to_string());
+            std::process::exit(1);
+        }
+    };
 
     // Wrap backend in Arc for shared ownership
     let backend: Arc<dyn LlmBackend> = Arc::from(backend);

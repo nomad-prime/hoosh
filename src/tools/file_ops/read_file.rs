@@ -163,8 +163,12 @@ impl Tool for ReadFileTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        use crate::permissions::FilePatternMatcher;
+        use std::sync::Arc;
+
         ToolPermissionBuilder::new(self, target.unwrap_or("*"))
             .into_read_only()
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
             .build()
             .expect("Failed to build ReadFileTool permission descriptor")
     }

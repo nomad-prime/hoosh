@@ -1,9 +1,11 @@
 use anyhow::Result;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::Tool;
+use crate::permissions::PatternMatcher;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct ToolPermissionDescriptor {
     kind: String,
     target: String,
@@ -16,7 +18,47 @@ pub struct ToolPermissionDescriptor {
     approval_prompt: String,
     persistent_approval: String,
     suggested_pattern: Option<String>,
+    pattern_matcher: Arc<dyn PatternMatcher>,
 }
+
+// Manual Debug implementation since PatternMatcher doesn't implement Debug
+impl std::fmt::Debug for ToolPermissionDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolPermissionDescriptor")
+            .field("kind", &self.kind)
+            .field("target", &self.target)
+            .field("read_only", &self.read_only)
+            .field("is_write_safe", &self.is_write_safe)
+            .field("is_destructive", &self.is_destructive)
+            .field("parent_directory", &self.parent_directory)
+            .field("display_name", &self.display_name)
+            .field("approval_title", &self.approval_title)
+            .field("approval_prompt", &self.approval_prompt)
+            .field("persistent_approval", &self.persistent_approval)
+            .field("suggested_pattern", &self.suggested_pattern)
+            .field("pattern_matcher", &"<PatternMatcher>")
+            .finish()
+    }
+}
+
+// Manual PartialEq implementation since PatternMatcher doesn't implement PartialEq
+impl PartialEq for ToolPermissionDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.target == other.target
+            && self.read_only == other.read_only
+            && self.is_write_safe == other.is_write_safe
+            && self.is_destructive == other.is_destructive
+            && self.parent_directory == other.parent_directory
+            && self.display_name == other.display_name
+            && self.approval_title == other.approval_title
+            && self.approval_prompt == other.approval_prompt
+            && self.persistent_approval == other.persistent_approval
+            && self.suggested_pattern == other.suggested_pattern
+    }
+}
+
+impl Eq for ToolPermissionDescriptor {}
 
 impl ToolPermissionDescriptor {
     pub fn kind(&self) -> &str {
@@ -62,6 +104,12 @@ impl ToolPermissionDescriptor {
     pub fn suggested_pattern(&self) -> Option<&str> {
         self.suggested_pattern.as_deref()
     }
+
+    /// Check if a pattern matches this descriptor's target
+    /// Delegates to the tool-specific pattern matcher
+    pub fn matches_pattern(&self, pattern: &str) -> bool {
+        self.pattern_matcher.matches(pattern, &self.target)
+    }
 }
 
 pub struct ToolPermissionBuilder<'a> {
@@ -76,6 +124,7 @@ pub struct ToolPermissionBuilder<'a> {
     approval_prompt: Option<String>,
     persistent_approval: Option<String>,
     suggested_pattern: Option<String>,
+    pattern_matcher: Option<Arc<dyn PatternMatcher>>,
 }
 
 impl<'a> ToolPermissionBuilder<'a> {
@@ -92,6 +141,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             approval_prompt: None,
             persistent_approval: None,
             suggested_pattern: None,
+            pattern_matcher: None,
         }
     }
 
@@ -153,6 +203,11 @@ impl<'a> ToolPermissionBuilder<'a> {
         self
     }
 
+    pub fn with_pattern_matcher(mut self, matcher: Arc<dyn PatternMatcher>) -> Self {
+        self.pattern_matcher = Some(matcher);
+        self
+    }
+
     pub fn build(self) -> Result<ToolPermissionDescriptor> {
         let kind = self.tool.tool_name().to_string();
 
@@ -185,6 +240,12 @@ impl<'a> ToolPermissionBuilder<'a> {
             )
         });
 
+        // Default to FilePatternMatcher if no matcher provided
+        let pattern_matcher = self.pattern_matcher.unwrap_or_else(|| {
+            use crate::permissions::FilePatternMatcher;
+            Arc::new(FilePatternMatcher)
+        });
+
         Ok(ToolPermissionDescriptor {
             kind,
             target: self.target,
@@ -197,6 +258,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             approval_prompt,
             persistent_approval,
             suggested_pattern: self.suggested_pattern,
+            pattern_matcher,
         })
     }
 }

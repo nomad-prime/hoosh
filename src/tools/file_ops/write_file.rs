@@ -150,8 +150,12 @@ impl Tool for WriteFileTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        use crate::permissions::FilePatternMatcher;
+        use std::sync::Arc;
+
         ToolPermissionBuilder::new(self, target.unwrap_or("*"))
             .into_destructive()
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
             .build()
             .expect("Failed to build WriteFileTool permission descriptor")
     }

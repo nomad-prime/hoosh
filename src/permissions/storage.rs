@@ -1,14 +1,18 @@
-use crate::console::console;
 use crate::permissions::tool_permission::ToolPermissionDescriptor;
-use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum PermissionLoadError {
+    #[error("Unsupported permissions file version: {version}. This version of hoosh only supports version 1. Please upgrade hoosh or delete the permissions file at: {}", path.display())]
     UnsupportedVersion { version: u32, path: PathBuf },
-    Io(std::io::Error),
-    Parse(serde_json::Error),
+
+    #[error("I/O error loading permissions: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Parse error loading permissions: {0}")]
+    Parse(#[from] serde_json::Error),
 }
 
 /// Persistent permission file format
@@ -71,35 +75,31 @@ impl PermissionsFile {
         Ok(file)
     }
 
-    pub fn load_permissions_safe(project_root: &Path) -> PermissionsFile {
-        Self::load_permissions(project_root).unwrap_or_else(|e| {
-            match e {
-                PermissionLoadError::UnsupportedVersion { version, path } => {
-                    console().error(&format!(
-                        "Unsupported permissions file version: {}. This version of hoosh only supports version 1. \
-                        Please upgrade hoosh or delete the permissions file at: {}",
-                        version,
-                        path.display()
-                    ));
-                    std::process::exit(1);
-                }
-                _ => PermissionsFile::default(),
+    /// Load permissions from disk, returning default if file doesn't exist or can't be parsed.
+    /// Returns an error only for unsupported versions (which should be handled by the caller).
+    pub fn load_permissions_safe(
+        project_root: &Path,
+    ) -> Result<PermissionsFile, PermissionLoadError> {
+        match Self::load_permissions(project_root) {
+            Ok(perms) => Ok(perms),
+            Err(PermissionLoadError::UnsupportedVersion { version, path }) => {
+                Err(PermissionLoadError::UnsupportedVersion { version, path })
             }
-        })
+            Err(_) => Ok(PermissionsFile::default()),
+        }
     }
 
     pub fn check_tool_permission(&self, descriptor: &ToolPermissionDescriptor) -> Option<bool> {
         let operation_str = descriptor.kind();
-        let target = descriptor.target();
 
         for rule in self.deny.iter().filter(|r| r.operation == operation_str) {
-            if rule.matches_pattern(target) {
+            if rule.matches_pattern(descriptor) {
                 return Some(false);
             }
         }
 
         for rule in self.allow.iter().filter(|r| r.operation == operation_str) {
-            if rule.matches_pattern(target) {
+            if rule.matches_pattern(descriptor) {
                 return Some(true);
             }
         }
@@ -142,40 +142,22 @@ impl PermissionRule {
         self
     }
 
-    pub fn matches_pattern(&self, target: &str) -> bool {
+    pub fn matches_pattern(&self, descriptor: &ToolPermissionDescriptor) -> bool {
         let Some(ref pattern_str) = self.pattern else {
             return true;
         };
 
-        if self.operation == "bash" {
-            return self.matches_bash_pattern(pattern_str, target);
-        }
-
-        self.matches_file_pattern(pattern_str, target)
-    }
-
-    fn matches_bash_pattern(&self, pattern: &str, command: &str) -> bool {
-        if pattern == "*" {
-            return true;
-        }
-        if let Some(prefix) = pattern.strip_suffix(":*") {
-            command.starts_with(prefix)
-        } else {
-            pattern == command
-        }
-    }
-
-    fn matches_file_pattern(&self, pattern: &str, path: &str) -> bool {
-        Pattern::new(pattern)
-            .ok()
-            .map(|p| p.matches(path))
-            .unwrap_or(false)
+        descriptor.matches_pattern(pattern_str)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permissions::{BashPatternMatcher, FilePatternMatcher, ToolPermissionBuilder};
+    use crate::tools::bash::BashTool;
+    use crate::tools::ReadFileTool;
+    use std::sync::Arc;
 
     #[test]
     fn test_default_permissions_file() {
@@ -210,36 +192,88 @@ mod tests {
     #[test]
     fn test_file_pattern_matching() {
         let rule = PermissionRule::ops_rule("write_file", "/src/**");
+        let tool = ReadFileTool::new();
 
-        assert!(rule.matches_pattern("/src/main.rs"));
-        assert!(rule.matches_pattern("/src/lib/mod.rs"));
-        assert!(!rule.matches_pattern("/tests/test.rs"));
+        let desc1 = ToolPermissionBuilder::new(&tool, "/src/main.rs")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+        let desc2 = ToolPermissionBuilder::new(&tool, "/src/lib/mod.rs")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+        let desc3 = ToolPermissionBuilder::new(&tool, "/tests/test.rs")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+
+        assert!(rule.matches_pattern(&desc1));
+        assert!(rule.matches_pattern(&desc2));
+        assert!(!rule.matches_pattern(&desc3));
     }
 
     #[test]
     fn test_bash_pattern_matching() {
-        let rule = PermissionRule::ops_rule("bash", "cargo build*");
+        let rule = PermissionRule::ops_rule("bash", "cargo build:*");
+        let tool = BashTool::new();
 
-        assert!(rule.matches_pattern("cargo build"));
-        assert!(rule.matches_pattern("cargo build --release"));
-        assert!(!rule.matches_pattern("cargo check"));
-        assert!(!rule.matches_pattern("npm build"));
+        let desc1 = ToolPermissionBuilder::new(&tool, "cargo build")
+            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .build()
+            .unwrap();
+        let desc2 = ToolPermissionBuilder::new(&tool, "cargo build --release")
+            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .build()
+            .unwrap();
+        let desc3 = ToolPermissionBuilder::new(&tool, "cargo check")
+            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .build()
+            .unwrap();
+        let desc4 = ToolPermissionBuilder::new(&tool, "npm build")
+            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .build()
+            .unwrap();
+
+        assert!(rule.matches_pattern(&desc1));
+        assert!(rule.matches_pattern(&desc2));
+        assert!(!rule.matches_pattern(&desc3));
+        assert!(!rule.matches_pattern(&desc4));
     }
 
     #[test]
     fn test_exact_file_match() {
         let rule = PermissionRule::ops_rule("write_file", "/config.toml");
+        let tool = ReadFileTool::new();
 
-        assert!(rule.matches_pattern("/config.toml"));
-        assert!(!rule.matches_pattern("/src/config.toml"));
+        let desc1 = ToolPermissionBuilder::new(&tool, "/config.toml")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+        let desc2 = ToolPermissionBuilder::new(&tool, "/src/config.toml")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+
+        assert!(rule.matches_pattern(&desc1));
+        assert!(!rule.matches_pattern(&desc2));
     }
 
     #[test]
     fn test_global_rule() {
         let rule = PermissionRule::ops_rule("read_file", "*");
+        let tool = ReadFileTool::new();
 
-        assert!(rule.matches_pattern("anything"));
-        assert!(rule.matches_pattern(""));
+        let desc1 = ToolPermissionBuilder::new(&tool, "anything")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+        let desc2 = ToolPermissionBuilder::new(&tool, "some/path")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+
+        assert!(rule.matches_pattern(&desc1));
+        assert!(rule.matches_pattern(&desc2));
     }
 
     #[test]
@@ -323,10 +357,40 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
 
-        let perms = PermissionsFile::load_permissions_safe(project_root);
+        let perms = PermissionsFile::load_permissions_safe(project_root).unwrap();
 
         assert_eq!(perms.version, 1);
         assert!(perms.allow.is_empty());
         assert!(perms.deny.is_empty());
+    }
+
+    #[test]
+    fn test_load_permissions_safe_returns_error_for_unsupported_version() {
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let perms_path = PermissionsFile::get_permissions_path(project_root);
+        std::fs::create_dir_all(perms_path.parent().unwrap()).unwrap();
+
+        let invalid_version_json = r#"{
+            "version": 2,
+            "allow": [],
+            "deny": []
+        }"#;
+
+        let mut file = std::fs::File::create(&perms_path).unwrap();
+        file.write_all(invalid_version_json.as_bytes()).unwrap();
+
+        let result = PermissionsFile::load_permissions_safe(project_root);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PermissionLoadError::UnsupportedVersion { version, .. } => {
+                assert_eq!(version, 2);
+            }
+            _ => panic!("Expected UnsupportedVersion error"),
+        }
     }
 }

@@ -1,3 +1,4 @@
+pub mod pattern_matcher;
 pub mod storage;
 mod tool_permission;
 
@@ -8,6 +9,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 
+pub use crate::permissions::pattern_matcher::{
+    BashPatternMatcher, FilePatternMatcher, PatternMatcher,
+};
 pub use crate::permissions::tool_permission::{ToolPermissionBuilder, ToolPermissionDescriptor};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,8 +61,11 @@ impl PermissionManager {
         }
     }
 
-    pub fn with_project_root(self, project_root: PathBuf) -> Self {
-        let permissions = storage::PermissionsFile::load_permissions_safe(&project_root);
+    pub fn with_project_root(
+        self,
+        project_root: PathBuf,
+    ) -> Result<Self, storage::PermissionLoadError> {
+        let permissions = storage::PermissionsFile::load_permissions_safe(&project_root)?;
 
         if let Ok(mut root) = self.project_root.try_lock() {
             *root = Some(project_root);
@@ -67,7 +74,7 @@ impl PermissionManager {
             *perms = permissions;
         }
 
-        self
+        Ok(self)
     }
 
     pub fn save_permissions(&self) -> Result<()> {
