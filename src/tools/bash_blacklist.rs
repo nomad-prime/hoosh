@@ -119,7 +119,10 @@ impl BlacklistFile {
             }
             Err(e) => {
                 // Log error but don't fail - return empty list
-                eprintln!("Warning: Failed to load bash blacklist: {}. Using empty blacklist.", e);
+                eprintln!(
+                    "Warning: Failed to load bash blacklist: {}. Using empty blacklist.",
+                    e
+                );
                 Vec::new()
             }
         }
@@ -160,7 +163,10 @@ mod tests {
     fn test_blacklist_file_new() {
         let blacklist = BlacklistFile::new();
         assert_eq!(blacklist.version, 1);
-        assert!(!blacklist.patterns.is_empty(), "Default blacklist should have patterns");
+        assert!(
+            !blacklist.patterns.is_empty(),
+            "Default blacklist should have patterns"
+        );
         // Verify some key patterns are present
         assert!(blacklist.patterns.iter().any(|p| p.contains("rm -rf")));
         assert!(blacklist.patterns.iter().any(|p| p.contains("sudo")));
@@ -183,7 +189,10 @@ mod tests {
         let content = fs::read_to_string(&blacklist_path).unwrap();
         let blacklist: BlacklistFile = serde_json::from_str(&content).unwrap();
         assert_eq!(blacklist.version, 1);
-        assert!(!blacklist.patterns.is_empty(), "Default blacklist should have patterns");
+        assert!(
+            !blacklist.patterns.is_empty(),
+            "Default blacklist should have patterns"
+        );
         // Verify some key patterns are present
         assert!(blacklist.patterns.iter().any(|p| p.contains("rm -rf")));
         assert!(blacklist.patterns.iter().any(|p| p.contains("sudo")));
