@@ -1,6 +1,5 @@
-use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::permissions::ToolPermissionDescriptor;
@@ -9,7 +8,7 @@ use crate::permissions::ToolPermissionDescriptor;
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Execute the tool with the given arguments
-    async fn execute(&self, args: &Value) -> Result<String>;
+    async fn execute(&self, args: &Value) -> ToolResult<String>;
 
     /// Get the tool's name (used for identification)
     fn tool_name(&self) -> &'static str;
@@ -209,7 +208,7 @@ mod tests {
             })
         }
 
-        async fn execute(&self, _args: &Value) -> Result<String> {
+        async fn execute(&self, _args: &Value) -> error::ToolResult<String> {
             Ok(self.response.to_string())
         }
 

@@ -1,25 +1,24 @@
-use anyhow::{Context, Result};
 use serde_json::{self, Value};
 use tokio::sync::mpsc;
 
-use crate::conversations::{AgentEvent, ToolCall, ToolExecutionError, ToolResult};
+use crate::conversations::{AgentEvent, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionManager;
+use crate::tools::error::{ToolError, ToolResult as ToolErrorResult};
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
 /// Validate arguments against a JSON schema
 /// Returns an error if validation fails
-fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> Result<()> {
-    let compiled_schema = jsonschema::JSONSchema::compile(schema)
-        .map_err(|e| anyhow::anyhow!("Failed to compile schema for tool '{}': {}", tool_name, e))?;
+fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> ToolErrorResult<()> {
+    let compiled_schema = jsonschema::JSONSchema::compile(schema).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "Failed to compile schema for tool '{}': {}",
+            tool_name, e
+        ))
+    })?;
 
     compiled_schema.validate(args).map_err(|e| {
         let errors: Vec<String> = e.map(|err| err.to_string()).collect();
-        let provided_args = args.to_string();
-        anyhow::Error::new(ToolExecutionError::invalid_arguments(
-            tool_name,
-            provided_args,
-            errors.join("; "),
-        ))
+        ToolError::invalid_arguments(tool_name, errors.join("; "))
     })?;
 
     Ok(())
@@ -74,7 +73,7 @@ impl ToolExecutor {
     }
 
     /// Execute a single tool call
-    pub async fn execute_tool_call(&self, tool_call: &ToolCall) -> ToolResult {
+    pub async fn execute_tool_call(&self, tool_call: &ToolCall) -> ToolCallResponse {
         let tool_name = &tool_call.function.name;
         let tool_call_id = tool_call.id.clone();
 
@@ -82,11 +81,11 @@ impl ToolExecutor {
         let tool = match self.tool_registry.get_tool(tool_name) {
             Some(tool) => tool,
             None => {
-                return ToolResult::error(
+                return ToolCallResponse::error(
                     tool_call_id,
                     tool_name.clone(),
                     tool_name.clone(),
-                    anyhow::Error::new(ToolExecutionError::unknown_tool(tool_name)),
+                    ToolError::tool_not_found(tool_name),
                 );
             }
         };
@@ -95,11 +94,11 @@ impl ToolExecutor {
         let args = match serde_json::from_str(&tool_call.function.arguments) {
             Ok(args) => args,
             Err(e) => {
-                return ToolResult::error(
+                return ToolCallResponse::error(
                     tool_call_id,
                     tool_name.clone(),
                     tool_name.clone(),
-                    anyhow::anyhow!("Invalid tool arguments: {}", e),
+                    ToolError::execution_failed(format!("Invalid tool arguments: {}", e)),
                 );
             }
         };
@@ -110,11 +109,11 @@ impl ToolExecutor {
         // Validate arguments against the tool's schema
         let schema = tool.parameter_schema();
         if let Err(e) = validate_against_schema(&args, &schema, tool_name) {
-            return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
+            return ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e);
         }
 
         if let Err(e) = self.check_tool_permissions(tool, &args).await {
-            return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
+            return ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e);
         }
 
         // Generate and emit preview if available
@@ -134,21 +133,20 @@ impl ToolExecutor {
 
             // If not in autopilot mode, request approval before continuing
             if !is_autopilot && let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
-                return ToolResult::error(tool_call_id, tool_name.clone(), display_name, e);
+                return ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e);
             }
         }
 
         // Execute the tool
         match tool.execute(&args).await {
             Ok(output) => {
-                ToolResult::success(tool_call_id, tool_name.clone(), display_name, output)
+                ToolCallResponse::success(tool_call_id, tool_name.clone(), display_name, output)
             }
-            Err(e) => ToolResult::error(tool_call_id, tool_name.clone(), display_name, e),
+            Err(e) => ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e),
         }
     }
 
-    /// Execute multiple tool calls and return results
-    pub async fn execute_tool_calls(&self, tool_calls: &[ToolCall]) -> Vec<ToolResult> {
+    pub async fn execute_tool_calls(&self, tool_calls: &[ToolCall]) -> Vec<ToolCallResponse> {
         let mut results = Vec::new();
 
         for tool_call in tool_calls {
@@ -159,16 +157,16 @@ impl ToolExecutor {
         results
     }
 
-    async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> Result<()> {
+    async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> ToolErrorResult<()> {
         // Send approval request event
         if let Some(sender) = &self.approval_sender {
             let event = AgentEvent::ApprovalRequest {
                 tool_call_id: tool_call_id.to_string(),
                 tool_name: tool_name.to_string(),
             };
-            sender
-                .send(event)
-                .context("Failed to send approval request event")?;
+            sender.send(event).map_err(|e| {
+                ToolError::execution_failed(format!("Failed to send approval request event: {}", e))
+            })?;
         } else {
             // No approval system configured, auto-approve
             return Ok(());
@@ -181,24 +179,21 @@ impl ToolExecutor {
             let response = rx
                 .recv()
                 .await
-                .ok_or_else(|| anyhow::anyhow!("Approval channel closed"))?;
+                .ok_or_else(|| ToolError::execution_failed("Approval channel closed"))?;
 
             // Verify tool_call_id matches
             if response.tool_call_id != tool_call_id {
-                anyhow::bail!(
+                return Err(ToolError::execution_failed(format!(
                     "Approval response ID mismatch: expected {}, got {}",
-                    tool_call_id,
-                    response.tool_call_id
-                );
+                    tool_call_id, response.tool_call_id
+                )));
             }
 
             if !response.approved {
                 let reason = response
                     .rejection_reason
                     .unwrap_or_else(|| "User rejected".to_string());
-                return Err(anyhow::Error::new(ToolExecutionError::user_rejected(
-                    reason,
-                )));
+                return Err(ToolError::user_rejected(reason));
             }
         }
 
@@ -209,7 +204,7 @@ impl ToolExecutor {
         &self,
         tool: &dyn crate::tools::Tool,
         args: &Value,
-    ) -> Result<()> {
+    ) -> ToolErrorResult<()> {
         if !self.permission_manager.is_enforcing() {
             return Ok(());
         }
@@ -226,12 +221,11 @@ impl ToolExecutor {
         let allowed = self
             .permission_manager
             .check_tool_permission(&descriptor)
-            .await?;
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("Permission check failed: {}", e)))?;
 
         if !allowed {
-            return Err(anyhow::Error::new(ToolExecutionError::permission_denied(
-                tool.tool_name(),
-            )));
+            return Err(ToolError::permission_denied(tool.tool_name()));
         }
 
         Ok(())
@@ -305,7 +299,7 @@ mod tests {
                 .result
                 .unwrap_err()
                 .to_string()
-                .contains("Unknown tool")
+                .contains("not found in registry")
         );
     }
 

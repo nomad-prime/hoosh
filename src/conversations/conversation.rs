@@ -1,5 +1,6 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
+
+use crate::tools::error::ToolError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
@@ -27,14 +28,14 @@ pub struct ToolFunction {
 }
 
 #[derive(Debug)]
-pub struct ToolResult {
+pub struct ToolCallResponse {
     pub tool_call_id: String,
     pub tool_name: String,
     pub display_name: String,
-    pub result: Result<String>,
+    pub result: Result<String, ToolError>,
 }
 
-impl ToolResult {
+impl ToolCallResponse {
     pub fn success(
         tool_call_id: String,
         tool_name: String,
@@ -53,7 +54,7 @@ impl ToolResult {
         tool_call_id: String,
         tool_name: String,
         display_name: String,
-        error: anyhow::Error,
+        error: ToolError,
     ) -> Self {
         Self {
             tool_call_id,
@@ -63,13 +64,9 @@ impl ToolResult {
         }
     }
 
-    /// Check if this result represents a user rejection
     pub fn is_rejected(&self) -> bool {
         if let Err(e) = &self.result {
-            // Try to downcast to ToolExecutionError
-            e.downcast_ref::<crate::conversations::ToolExecutionError>()
-                .map(|err| err.is_user_rejection())
-                .unwrap_or(false)
+            e.is_user_rejection()
         } else {
             false
         }
@@ -137,7 +134,7 @@ impl Conversation {
         });
     }
 
-    pub fn add_tool_result(&mut self, tool_result: ToolResult) {
+    pub fn add_tool_result(&mut self, tool_result: ToolCallResponse) {
         self.messages.push(tool_result.to_message());
     }
 
@@ -301,7 +298,7 @@ mod tests {
         assert_eq!(pending_calls[0].function.name, "read_file");
 
         // Add tool result
-        let tool_result = ToolResult::success(
+        let tool_result = ToolCallResponse::success(
             "call_123".to_string(),
             "read_file".to_string(),
             "Read(test.txt)".to_string(),
@@ -323,8 +320,8 @@ mod tests {
 
     #[test]
     fn test_tool_result_error() {
-        let error = anyhow::anyhow!("File not found");
-        let tool_result = ToolResult::error(
+        let error = ToolError::execution_failed("File not found");
+        let tool_result = ToolCallResponse::error(
             "call_123".to_string(),
             "read_file".to_string(),
             "Read(test.txt)".to_string(),

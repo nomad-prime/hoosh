@@ -1,10 +1,9 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::bash_blacklist::matches_pattern;
 use crate::tools::{Tool, ToolError, ToolResult};
-use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -80,7 +79,7 @@ impl BashTool {
             .collect()
     }
 
-    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
         let args: BashArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "bash".to_string(),
@@ -284,10 +283,8 @@ struct BashArgs {
 
 #[async_trait]
 impl Tool for BashTool {
-    async fn execute(&self, args: &Value) -> Result<String> {
-        self.execute_impl(args)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+    async fn execute(&self, args: &Value) -> ToolResult<String> {
+        self.execute_impl(args).await
     }
 
     fn tool_name(&self) -> &'static str {

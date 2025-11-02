@@ -1,7 +1,6 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
-use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -132,10 +131,8 @@ struct EditFileArgs {
 
 #[async_trait]
 impl Tool for EditFileTool {
-    async fn execute(&self, args: &Value) -> Result<String> {
-        self.execute_impl(args)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+    async fn execute(&self, args: &Value) -> ToolResult<String> {
+        self.execute_impl(args).await
     }
 
     fn tool_name(&self) -> &'static str {

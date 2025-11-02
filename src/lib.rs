@@ -23,13 +23,13 @@ pub use backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use backends::{TogetherAiBackend, TogetherAiConfig};
 pub use commands::{
-    Command, CommandContext, CommandRegistry, CommandResult, register_default_commands,
+    register_default_commands, Command, CommandContext, CommandRegistry, CommandResult,
 };
 pub use config::{AgentConfig, AppConfig, BackendConfig};
-pub use console::{Console, VerbosityLevel, console, init_console};
+pub use console::{console, init_console, Console, VerbosityLevel};
 pub use conversations::{
-    AgentEvent, Conversation, ConversationHandler, ConversationMessage, ToolCall,
-    ToolExecutionContext, ToolFunction, ToolResult,
+    AgentEvent, Conversation, ConversationHandler, ConversationMessage, ToolCall, ToolCallResponse,
+    ToolExecutionContext, ToolFunction,
 };
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;

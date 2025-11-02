@@ -4,10 +4,10 @@ mod tool_permission;
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::Mutex;
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 pub use crate::permissions::pattern_matcher::{
     BashPatternMatcher, FilePatternMatcher, PatternMatcher,
@@ -245,15 +245,6 @@ impl Default for PermissionManager {
         let (_, response_rx) = tokio::sync::mpsc::unbounded_channel();
         Self::new(event_tx, response_rx)
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum PermissionError {
-    #[error("Permission denied for operation: {0}")]
-    PermissionDenied(String),
-
-    #[error("Permission check failed: {0}")]
-    CheckFailed(String),
 }
 
 #[cfg(test)]
@@ -530,15 +521,6 @@ mod tests {
         // Should start with empty permissions
         assert_eq!(info.allow_count, 0);
         assert_eq!(info.deny_count, 0);
-    }
-
-    #[test]
-    fn test_permission_error_variants() {
-        let error1 = PermissionError::PermissionDenied("test".to_string());
-        let error2 = PermissionError::CheckFailed("failed".to_string());
-
-        assert!(matches!(error1, PermissionError::PermissionDenied(_)));
-        assert!(matches!(error2, PermissionError::CheckFailed(_)));
     }
 
     #[test]

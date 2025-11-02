@@ -3,6 +3,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ToolError {
+    #[error("Operation rejected: {reason}")]
+    UserRejected { reason: String },
+
     #[error("Tool '{tool}' not found in registry")]
     ToolNotFound { tool: String },
 
@@ -15,11 +18,11 @@ pub enum ToolError {
     #[error("Permission denied: {operation}")]
     PermissionDenied { operation: String },
 
-    #[error("Timeout executing tool '{tool}' after {seconds} seconds")]
-    Timeout { tool: String, seconds: u64 },
-
     #[error("Path security violation: {message}")]
     SecurityViolation { message: String },
+
+    #[error("Timeout executing tool '{tool}' after {seconds} seconds")]
+    Timeout { tool: String, seconds: u64 },
 
     #[error("File not found: {path}")]
     FileNotFound { path: PathBuf },
@@ -36,14 +39,61 @@ pub enum ToolError {
     #[error("Invalid command: {message}")]
     InvalidCommand { message: String },
 
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-
-    #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
-
     #[error("Schema validation failed for tool '{tool}': {message}")]
     SchemaValidationFailed { tool: String, message: String },
+
+    #[error("IO error: {0}")]
+    IoError(std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(serde_json::Error),
+}
+
+impl ToolError {
+    pub fn user_rejected(reason: impl Into<String>) -> Self {
+        Self::UserRejected {
+            reason: reason.into(),
+        }
+    }
+
+    pub fn tool_not_found(tool: impl Into<String>) -> Self {
+        Self::ToolNotFound { tool: tool.into() }
+    }
+
+    pub fn invalid_arguments(tool: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::InvalidArguments {
+            tool: tool.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn permission_denied(operation: impl Into<String>) -> Self {
+        Self::PermissionDenied {
+            operation: operation.into(),
+        }
+    }
+
+    pub fn execution_failed(message: impl Into<String>) -> Self {
+        Self::ExecutionFailed {
+            message: message.into(),
+        }
+    }
+
+    pub fn is_user_rejection(&self) -> bool {
+        matches!(self, ToolError::UserRejected { .. })
+    }
+}
+// Manual From implementations since we can't use #[from] with Clone
+impl From<std::io::Error> for ToolError {
+    fn from(err: std::io::Error) -> Self {
+        ToolError::IoError(err)
+    }
+}
+
+impl From<serde_json::Error> for ToolError {
+    fn from(err: serde_json::Error) -> Self {
+        ToolError::SerializationError(err)
+    }
 }
 
 pub type ToolResult<T> = Result<T, ToolError>;

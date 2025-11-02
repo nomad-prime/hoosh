@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::conversations::agent_events::AgentEvent;
-use crate::conversations::{ContextManager, Conversation, ToolCall, ToolResult};
+use crate::conversations::{ContextManager, Conversation, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionScope;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -246,7 +246,7 @@ impl ConversationHandler {
         self.send_event(AgentEvent::ToolCalls(tool_call_displays));
     }
 
-    fn emit_tool_results(&self, tool_results: &[ToolResult]) {
+    fn emit_tool_results(&self, tool_results: &[ToolCallResponse]) {
         for tool_result in tool_results {
             let summary = self.get_tool_result_summary(tool_result);
             self.send_event(AgentEvent::ToolResult {
@@ -256,7 +256,7 @@ impl ConversationHandler {
         }
     }
 
-    fn get_tool_result_summary(&self, tool_result: &ToolResult) -> String {
+    fn get_tool_result_summary(&self, tool_result: &ToolCallResponse) -> String {
         if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
             match &tool_result.result {
                 Ok(output) => tool.result_summary(output),
@@ -270,11 +270,11 @@ impl ConversationHandler {
         }
     }
 
-    fn format_error_summary(&self, error: &anyhow::Error) -> String {
+    fn format_error_summary(&self, error: &crate::tools::error::ToolError) -> String {
         format!("Error: {}", error)
     }
 
-    fn has_user_rejection(&self, tool_results: &[ToolResult]) -> bool {
+    fn has_user_rejection(&self, tool_results: &[ToolCallResponse]) -> bool {
         tool_results.iter().any(|result| result.is_rejected())
     }
 }
