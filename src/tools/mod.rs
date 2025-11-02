@@ -68,6 +68,7 @@ pub trait Tool: Send + Sync {
 }
 
 pub mod bash;
+pub mod bash_blacklist;
 pub mod error;
 pub mod file_ops;
 pub mod provider;
