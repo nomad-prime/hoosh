@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::permissions::PatternMatcher;
 use crate::Tool;
+use crate::permissions::PatternMatcher;
 
 #[derive(Clone)]
 pub struct ToolPermissionDescriptor {
