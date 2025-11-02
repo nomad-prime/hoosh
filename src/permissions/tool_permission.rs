@@ -221,7 +221,7 @@ impl<'a> ToolPermissionBuilder<'a> {
 
         let approval_title = self
             .approval_title
-            .unwrap_or_else(|| format!(" {} {} ", display_name, self.target));
+            .unwrap_or_else(|| format!(" {} ", display_name));
 
         let approval_prompt = self.approval_prompt.unwrap_or_else(|| {
             format!("Can I \"{}\" \"{}\"", self.tool.display_name(), self.target)
