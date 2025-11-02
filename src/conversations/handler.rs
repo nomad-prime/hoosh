@@ -271,7 +271,7 @@ impl ConversationHandler {
     }
 
     fn format_error_summary(&self, error: &crate::tools::error::ToolError) -> String {
-        format!("Error: {}", error)
+        error.user_facing_message()
     }
 
     fn has_user_rejection(&self, tool_results: &[ToolCallResponse]) -> bool {

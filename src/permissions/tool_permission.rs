@@ -209,7 +209,7 @@ impl<'a> ToolPermissionBuilder<'a> {
     }
 
     pub fn build(self) -> Result<ToolPermissionDescriptor> {
-        let kind = self.tool.tool_name().to_string();
+        let kind = self.tool.name().to_string();
 
         if self.target.is_empty() {
             return Err(anyhow::anyhow!("Target is required"));
@@ -217,7 +217,7 @@ impl<'a> ToolPermissionBuilder<'a> {
 
         let display_name = self
             .display_name
-            .unwrap_or_else(|| capitalize(self.tool.tool_name()));
+            .unwrap_or_else(|| capitalize(self.tool.name()));
 
         let approval_title = self
             .approval_title

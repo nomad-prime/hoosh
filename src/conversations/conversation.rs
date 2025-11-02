@@ -75,7 +75,7 @@ impl ToolCallResponse {
     pub fn to_message(&self) -> ConversationMessage {
         let content = match &self.result {
             Ok(output) => output.clone(),
-            Err(error) => format!("Error: {}", error),
+            Err(error) => error.llm_message(),
         };
 
         ConversationMessage {

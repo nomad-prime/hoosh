@@ -29,11 +29,11 @@ impl Component for PermissionDialog {
             for (idx, option) in dialog_state.options.iter().enumerate() {
                 let is_selected = idx == dialog_state.selected_index;
                 let (key, label) = match option {
-                    PermissionOption::YesOnce => ("y", "Yes, once".to_string()),
-                    PermissionOption::No => ("n", "No".to_string()),
+                    PermissionOption::YesOnce => ("y", "Yes, once ".to_string()),
+                    PermissionOption::No => ("n", "No ".to_string()),
                     PermissionOption::TrustProject(_) => (
                         "t",
-                        format!("yes, and {}", descriptor.persistent_approval()),
+                        format!("yes, and {} ", descriptor.persistent_approval()),
                     ),
                 };
 

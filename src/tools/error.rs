@@ -15,8 +15,8 @@ pub enum ToolError {
     #[error("Tool execution failed: {message}")]
     ExecutionFailed { message: String },
 
-    #[error("Permission denied: {operation}")]
-    PermissionDenied { operation: String },
+    #[error("Permission denied: {tool}")]
+    PermissionDenied { tool: String },
 
     #[error("Path security violation: {message}")]
     SecurityViolation { message: String },
@@ -67,22 +67,38 @@ impl ToolError {
         }
     }
 
-    pub fn permission_denied(operation: impl Into<String>) -> Self {
-        Self::PermissionDenied {
-            operation: operation.into(),
-        }
-    }
-
     pub fn execution_failed(message: impl Into<String>) -> Self {
         Self::ExecutionFailed {
             message: message.into(),
         }
     }
 
+    pub fn permission_denied(tool: impl Into<String>) -> Self {
+        Self::PermissionDenied { tool: tool.into() }
+    }
+
     pub fn is_user_rejection(&self) -> bool {
         matches!(self, ToolError::UserRejected { .. })
     }
+
+    pub fn user_facing_message(&self) -> String {
+        match self {
+            ToolError::UserRejected { .. } => "User rejected".to_string(),
+            ToolError::PermissionDenied { .. } => "Permission denied".to_string(),
+            _ => format!("Error: {}", self),
+        }
+    }
+
+    pub fn llm_message(&self) -> String {
+        match self {
+            ToolError::PermissionDenied { tool } => {
+                format!("Permission denied for {}", tool)
+            }
+            _ => format!("Error: {}", self),
+        }
+    }
 }
+
 // Manual From implementations since we can't use #[from] with Clone
 impl From<std::io::Error> for ToolError {
     fn from(err: std::io::Error) -> Self {

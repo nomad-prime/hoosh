@@ -11,7 +11,7 @@ pub trait Tool: Send + Sync {
     async fn execute(&self, args: &Value) -> ToolResult<String>;
 
     /// Get the tool's name (used for identification)
-    fn tool_name(&self) -> &'static str;
+    fn name(&self) -> &'static str;
 
     fn display_name(&self) -> &'static str;
 
@@ -32,7 +32,7 @@ pub trait Tool: Send + Sync {
     /// This is shown when the tool is invoked
     fn format_call_display(&self, _args: &Value) -> String {
         // Default implementation: just return tool name
-        self.tool_name().to_string()
+        self.name().to_string()
     }
 
     /// Create a summary of the tool execution result for display
@@ -58,7 +58,7 @@ pub trait Tool: Send + Sync {
         json!({
             "type": "function",
             "function": {
-                "name": self.tool_name(),
+                "name": self.name(),
                 "description": self.description(),
                 "parameters": self.parameter_schema()
             }
@@ -102,7 +102,7 @@ impl ToolRegistry {
     pub fn add_provider(&mut self, provider: Arc<dyn ToolProvider>) {
         // Get tools from provider and register them
         for tool in provider.provide_tools() {
-            let name = tool.tool_name();
+            let name = tool.name();
             if self.tools.contains_key(name) {
                 eprintln!(
                     "Warning: Tool '{}' already registered, skipping from provider '{}'",
@@ -117,7 +117,7 @@ impl ToolRegistry {
     }
 
     pub fn register_tool(&mut self, tool: Arc<dyn Tool>) -> Result<(), String> {
-        let name = tool.tool_name();
+        let name = tool.name();
         if self.tools.contains_key(name) {
             return Err(format!("Tool with name '{}' already exists", name));
         }
@@ -146,7 +146,7 @@ impl ToolRegistry {
         let providers = std::mem::take(&mut self.providers);
         for provider in providers {
             for tool in provider.provide_tools() {
-                let name = tool.tool_name();
+                let name = tool.name();
                 if self.tools.contains_key(name) {
                     eprintln!(
                         "Warning: Tool '{}' already registered, skipping from provider '{}'",
@@ -192,7 +192,7 @@ mod tests {
 
     #[async_trait]
     impl Tool for MockTool {
-        fn tool_name(&self) -> &'static str {
+        fn name(&self) -> &'static str {
             self.name
         }
 
@@ -259,7 +259,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools
@@ -283,7 +283,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools
@@ -313,7 +313,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools
@@ -352,7 +352,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools

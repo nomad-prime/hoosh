@@ -79,7 +79,7 @@ impl Tool for WriteFileTool {
         self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "write_file"
     }
 

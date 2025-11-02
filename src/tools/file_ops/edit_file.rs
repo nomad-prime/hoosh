@@ -135,7 +135,7 @@ impl Tool for EditFileTool {
         self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "edit_file"
     }
 

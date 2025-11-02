@@ -71,7 +71,7 @@ mod tests {
         // Should provide 5 tools: read_file, write_file, edit_file, list_directory, bash
         assert_eq!(tools.len(), 5);
 
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.tool_name()).collect();
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"read_file"));
         assert!(tool_names.contains(&"write_file"));
         assert!(tool_names.contains(&"edit_file"));

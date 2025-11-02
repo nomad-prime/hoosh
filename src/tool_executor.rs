@@ -3,12 +3,12 @@ use tokio::sync::mpsc;
 
 use crate::conversations::{AgentEvent, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionManager;
-use crate::tools::error::{ToolError, ToolResult as ToolErrorResult};
+use crate::tools::error::{ToolError, ToolResult};
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
 /// Validate arguments against a JSON schema
 /// Returns an error if validation fails
-fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> ToolErrorResult<()> {
+fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> ToolResult<()> {
     let compiled_schema = jsonschema::JSONSchema::compile(schema).map_err(|e| {
         ToolError::execution_failed(format!(
             "Failed to compile schema for tool '{}': {}",
@@ -157,7 +157,7 @@ impl ToolExecutor {
         results
     }
 
-    async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> ToolErrorResult<()> {
+    async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> ToolResult<()> {
         // Send approval request event
         if let Some(sender) = &self.approval_sender {
             let event = AgentEvent::ApprovalRequest {
@@ -204,7 +204,7 @@ impl ToolExecutor {
         &self,
         tool: &dyn crate::tools::Tool,
         args: &Value,
-    ) -> ToolErrorResult<()> {
+    ) -> ToolResult<()> {
         if !self.permission_manager.is_enforcing() {
             return Ok(());
         }
@@ -222,10 +222,14 @@ impl ToolExecutor {
             .permission_manager
             .check_tool_permission(&descriptor)
             .await
-            .map_err(|e| ToolError::execution_failed(format!("Permission check failed: {}", e)))?;
+            .map_err(|e| ToolError::ExecutionFailed {
+                message: format!("Permission check failed: {}", e),
+            })?;
 
         if !allowed {
-            return Err(ToolError::permission_denied(tool.tool_name()));
+            return Err(ToolError::PermissionDenied {
+                tool: tool.name().to_string(),
+            });
         }
 
         Ok(())

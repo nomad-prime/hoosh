@@ -111,7 +111,7 @@ impl Tool for ReadFileTool {
         self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "read_file"
     }
 
