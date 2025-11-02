@@ -73,18 +73,20 @@ impl ToolError {
         }
     }
 
-    pub fn permission_denied(tool: impl Into<String>) -> Self {
-        Self::PermissionDenied { tool: tool.into() }
-    }
-
     pub fn is_user_rejection(&self) -> bool {
         matches!(self, ToolError::UserRejected { .. })
     }
 
+    pub fn is_permission_denied(&self) -> bool {
+        matches!(self, ToolError::PermissionDenied { .. })
+    }
+
     pub fn user_facing_message(&self) -> String {
         match self {
-            ToolError::UserRejected { .. } => "User rejected".to_string(),
-            ToolError::PermissionDenied { .. } => "Permission denied".to_string(),
+            ToolError::UserRejected { .. } => "Rejected, tell hoosh what to do instead".to_string(),
+            ToolError::PermissionDenied { .. } => {
+                "Permission denied, tell hoosh what to do".to_string()
+            }
             _ => format!("Error: {}", self),
         }
     }

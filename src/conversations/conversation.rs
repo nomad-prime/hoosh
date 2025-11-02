@@ -72,6 +72,14 @@ impl ToolCallResponse {
         }
     }
 
+    pub fn is_permission_denied(&self) -> bool {
+        if let Err(e) = &self.result {
+            e.is_permission_denied()
+        } else {
+            false
+        }
+    }
+
     pub fn to_message(&self) -> ConversationMessage {
         let content = match &self.result {
             Ok(output) => output.clone(),

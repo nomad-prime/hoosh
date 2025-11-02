@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::Tool;
 use crate::permissions::PatternMatcher;
+use crate::Tool;
 
 #[derive(Clone)]
 pub struct ToolPermissionDescriptor {
@@ -223,9 +223,9 @@ impl<'a> ToolPermissionBuilder<'a> {
             .approval_title
             .unwrap_or_else(|| format!(" {} {} ", display_name, self.target));
 
-        let approval_prompt = self
-            .approval_prompt
-            .unwrap_or_else(|| format!("Can I {} {}", self.tool.display_name(), self.target));
+        let approval_prompt = self.approval_prompt.unwrap_or_else(|| {
+            format!("Can I \"{}\" \"{}\"", self.tool.display_name(), self.target)
+        });
 
         let persistent_approval = self.persistent_approval.unwrap_or_else(|| {
             let project_path = std::env::current_dir()
@@ -234,7 +234,7 @@ impl<'a> ToolPermissionBuilder<'a> {
                 .unwrap_or_else(|| "this project".to_string());
 
             format!(
-                "don't ask me again for {} in {}",
+                "don't ask me again for \"{}\" in \"{}\"",
                 self.tool.display_name(),
                 project_path
             )

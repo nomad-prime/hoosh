@@ -4,7 +4,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -153,6 +153,7 @@ impl Tool for WriteFileTool {
         ToolPermissionBuilder::new(self, target.unwrap_or("*"))
             .into_destructive()
             .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .with_display_name("Write")
             .build()
             .expect("Failed to build WriteFileTool permission descriptor")
     }

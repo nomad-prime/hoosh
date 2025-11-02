@@ -27,6 +27,7 @@ pub enum AgentEvent {
         tool_name: String,
     },
     UserRejection,
+    PermissionDenied,
     Exit,
     ClearConversation,
     DebugMessage(String),

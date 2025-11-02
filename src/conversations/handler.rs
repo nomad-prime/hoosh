@@ -207,13 +207,22 @@ impl ConversationHandler {
         // Phase 2: Execute tools
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
-        // Phase 3: Check for rejections
+        // Phase 3: Check for rejections and permission denials
         if self.has_user_rejection(&tool_results) {
             self.emit_tool_results(&tool_results);
             for tool_result in tool_results {
                 conversation.add_tool_result(tool_result);
             }
             self.send_event(AgentEvent::UserRejection);
+            return Ok(TurnStatus::Complete);
+        }
+
+        if self.has_permission_denied(&tool_results) {
+            self.emit_tool_results(&tool_results);
+            for tool_result in tool_results {
+                conversation.add_tool_result(tool_result);
+            }
+            self.send_event(AgentEvent::PermissionDenied);
             return Ok(TurnStatus::Complete);
         }
 
@@ -276,6 +285,12 @@ impl ConversationHandler {
 
     fn has_user_rejection(&self, tool_results: &[ToolCallResponse]) -> bool {
         tool_results.iter().any(|result| result.is_rejected())
+    }
+
+    fn has_permission_denied(&self, tool_results: &[ToolCallResponse]) -> bool {
+        tool_results
+            .iter()
+            .any(|result| result.is_permission_denied())
     }
 }
 

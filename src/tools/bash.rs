@@ -3,7 +3,7 @@ use crate::tools::bash_blacklist::matches_pattern;
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -369,7 +369,7 @@ impl Tool for BashTool {
             "don't ask me again for bash in this project".to_string()
         } else {
             format!(
-                "don't ask me again for {} commands in this project",
+                "don't ask me again for \"{}\" commands in this project",
                 pattern_display
             )
         };

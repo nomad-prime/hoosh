@@ -454,6 +454,9 @@ impl AppState {
             AgentEvent::UserRejection => {
                 self.agent_state = AgentState::Idle;
             }
+            AgentEvent::PermissionDenied => {
+                self.agent_state = AgentState::Idle;
+            }
             AgentEvent::Exit => {}
             AgentEvent::ClearConversation => {}
             AgentEvent::DebugMessage(_) => {}

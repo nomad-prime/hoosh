@@ -3,7 +3,7 @@ use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -221,6 +221,7 @@ impl Tool for ListDirectoryTool {
         ToolPermissionBuilder::new(self, target.unwrap_or("*"))
             .into_read_only()
             .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .with_display_name("List")
             .build()
             .expect("Failed to build ListDirectoryTool permission descriptor")
     }

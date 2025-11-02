@@ -76,3 +76,6 @@ Here is the implementation plan for conversation persistence:
     * **File to Modify**: None (manual check)
     * **Description**: This is a placeholder for the Coder Agent to manually run a sequence of commands (`/save`, `/list`, `/load`, `/delete`) to ensure they all work together correctly.
     * **Validation**: Run the application and test the commands manually.
+
+# NOTE
+for bash commands do not cd into directory, just call the bash command
