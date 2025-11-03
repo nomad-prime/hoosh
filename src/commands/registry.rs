@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::config::AppConfig;
-use crate::conversations::{Conversation, MessageSummarizer};
+use crate::context_management::MessageSummarizer;
+use crate::conversations::Conversation;
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]

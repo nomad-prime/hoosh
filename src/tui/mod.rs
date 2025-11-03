@@ -27,7 +27,7 @@ use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
-use crate::conversations::{ContextManager, MessageSummarizer};
+use crate::context_management::{ContextCompressionStrategy, ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
@@ -170,12 +170,18 @@ pub async fn run(
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
 
     let context_manager_config = config.get_context_manager_config();
-    let token_accountant = Arc::new(crate::conversations::TokenAccountant::new());
-    let context_manager = Arc::new(ContextManager::new(
-        context_manager_config,
+    let token_accountant = Arc::new(crate::context_management::TokenAccountant::new());
+
+    let compression_strategy = ContextCompressionStrategy::new(
+        context_manager_config.clone(),
         Arc::clone(&summarizer),
-        token_accountant,
-    ));
+        Arc::clone(&token_accountant),
+    );
+
+    let context_manager = Arc::new(
+        ContextManager::new(context_manager_config, Arc::clone(&token_accountant))
+            .add_strategy(Box::new(compression_strategy))
+    );
 
     let context = EventLoopContext {
         system_resources: SystemResources {

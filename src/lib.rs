@@ -5,6 +5,7 @@ pub mod commands;
 pub mod completion;
 pub mod config;
 pub mod console;
+pub mod context_management;
 pub mod conversations;
 pub mod history;
 pub mod parser;
