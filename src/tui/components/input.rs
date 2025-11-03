@@ -1,14 +1,14 @@
 use crate::tui::app::AppState;
-use crate::tui::layout_builder::WidgetRenderer;
+use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-pub struct InputRenderer;
+pub struct Input;
 
-impl WidgetRenderer for InputRenderer {
+impl Component for Input {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {

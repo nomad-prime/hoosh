@@ -22,7 +22,7 @@ impl PermissionHandler {
 #[async_trait]
 impl InputHandler for PermissionHandler {
     fn should_handle(&self, event: &Event, app: &AppState) -> bool {
-        matches!(event, Event::Key(_)) && app.is_showing_permission_dialog()
+        matches!(event, Event::Key(_)) && app.is_showing_tool_permission_dialog()
     }
 
     async fn handle_event(
@@ -37,9 +37,9 @@ impl InputHandler for PermissionHandler {
 
         let key = key_event.code;
         let modifiers = key_event.modifiers;
-        // should_handle already checked if permission dialog is showing
-        if let Some(dialog_state) = &app.permission_dialog_state {
-            let operation = dialog_state.operation.clone();
+
+        if let Some(dialog_state) = &app.tool_permission_dialog_state {
+            let descriptor = dialog_state.descriptor.clone();
             let request_id = dialog_state.request_id.clone();
             let selected_option = dialog_state
                 .options
@@ -50,37 +50,23 @@ impl InputHandler for PermissionHandler {
             if let KeyCode::Char('c') = key
                 && modifiers.contains(KeyModifiers::CONTROL)
             {
-                app.hide_permission_dialog();
+                app.hide_tool_permission_dialog();
                 app.should_cancel_task = true;
                 return Ok(KeyHandlerResult::ShouldCancelTask);
             }
 
             let response = match key {
                 KeyCode::Up => {
-                    app.select_prev_permission_option();
+                    app.select_prev_tool_permission_option();
                     None
                 }
                 KeyCode::Down => {
-                    app.select_next_permission_option();
+                    app.select_next_tool_permission_option();
                     None
                 }
                 KeyCode::Enter => selected_option.as_ref().map(|opt| match opt {
                     crate::tui::app::PermissionOption::YesOnce => (true, None),
                     crate::tui::app::PermissionOption::No => (false, None),
-                    crate::tui::app::PermissionOption::AlwaysForFile => {
-                        let target = operation.target().to_string();
-                        (
-                            true,
-                            Some(crate::permissions::PermissionScope::Specific(target)),
-                        )
-                    }
-                    crate::tui::app::PermissionOption::AlwaysForDirectory(dir) => (
-                        true,
-                        Some(crate::permissions::PermissionScope::Directory(dir.clone())),
-                    ),
-                    crate::tui::app::PermissionOption::AlwaysForType => {
-                        (true, Some(crate::permissions::PermissionScope::Global))
-                    }
                     crate::tui::app::PermissionOption::TrustProject(project_path) => (
                         true,
                         Some(crate::permissions::PermissionScope::ProjectWide(
@@ -91,30 +77,13 @@ impl InputHandler for PermissionHandler {
                 KeyCode::Char('y') | KeyCode::Char('Y') => Some((true, None)),
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some((false, None)),
                 KeyCode::Char('a') => {
-                    let target = operation.target().to_string();
+                    let target = descriptor.target().to_string();
                     Some((
                         true,
                         Some(crate::permissions::PermissionScope::Specific(target)),
                     ))
                 }
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    if let Some(dir) = operation.parent_directory() {
-                        Some((
-                            true,
-                            Some(crate::permissions::PermissionScope::Directory(dir)),
-                        ))
-                    } else {
-                        let target = operation.target().to_string();
-                        Some((
-                            true,
-                            Some(crate::permissions::PermissionScope::Specific(target)),
-                        ))
-                    }
-                }
-                KeyCode::Char('A') => {
-                    Some((true, Some(crate::permissions::PermissionScope::Global)))
-                }
-                KeyCode::Char('T') => {
+                KeyCode::Char('t') | KeyCode::Char('T') => {
                     if let Ok(current_dir) = std::env::current_dir() {
                         Some((
                             true,
@@ -134,8 +103,8 @@ impl InputHandler for PermissionHandler {
                 if let Some(crate::permissions::PermissionScope::ProjectWide(ref path)) = scope
                     && allowed
                 {
-                    app.set_trusted_project(path.clone());
-                    app.add_status_message("Project trusted");
+                    // show commands and scope used for project trust
+                    app.add_status_message(&format!("Command trusted for {}", path.display()))
                 }
 
                 let perm_response = crate::conversations::PermissionResponse {
@@ -144,7 +113,7 @@ impl InputHandler for PermissionHandler {
                     scope,
                 };
                 let _ = self.permission_response_tx.send(perm_response);
-                app.hide_permission_dialog();
+                app.hide_tool_permission_dialog();
             }
         }
 

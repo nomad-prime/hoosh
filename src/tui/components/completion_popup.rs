@@ -1,5 +1,5 @@
 use crate::tui::app::AppState;
-use crate::tui::layout_builder::WidgetRenderer;
+use crate::tui::component::Component;
 use ratatui::text::Span;
 use ratatui::{
     buffer::Buffer,
@@ -8,9 +8,9 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Widget},
 };
 
-pub struct CompletionPopupRenderer;
+pub struct CompletionPopup;
 
-impl WidgetRenderer for CompletionPopupRenderer {
+impl Component for CompletionPopup {
     type State = AppState;
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
         if let Some(completion_state) = &state.completion_state {

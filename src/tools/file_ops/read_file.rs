@@ -1,7 +1,6 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
-use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -108,14 +107,16 @@ struct ReadFileArgs {
 
 #[async_trait]
 impl Tool for ReadFileTool {
-    async fn execute(&self, args: &Value) -> Result<String> {
-        self.execute_impl(args)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+    async fn execute(&self, args: &Value) -> ToolResult<String> {
+        self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "read_file"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "read"
     }
 
     fn description(&self) -> &'static str {
@@ -158,22 +159,16 @@ impl Tool for ReadFileTool {
         format!("Read {} lines", lines)
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let args: ReadFileArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for read_file tool: {}", e))?;
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        use crate::permissions::FilePatternMatcher;
+        use std::sync::Arc;
 
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-        let normalized_path = file_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
-
-        let operation = OperationType::ReadFile(normalized_path);
-        permission_manager.check_permission(&operation).await
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_read_only()
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .with_display_name("Read")
+            .build()
+            .expect("Failed to build ReadFileTool permission descriptor")
     }
 }
 
@@ -197,7 +192,7 @@ mod tests {
         fs::write(&test_file, content).await.unwrap();
 
         let tool = ReadFileTool::with_working_directory(temp_dir.path().to_path_buf());
-        let args = serde_json::json!({
+        let args = json!({
             "path": "test.txt"
         });
 

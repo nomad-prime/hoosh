@@ -3,82 +3,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
-use crate::conversations::{ContextManager, Conversation, ToolCall, ToolResult};
-use crate::permissions::{OperationType, PermissionScope};
+use crate::conversations::agent_events::AgentEvent;
+use crate::conversations::{ContextManager, Conversation, ToolCall, ToolCallResponse};
+use crate::permissions::PermissionScope;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
-
-#[derive(Debug, Clone)]
-pub enum AgentEvent {
-    Thinking,
-    AssistantThought(String),
-    ToolCalls(Vec<String>),
-    ToolPreview {
-        tool_name: String,
-        preview: String,
-    },
-    ToolResult {
-        #[allow(dead_code)]
-        tool_name: String,
-        summary: String,
-    },
-    ToolExecutionComplete,
-    FinalResponse(String),
-    Error(String),
-    MaxStepsReached(usize),
-    PermissionRequest {
-        operation: OperationType,
-        request_id: String,
-    },
-    ApprovalRequest {
-        tool_call_id: String,
-        tool_name: String,
-    },
-    UserRejection,
-    Exit,
-    ClearConversation,
-    DebugMessage(String),
-    RetryEvent {
-        operation_name: String,
-        attempt: u32,
-        max_attempts: u32,
-        message: String,
-        is_success: bool,
-    },
-    AgentSwitched {
-        new_agent_name: String,
-    },
-    ContextCompressionTriggered {
-        original_message_count: usize,
-        compressed_message_count: usize,
-        token_pressure: f32,
-    },
-    ContextCompressionComplete {
-        summary_length: usize,
-    },
-    ContextCompressionError {
-        error: String,
-    },
-    TokenPressureWarning {
-        current_pressure: f32,
-        threshold: f32,
-    },
-    Summarizing {
-        message_count: usize,
-    },
-    SummaryComplete {
-        message_count: usize,
-        summary: String,
-    },
-    SummaryError {
-        error: String,
-    },
-    TokenUsage {
-        input_tokens: usize,
-        output_tokens: usize,
-        cost: Option<f64>,
-    },
-}
 
 #[derive(Debug, Clone)]
 pub struct PermissionResponse {
@@ -278,13 +207,22 @@ impl ConversationHandler {
         // Phase 2: Execute tools
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
-        // Phase 3: Check for rejections
+        // Phase 3: Check for rejections and permission denials
         if self.has_user_rejection(&tool_results) {
             self.emit_tool_results(&tool_results);
             for tool_result in tool_results {
                 conversation.add_tool_result(tool_result);
             }
             self.send_event(AgentEvent::UserRejection);
+            return Ok(TurnStatus::Complete);
+        }
+
+        if self.has_permission_denied(&tool_results) {
+            self.emit_tool_results(&tool_results);
+            for tool_result in tool_results {
+                conversation.add_tool_result(tool_result);
+            }
+            self.send_event(AgentEvent::PermissionDenied);
             return Ok(TurnStatus::Complete);
         }
 
@@ -317,7 +255,7 @@ impl ConversationHandler {
         self.send_event(AgentEvent::ToolCalls(tool_call_displays));
     }
 
-    fn emit_tool_results(&self, tool_results: &[ToolResult]) {
+    fn emit_tool_results(&self, tool_results: &[ToolCallResponse]) {
         for tool_result in tool_results {
             let summary = self.get_tool_result_summary(tool_result);
             self.send_event(AgentEvent::ToolResult {
@@ -327,7 +265,7 @@ impl ConversationHandler {
         }
     }
 
-    fn get_tool_result_summary(&self, tool_result: &ToolResult) -> String {
+    fn get_tool_result_summary(&self, tool_result: &ToolCallResponse) -> String {
         if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
             match &tool_result.result {
                 Ok(output) => tool.result_summary(output),
@@ -341,12 +279,18 @@ impl ConversationHandler {
         }
     }
 
-    fn format_error_summary(&self, error: &anyhow::Error) -> String {
-        format!("Error: {}", error)
+    fn format_error_summary(&self, error: &crate::tools::error::ToolError) -> String {
+        error.user_facing_message()
     }
 
-    fn has_user_rejection(&self, tool_results: &[ToolResult]) -> bool {
+    fn has_user_rejection(&self, tool_results: &[ToolCallResponse]) -> bool {
         tool_results.iter().any(|result| result.is_rejected())
+    }
+
+    fn has_permission_denied(&self, tool_results: &[ToolCallResponse]) -> bool {
+        tool_results
+            .iter()
+            .any(|result| result.is_permission_denied())
     }
 }
 

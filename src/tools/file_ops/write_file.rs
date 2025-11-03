@@ -1,7 +1,6 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
-use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -76,14 +75,16 @@ struct WriteFileArgs {
 
 #[async_trait]
 impl Tool for WriteFileTool {
-    async fn execute(&self, args: &Value) -> Result<String> {
-        self.execute_impl(args)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+    async fn execute(&self, args: &Value) -> ToolResult<String> {
+        self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "write_file"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "write"
     }
 
     fn description(&self) -> &'static str {
@@ -130,24 +131,6 @@ impl Tool for WriteFileTool {
         "File written successfully".to_string()
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let args: WriteFileArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for write_file tool: {}", e))?;
-
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-        let normalized_path = file_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
-
-        let operation = OperationType::WriteFile(normalized_path);
-        permission_manager.check_permission(&operation).await
-    }
-
     async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: WriteFileArgs = serde_json::from_value(args.clone()).ok()?;
         let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
@@ -161,6 +144,18 @@ impl Tool for WriteFileTool {
             // Show preview of new file content
             Some(self.generate_new_file_preview(&args.content, &args.path))
         }
+    }
+
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        use crate::permissions::FilePatternMatcher;
+        use std::sync::Arc;
+
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_destructive()
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .with_display_name("Write")
+            .build()
+            .expect("Failed to build WriteFileTool permission descriptor")
     }
 }
 

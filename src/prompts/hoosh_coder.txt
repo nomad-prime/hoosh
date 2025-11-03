@@ -125,3 +125,5 @@ Remember: Your goal is to help efficiently and then return control to the user b
 # Comments
 Use comments in code sparingly and only when they add significant value or clarity. Strive for self-explanatory code through clear naming and stru§cture.
 
+# NOTE
+for bash commands do not cd into directory, just call the bash command

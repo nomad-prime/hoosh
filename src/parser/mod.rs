@@ -120,7 +120,7 @@ impl MessageParser {
             args["end_line"] = serde_json::Value::Number(serde_json::Number::from(end));
         }
 
-        self.read_file_tool.execute(&args).await
+        self.read_file_tool.execute(&args).await.map_err(Into::into)
     }
 
     pub async fn expand_message(&self, message: &str) -> Result<String> {

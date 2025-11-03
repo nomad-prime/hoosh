@@ -98,7 +98,6 @@ pub trait LlmBackend: Send + Sync {
 pub mod anthropic;
 #[cfg(feature = "anthropic")]
 pub mod backend_factory;
-pub mod error;
 pub mod llm_error;
 pub mod mock;
 #[cfg(feature = "openai-compatible")]
@@ -113,7 +112,6 @@ pub use self::openai_compatible::OpenAICompatibleBackend;
 #[cfg(feature = "together-ai")]
 pub use self::together_ai::TogetherAiBackend;
 
-pub use error::{BackendError, BackendResult};
 pub use llm_error::LlmError;
 
 #[cfg(feature = "anthropic")]

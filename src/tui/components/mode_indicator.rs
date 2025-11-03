@@ -1,5 +1,5 @@
 use crate::tui::app::AppState;
-use crate::tui::layout_builder::WidgetRenderer;
+use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -8,9 +8,9 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 
-pub struct ModeIndicatorRenderer;
+pub struct ModeIndicator;
 
-impl WidgetRenderer for ModeIndicatorRenderer {
+impl Component for ModeIndicator {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {

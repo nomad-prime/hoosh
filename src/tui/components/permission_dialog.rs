@@ -1,6 +1,5 @@
-use crate::permissions::OperationType;
 use crate::tui::app::{AppState, PermissionOption};
-use crate::tui::layout_builder::WidgetRenderer;
+use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -9,57 +8,32 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-pub struct PermissionDialogRenderer;
+pub struct PermissionDialog;
 
-impl WidgetRenderer for PermissionDialogRenderer {
+impl Component for PermissionDialog {
     type State = AppState;
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        if let Some(dialog_state) = &state.permission_dialog_state {
-            let operation = &dialog_state.operation;
+        if let Some(dialog_state) = &state.tool_permission_dialog_state {
+            let descriptor = &dialog_state.descriptor;
 
-            // Build the dialog content
             let mut lines = vec![];
 
-            // Operation description
-            lines.push(Line::from(vec![
-                Span::styled("Operation: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(operation.description()),
-            ]));
-
-            // Destructive warning
-            if operation.is_destructive() {
-                lines.push(Line::from(vec![Span::styled(
-                    "⚠️  WARNING: Destructive!",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                )]));
-            }
+            lines.push(Line::from(vec![Span::styled(
+                descriptor.approval_prompt(),
+                Style::default().add_modifier(Modifier::BOLD),
+            )]));
 
             lines.push(Line::from(""));
 
-            // Render each option with selection highlight
             for (idx, option) in dialog_state.options.iter().enumerate() {
                 let is_selected = idx == dialog_state.selected_index;
                 let (key, label) = match option {
-                    PermissionOption::YesOnce => ("y", "Yes, once".to_string()),
-                    PermissionOption::No => ("n", "No".to_string()),
-                    PermissionOption::AlwaysForFile => {
-                        let label = match operation {
-                            OperationType::ExecuteBash(_) => "Always for this command",
-                            _ => "Always for this file",
-                        };
-                        ("a", label.to_string())
-                    }
-                    PermissionOption::AlwaysForDirectory(dir) => {
-                        ("d", format!("Always for dir ({})", dir))
-                    }
-                    PermissionOption::AlwaysForType => (
-                        "A",
-                        format!("Always for all {}", operation.operation_kind()),
-                    ),
-                    PermissionOption::TrustProject(project_path) => (
-                        "T",
-                        format!("Trust entire project ({})", project_path.display()),
+                    PermissionOption::YesOnce => ("y", "Yes, once ".to_string()),
+                    PermissionOption::No => ("n", "No ".to_string()),
+                    PermissionOption::TrustProject(_) => (
+                        "t",
+                        format!("yes, and {} ", descriptor.persistent_approval()),
                     ),
                 };
 
@@ -84,14 +58,14 @@ impl WidgetRenderer for PermissionDialogRenderer {
                 Style::default().fg(Color::Cyan),
             )));
 
-            let border_style = if operation.is_destructive() {
+            let border_style = if descriptor.is_destructive() {
                 Style::default().fg(Color::Red)
             } else {
                 Style::default().fg(Color::Cyan)
             };
 
             let block = Block::default()
-                .title(" Permission Required ")
+                .title(descriptor.approval_title())
                 .borders(Borders::ALL)
                 .border_style(border_style)
                 .style(Style::default().bg(Color::Black));

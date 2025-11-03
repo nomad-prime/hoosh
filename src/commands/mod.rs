@@ -3,6 +3,7 @@ mod clear_command;
 mod compact_command;
 mod exit_command;
 mod help_command;
+mod permissions_command;
 mod register;
 mod registry;
 mod status_command;

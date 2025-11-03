@@ -1,7 +1,6 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
-use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -155,14 +154,16 @@ struct DirectoryEntry {
 
 #[async_trait]
 impl Tool for ListDirectoryTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        self.execute_impl(args)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+    async fn execute(&self, args: &serde_json::Value) -> ToolResult<String> {
+        self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "list_directory"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "list"
     }
 
     fn description(&self) -> &'static str {
@@ -213,22 +214,16 @@ impl Tool for ListDirectoryTool {
         }
     }
 
-    async fn check_permission(
-        &self,
-        args: &Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let args: ListDirectoryArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for list_directory tool: {}", e))?;
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        use crate::permissions::FilePatternMatcher;
+        use std::sync::Arc;
 
-        let dir_path = self.resolve_path(&args.path);
-        let normalized_path = dir_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
-
-        let operation = OperationType::ListDirectory(normalized_path);
-        permission_manager.check_permission(&operation).await
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_read_only()
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .with_display_name("List")
+            .build()
+            .expect("Failed to build ListDirectoryTool permission descriptor")
     }
 }
 

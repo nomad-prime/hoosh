@@ -3,13 +3,17 @@ mod app;
 mod app_layout;
 mod app_layout_builder;
 mod clipboard;
+mod component;
 pub mod components;
 mod event_loop;
 mod events;
 mod handler_result;
 pub mod handlers;
 mod header;
+mod init;
+mod initial_permission_layout;
 mod input_handler;
+mod layout;
 mod layout_builder;
 mod message_renderer;
 mod terminal;
@@ -77,13 +81,42 @@ pub async fn run(
     let agent_manager = Arc::new(agent_manager);
     let default_agent = agent_manager.get_default_agent();
 
-    // Initialize permission manager with proper channels
+    use crate::permissions::storage::PermissionsFile;
+    let permissions_path = PermissionsFile::get_permissions_path(&working_dir);
+    let should_show_initial_dialog = !skip_permissions && !permissions_path.exists();
+
+    let terminal = if should_show_initial_dialog {
+        use crate::tui::app::InitialPermissionChoice;
+        let (terminal, choice) = init::run(terminal, working_dir.clone(), &tool_registry).await?;
+
+        if choice.is_none() || matches!(choice, Some(InitialPermissionChoice::Deny)) {
+            restore_terminal(terminal)?;
+            return Ok(());
+        }
+
+        // Clear the terminal to remove any remnants from the permission dialog
+        let mut terminal = terminal;
+        terminal.clear()?;
+        terminal
+    } else {
+        terminal
+    };
+
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_response_tx, permission_response_rx) = tokio::sync::mpsc::unbounded_channel();
     let (approval_response_tx, approval_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let permission_manager = PermissionManager::new(event_tx.clone(), permission_response_rx)
-        .with_skip_permissions(skip_permissions);
+    let permission_manager = match PermissionManager::new(event_tx.clone(), permission_response_rx)
+        .with_skip_permissions(skip_permissions)
+        .with_project_root(working_dir.clone())
+    {
+        Ok(pm) => pm,
+        Err(err) => {
+            use crate::console::console;
+            console().error(&err.to_string());
+            std::process::exit(1);
+        }
+    };
 
     // Wrap backend in Arc for shared ownership
     let backend: Arc<dyn LlmBackend> = Arc::from(backend);
@@ -119,20 +152,17 @@ pub async fn run(
 
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager)
         .with_event_sender(event_tx.clone())
-        .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled)) // Share autopilot state
+        .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled))
         .with_approval_receiver(approval_response_rx);
 
     let input_handlers: Vec<Box<dyn input_handler::InputHandler + Send>> = vec![
-        // High priority: dialogs
         Box::new(handlers::PermissionHandler::new(
             permission_response_tx.clone(),
         )),
         Box::new(handlers::ApprovalHandler::new(approval_response_tx.clone())),
         Box::new(handlers::CompletionHandler::new()),
-        // Medium priority: special keys
         Box::new(handlers::QuitHandler::new()),
         Box::new(handlers::SubmitHandler::new()),
-        // Low priority: paste and text input (fallbacks)
         Box::new(handlers::PasteHandler::new()),
         Box::new(handlers::TextInputHandler::new()),
     ];
