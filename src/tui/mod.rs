@@ -27,7 +27,9 @@ use crate::agents::AgentManager;
 use crate::backends::LlmBackend;
 use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
-use crate::context_management::{ContextCompressionStrategy, ContextManager, MessageSummarizer};
+use crate::context_management::{
+    ContextCompressionStrategy, ContextManager, MessageSummarizer, ToolOutputTruncationStrategy,
+};
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
@@ -178,9 +180,17 @@ pub async fn run(
         Arc::clone(&token_accountant),
     );
 
+    let mut context_manager_builder =
+        ContextManager::new(context_manager_config.clone(), Arc::clone(&token_accountant));
+
+    if let Some(truncation_config) = context_manager_config.tool_output_truncation {
+        let truncation_strategy = ToolOutputTruncationStrategy::new(truncation_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(truncation_strategy));
+    }
+
     let context_manager = Arc::new(
-        ContextManager::new(context_manager_config, Arc::clone(&token_accountant))
-            .add_strategy(Box::new(compression_strategy))
+        context_manager_builder.add_strategy(Box::new(compression_strategy))
     );
 
     let context = EventLoopContext {

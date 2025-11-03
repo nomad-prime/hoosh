@@ -12,11 +12,34 @@ pub trait ContextManagementStrategy: Send + Sync {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolOutputTruncationConfig {
+    pub max_length: usize,
+    pub show_truncation_notice: bool,
+    pub smart_truncate: bool,
+    pub head_length: usize,
+    pub tail_length: usize,
+}
+
+impl Default for ToolOutputTruncationConfig {
+    fn default() -> Self {
+        Self {
+            max_length: 4000,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextManagerConfig {
     pub max_tokens: usize,
     pub compression_threshold: f32,
     pub preserve_recent_percentage: f32,
     pub warning_threshold: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_output_truncation: Option<ToolOutputTruncationConfig>,
 }
 
 impl Default for ContextManagerConfig {
@@ -26,6 +49,7 @@ impl Default for ContextManagerConfig {
             compression_threshold: 0.80,
             preserve_recent_percentage: 0.50,
             warning_threshold: 0.70,
+            tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
         }
     }
 }
