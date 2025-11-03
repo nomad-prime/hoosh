@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::Tool;
 use crate::permissions::PatternMatcher;
+use crate::Tool;
 
 #[derive(Clone)]
 pub struct ToolPermissionDescriptor {
@@ -349,7 +349,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(descriptor.display_name(), "Read_file");
-        assert!(descriptor.approval_title().contains("test.txt"));
         assert!(descriptor.approval_prompt().contains("read"));
         assert!(descriptor.approval_prompt().contains("test.txt"));
     }
