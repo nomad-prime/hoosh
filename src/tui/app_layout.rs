@@ -1,6 +1,7 @@
 use crate::tui::app::AppState;
 use crate::tui::app_layout_builder::AppLayoutBuilder;
-use crate::tui::layout_builder::{Layout, LayoutBuilder};
+use crate::tui::layout::Layout;
+use crate::tui::layout_builder::LayoutBuilder;
 
 pub trait AppLayout {
     fn create(app: &AppState) -> Self;
@@ -8,8 +9,9 @@ pub trait AppLayout {
 
 impl AppLayout for Layout<AppState> {
     fn create(app: &AppState) -> Self {
-        let has_overlay = app.is_showing_permission_dialog()
+        let has_overlay = app.is_showing_tool_permission_dialog()
             || app.is_showing_approval_dialog()
+            || app.is_showing_initial_permission_dialog()
             || app.is_completing();
 
         let mut builder = LayoutBuilder::new()
@@ -18,13 +20,15 @@ impl AppLayout for Layout<AppState> {
             .input_field()
             .mode_indicator(!has_overlay);
 
-        if app.is_showing_permission_dialog() {
+        if app.is_showing_initial_permission_dialog() {
+            builder = builder.initial_permission_dialog(true);
+        } else if app.is_showing_tool_permission_dialog() {
             let lines = app
-                .permission_dialog_state
+                .tool_permission_dialog_state
                 .as_ref()
                 .map(|state| {
                     let base = 4 + state.options.len() as u16;
-                    if state.operation.is_destructive() {
+                    if state.descriptor.is_destructive() {
                         base + 1
                     } else {
                         base

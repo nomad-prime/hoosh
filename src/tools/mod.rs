@@ -1,18 +1,19 @@
-use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 
-use crate::permissions::PermissionManager;
+use crate::permissions::ToolPermissionDescriptor;
 
 /// Core trait for all tools in the hoosh system
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Execute the tool with the given arguments
-    async fn execute(&self, args: &Value) -> Result<String>;
+    async fn execute(&self, args: &Value) -> ToolResult<String>;
 
     /// Get the tool's name (used for identification)
-    fn tool_name(&self) -> &'static str;
+    fn name(&self) -> &'static str;
+
+    fn display_name(&self) -> &'static str;
 
     /// Get a description of what this tool does
     fn description(&self) -> &'static str;
@@ -20,11 +21,18 @@ pub trait Tool: Send + Sync {
     /// Get the parameter schema for this tool (JSON Schema format)
     fn parameter_schema(&self) -> Value;
 
+    /// Describe the permission characteristics of this tool
+    ///
+    /// # Arguments
+    /// * `target` - Optional specific target for the permission (e.g., file path, command).
+    ///              If None, returns a generic descriptor (usually with "*" as target).
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor;
+
     /// Format the tool call for display (e.g., "Read(src/main.rs)")
     /// This is shown when the tool is invoked
     fn format_call_display(&self, _args: &Value) -> String {
         // Default implementation: just return tool name
-        self.tool_name().to_string()
+        self.name().to_string()
     }
 
     /// Create a summary of the tool execution result for display
@@ -41,15 +49,6 @@ pub trait Tool: Send + Sync {
         }
     }
 
-    async fn check_permission(
-        &self,
-        _args: &Value,
-        _permission_manager: &PermissionManager,
-    ) -> Result<bool>;
-
-    /// Generate a preview of what this tool will do (e.g., a diff for edits)
-    /// This is shown to the user before requesting permission
-    /// Default implementation returns None (most tools don't need previews)
     async fn generate_preview(&self, _args: &Value) -> Option<String> {
         None
     }
@@ -59,7 +58,7 @@ pub trait Tool: Send + Sync {
         json!({
             "type": "function",
             "function": {
-                "name": self.tool_name(),
+                "name": self.name(),
                 "description": self.description(),
                 "parameters": self.parameter_schema()
             }
@@ -68,6 +67,7 @@ pub trait Tool: Send + Sync {
 }
 
 pub mod bash;
+pub mod bash_blacklist;
 pub mod error;
 pub mod file_ops;
 pub mod provider;
@@ -102,7 +102,7 @@ impl ToolRegistry {
     pub fn add_provider(&mut self, provider: Arc<dyn ToolProvider>) {
         // Get tools from provider and register them
         for tool in provider.provide_tools() {
-            let name = tool.tool_name();
+            let name = tool.name();
             if self.tools.contains_key(name) {
                 eprintln!(
                     "Warning: Tool '{}' already registered, skipping from provider '{}'",
@@ -117,7 +117,7 @@ impl ToolRegistry {
     }
 
     pub fn register_tool(&mut self, tool: Arc<dyn Tool>) -> Result<(), String> {
-        let name = tool.tool_name();
+        let name = tool.name();
         if self.tools.contains_key(name) {
             return Err(format!("Tool with name '{}' already exists", name));
         }
@@ -146,7 +146,7 @@ impl ToolRegistry {
         let providers = std::mem::take(&mut self.providers);
         for provider in providers {
             for tool in provider.provide_tools() {
-                let name = tool.tool_name();
+                let name = tool.name();
                 if self.tools.contains_key(name) {
                     eprintln!(
                         "Warning: Tool '{}' already registered, skipping from provider '{}'",
@@ -173,6 +173,7 @@ impl Default for ToolRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ToolPermissionBuilder;
     struct MockTool {
         name: &'static str,
         description: &'static str,
@@ -191,7 +192,7 @@ mod tests {
 
     #[async_trait]
     impl Tool for MockTool {
-        fn tool_name(&self) -> &'static str {
+        fn name(&self) -> &'static str {
             self.name
         }
 
@@ -207,16 +208,19 @@ mod tests {
             })
         }
 
-        async fn execute(&self, _args: &serde_json::Value) -> Result<String> {
+        async fn execute(&self, _args: &Value) -> error::ToolResult<String> {
             Ok(self.response.to_string())
         }
 
-        async fn check_permission(
-            &self,
-            _args: &Value,
-            _permission_manager: &PermissionManager,
-        ) -> Result<bool> {
-            Ok(false)
+        fn display_name(&self) -> &'static str {
+            "mock"
+        }
+
+        fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+            ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+                .into_read_only()
+                .build()
+                .expect("Failed to build MockTool permission descriptor")
         }
     }
 
@@ -255,7 +259,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools
@@ -279,7 +283,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools
@@ -309,7 +313,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools
@@ -348,7 +352,7 @@ mod tests {
         let tool = registry
             .get_tool("mock_tool")
             .expect("mock_tool should exist, but it did not");
-        assert_eq!(tool.tool_name(), "mock_tool");
+        assert_eq!(tool.name(), "mock_tool");
         assert_eq!(tool.description(), "Mock tool");
 
         // List all tools

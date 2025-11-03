@@ -28,3 +28,6 @@ User: "Create a hello world program"
 2. Respond with text confirming completion (no more tool calls)
 
 Remember: Your goal is to help efficiently and then return control to the user by ending with a text-only response.
+
+# NOTE
+for bash commands do not cd into directory, just call the bash command

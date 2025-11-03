@@ -20,7 +20,6 @@ pub fn init_terminal() -> Result<HooshTerminal> {
 
     let backend = CrosstermBackend::new(stdout);
     let terminal = Terminal::with_options(
-        // Use MinimalTerminal here
         backend,
         TerminalOptions {
             viewport: Viewport::Inline(1), // Start minimal
@@ -31,11 +30,9 @@ pub fn init_terminal() -> Result<HooshTerminal> {
 
 /// Restores the terminal to its normal state.
 pub fn restore_terminal(mut terminal: HooshTerminal) -> Result<()> {
-    // Tui is MinimalTerminal
     let mut stdout = io::stdout();
     stdout.execute(DisableBracketedPaste)?;
     disable_raw_mode()?;
-    // Use MinimalTerminal's show_cursor
     terminal.show_cursor()?;
     Ok(())
 }

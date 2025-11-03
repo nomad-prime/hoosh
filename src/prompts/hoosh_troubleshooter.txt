@@ -59,3 +59,6 @@ Your goal is to meticulously analyze reported problems, identify their root caus
 7.  **Delegate**: Handoff plan to Coder Agent.
 8.  **(After Coder finishes) Verify**: Run `/save test_save` and `bash: ls ~/.config/hoosh/conversations/`.
 9.  **Report**: "The issue was caused by the save function not creating the necessary directory. I've guided the Coder Agent to add directory creation logic to `src/conversations/store.rs`. Validation confirms the `/save` command now works correctly."
+
+# NOTE
+for bash commands do not cd into directory, just call the bash command

@@ -1,7 +1,6 @@
-use crate::permissions::{OperationType, PermissionManager};
+use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolResult};
-use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -28,7 +27,7 @@ impl EditFileTool {
         }
     }
 
-    async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {
+    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
         let args: EditFileArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "edit_file".to_string(),
@@ -132,14 +131,16 @@ struct EditFileArgs {
 
 #[async_trait]
 impl Tool for EditFileTool {
-    async fn execute(&self, args: &serde_json::Value) -> Result<String> {
-        self.execute_impl(args)
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+    async fn execute(&self, args: &Value) -> ToolResult<String> {
+        self.execute_impl(args).await
     }
 
-    fn tool_name(&self) -> &'static str {
+    fn name(&self) -> &'static str {
         "edit_file"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "edit"
     }
 
     fn description(&self) -> &'static str {
@@ -194,25 +195,7 @@ impl Tool for EditFileTool {
         "File edited successfully".to_string()
     }
 
-    async fn check_permission(
-        &self,
-        args: &serde_json::Value,
-        permission_manager: &PermissionManager,
-    ) -> Result<bool> {
-        let args: EditFileArgs = serde_json::from_value(args.clone())
-            .map_err(|e| anyhow::anyhow!("Invalid arguments for edit_file tool: {}", e))?;
-
-        let file_path = self.path_validator.validate_and_resolve(&args.path)?;
-        let normalized_path = file_path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-            .to_string();
-
-        let operation = OperationType::WriteFile(normalized_path);
-        permission_manager.check_permission(&operation).await
-    }
-
-    async fn generate_preview(&self, args: &serde_json::Value) -> Option<String> {
+    async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: EditFileArgs = serde_json::from_value(args.clone()).ok()?;
 
         let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
@@ -226,6 +209,18 @@ impl Tool for EditFileTool {
             args.replace_all,
         );
         Some(preview)
+    }
+
+    fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
+        use crate::permissions::FilePatternMatcher;
+        use std::sync::Arc;
+
+        ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+            .into_destructive()
+            .with_display_name("Edit")
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .expect("Failed to build EditFileTool permission descriptor")
     }
 }
 

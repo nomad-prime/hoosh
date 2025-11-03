@@ -30,16 +30,17 @@ impl Command for UntrustCommand {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Permission manager not available"))?;
 
-        // Check if a project is currently trusted
-        if permission_manager.get_trusted_project().is_some() {
-            // Clear the trust
-            permission_manager.clear_trusted_project();
+        // Clear all permissions (including global trust)
+        let perms_info = permission_manager.get_permissions_info();
+
+        if perms_info.allow_count > 0 || perms_info.deny_count > 0 {
+            permission_manager.clear_all_permissions()?;
             Ok(CommandResult::Success(
-                "🔒 Project trust revoked. Permission dialogs will be shown again.".to_string(),
+                "🔒 All permissions cleared. Permission dialogs will be shown again.".to_string(),
             ))
         } else {
             Ok(CommandResult::Success(
-                "ℹ️ No project is currently trusted.".to_string(),
+                "ℹ️ No permissions are currently saved.".to_string(),
             ))
         }
     }
