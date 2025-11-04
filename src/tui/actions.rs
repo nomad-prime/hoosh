@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
+use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
-use crate::conversations::{AgentEvent, ConversationHandler};
 
 pub fn execute_command(
     input: String,
@@ -77,7 +77,7 @@ pub fn start_agent_conversation(
         }
 
         let mut conv = conversation.lock().await;
-        let handler = ConversationHandler::new(backend, tool_registry, tool_executor)
+        let handler = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx)
             .with_context_manager(context_manager);
 

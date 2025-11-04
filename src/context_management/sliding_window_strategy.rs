@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
+use crate::agent::{Conversation, ConversationMessage};
 use crate::context_management::{ContextManagementStrategy, SlidingWindowConfig};
-use crate::conversations::{Conversation, ConversationMessage};
 
 pub struct SlidingWindowStrategy {
     config: SlidingWindowConfig,
@@ -21,11 +21,7 @@ impl SlidingWindowStrategy {
         message.role == "user"
     }
 
-    fn should_preserve(
-        &self,
-        message: &ConversationMessage,
-        is_first_user_message: bool,
-    ) -> bool {
+    fn should_preserve(&self, message: &ConversationMessage, is_first_user_message: bool) -> bool {
         if self.config.preserve_system && self.is_system_message(message) {
             return true;
         }

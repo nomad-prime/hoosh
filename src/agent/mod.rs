@@ -7,4 +7,4 @@ pub use conversation::{
     Conversation, ConversationMessage, ToolCall, ToolCallResponse, ToolExecutionContext,
     ToolFunction,
 };
-pub use handler::{ApprovalResponse, ConversationHandler, PermissionResponse};
+pub use handler::{Agent, ApprovalResponse, PermissionResponse};

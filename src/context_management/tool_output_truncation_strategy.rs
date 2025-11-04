@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
+use crate::agent::{Conversation, ConversationMessage};
 use crate::context_management::{ContextManagementStrategy, ToolOutputTruncationConfig};
-use crate::conversations::{Conversation, ConversationMessage};
 
 pub struct ToolOutputTruncationStrategy {
     config: ToolOutputTruncationConfig,
@@ -174,7 +174,7 @@ impl ContextManagementStrategy for ToolOutputTruncationStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversations::{ToolCall, ToolCallResponse, ToolFunction};
+    use crate::agent::{ToolCall, ToolCallResponse, ToolFunction};
 
     #[tokio::test]
     async fn test_keeps_last_tool_result_full() {

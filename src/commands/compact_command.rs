@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use crate::Command;
 use crate::CommandContext;
 use crate::CommandResult;
-use crate::conversations::AgentEvent;
+use crate::agent::AgentEvent;
 
 pub struct CompactCommand;
 
@@ -126,8 +126,8 @@ impl Command for CompactCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::Conversation;
     use crate::backends::mock::MockBackend;
-    use crate::conversations::Conversation;
     use std::sync::Arc;
     use tokio::sync::Mutex;
 

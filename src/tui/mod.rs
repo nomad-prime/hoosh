@@ -23,7 +23,7 @@ pub use message_renderer::MessageRenderer;
 use anyhow::Result;
 use std::sync::Arc;
 
-use crate::agents::AgentManager;
+use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
@@ -80,7 +80,7 @@ pub async fn run(
     app.register_completer(Box::new(command_completer));
 
     // Setup agent manager
-    let agent_manager = AgentManager::new()?;
+    let agent_manager = AgentDefinitionManager::new()?;
     let agent_manager = Arc::new(agent_manager);
     let default_agent = agent_manager.get_default_agent();
 
@@ -144,7 +144,7 @@ pub async fn run(
 
     // Setup conversation
     let conversation = Arc::new(tokio::sync::Mutex::new({
-        let mut conv = crate::conversations::Conversation::new();
+        let mut conv = crate::agent::Conversation::new();
         if let Some(ref agent) = default_agent {
             conv.add_system_message(agent.content.clone());
         }

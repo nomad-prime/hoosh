@@ -1,6 +1,6 @@
 use super::{LlmBackend, LlmResponse, RequestExecutor};
+use crate::agent::{Conversation, ConversationMessage, ToolCall};
 use crate::backends::llm_error::LlmError;
-use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -309,7 +309,7 @@ impl OpenAICompatibleBackend {
                         tool_calls.push(ToolCall {
                             id: id.clone(),
                             r#type: "function".to_string(),
-                            function: crate::conversations::ToolFunction {
+                            function: crate::agent::ToolFunction {
                                 name: name.clone(),
                                 arguments: input.to_string(),
                             },
@@ -424,7 +424,7 @@ impl LlmBackend for OpenAICompatibleBackend {
     async fn send_message_with_events(
         &self,
         message: &str,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<String> {
         self.default_executor
             .execute(
@@ -439,7 +439,7 @@ impl LlmBackend for OpenAICompatibleBackend {
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<LlmResponse> {
         self.default_executor
             .execute(

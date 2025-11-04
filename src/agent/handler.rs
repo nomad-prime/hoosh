@@ -2,10 +2,10 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+use crate::agent::agent_events::AgentEvent;
+use crate::agent::{Conversation, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::context_management::ContextManager;
-use crate::conversations::agent_events::AgentEvent;
-use crate::conversations::{Conversation, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionScope;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -24,7 +24,7 @@ pub struct ApprovalResponse {
     pub rejection_reason: Option<String>,
 }
 
-pub struct ConversationHandler {
+pub struct Agent {
     backend: Arc<dyn LlmBackend>,
     tool_registry: Arc<ToolRegistry>,
     tool_executor: Arc<ToolExecutor>,
@@ -33,7 +33,7 @@ pub struct ConversationHandler {
     context_manager: Option<Arc<ContextManager>>,
 }
 
-impl ConversationHandler {
+impl Agent {
     pub fn new(
         backend: Arc<dyn LlmBackend>,
         tool_registry: Arc<ToolRegistry>,
@@ -291,8 +291,8 @@ enum TurnStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{ToolCall, ToolFunction};
     use crate::backends::LlmResponse;
-    use crate::conversations::{ToolCall, ToolFunction};
     use crate::permissions::PermissionManager;
     use async_trait::async_trait;
 
@@ -358,7 +358,7 @@ mod tests {
             permission_manager,
         ));
 
-        let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
+        let handler = Agent::new(mock_backend, tool_registry, tool_executor);
 
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
@@ -402,7 +402,7 @@ mod tests {
             permission_manager,
         ));
 
-        let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
+        let handler = Agent::new(mock_backend, tool_registry, tool_executor);
 
         let mut conversation = Conversation::new();
         conversation.add_user_message("Read test.txt".to_string());

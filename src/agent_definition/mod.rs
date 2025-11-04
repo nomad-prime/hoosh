@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Agent {
+pub struct AgentDefinition {
     pub name: String,
     #[serde(skip)]
     pub content: String,
@@ -15,11 +15,11 @@ pub struct Agent {
     pub tags: Vec<String>,
 }
 
-pub struct AgentManager {
+pub struct AgentDefinitionManager {
     config: AppConfig,
 }
 
-impl Agent {
+impl AgentDefinition {
     pub fn from_config(name: String, config: AgentConfig, content: String) -> Self {
         Self {
             name,
@@ -31,7 +31,7 @@ impl Agent {
     }
 }
 
-impl AgentManager {
+impl AgentDefinitionManager {
     pub fn new() -> Result<Self> {
         let config = AppConfig::load()?;
         let agents_dir = Self::agents_dir()?;
@@ -101,11 +101,11 @@ impl AgentManager {
             .with_context(|| format!("Failed to read agent file: {}", agent_config.file))
     }
 
-    pub fn get_agent(&self, name: &str) -> Option<Agent> {
+    pub fn get_agent(&self, name: &str) -> Option<AgentDefinition> {
         // Check custom agents first
         if let Some(agent_config) = self.config.agents.get(name) {
             return self.load_agent_content(agent_config).ok().map(|content| {
-                Agent::from_config(name.to_string(), agent_config.clone(), content)
+                AgentDefinition::from_config(name.to_string(), agent_config.clone(), content)
             });
         }
 
@@ -170,7 +170,7 @@ impl AgentManager {
                 _ => vec![],
             };
 
-            return Some(Agent {
+            return Some(AgentDefinition {
                 name: name.to_string(),
                 content,
                 file: file_name,
@@ -182,7 +182,7 @@ impl AgentManager {
         None
     }
 
-    pub fn get_default_agent(&self) -> Option<Agent> {
+    pub fn get_default_agent(&self) -> Option<AgentDefinition> {
         if let Some(name) = &self.config.default_agent {
             if let Some(agent) = self.get_agent(name) {
                 return Some(agent);
@@ -201,14 +201,14 @@ impl AgentManager {
         self.list_agents().into_iter().next()
     }
 
-    pub fn list_agents(&self) -> Vec<Agent> {
+    pub fn list_agents(&self) -> Vec<AgentDefinition> {
         self.config
             .agents
             .iter()
             .filter_map(|(name, agent_config)| {
-                self.load_agent_content(agent_config)
-                    .ok()
-                    .map(|content| Agent::from_config(name.clone(), agent_config.clone(), content))
+                self.load_agent_content(agent_config).ok().map(|content| {
+                    AgentDefinition::from_config(name.clone(), agent_config.clone(), content)
+                })
             })
             .collect()
     }

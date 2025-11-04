@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::agent::Conversation;
 use crate::context_management::{TokenAccountant, TokenAccountantStats, TokenUsageRecord};
-use crate::conversations::Conversation;
 
 #[async_trait]
 pub trait ContextManagementStrategy: Send + Sync {

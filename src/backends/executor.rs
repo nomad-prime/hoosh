@@ -1,6 +1,6 @@
 use super::strategy::RetryStrategy;
+use crate::agent::AgentEvent;
 use crate::backends::llm_error::LlmError;
-use crate::conversations::AgentEvent;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Clone)]

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
+use crate::agent::ConversationMessage;
 use crate::backends::LlmBackend;
-use crate::conversations::ConversationMessage;
 
 #[derive(Clone)]
 pub struct MessageSummarizer {
