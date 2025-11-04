@@ -21,12 +21,16 @@ impl SlidingWindowStrategy {
         message.role == "user"
     }
 
-    fn should_preserve(&self, message: &ConversationMessage, index: usize) -> bool {
+    fn should_preserve(
+        &self,
+        message: &ConversationMessage,
+        is_first_user_message: bool,
+    ) -> bool {
         if self.config.preserve_system && self.is_system_message(message) {
             return true;
         }
 
-        if self.config.preserve_initial_task && self.is_user_message(message) && index <= 1 {
+        if self.config.preserve_initial_task && is_first_user_message {
             return true;
         }
 
@@ -49,24 +53,33 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
             return Ok(());
         }
 
+        // Find the index of the first user message
+        let first_user_message_index = conversation
+            .messages
+            .iter()
+            .position(|msg| self.is_user_message(msg));
+
         // Mark which messages to preserve (maintaining their index)
         let mut keep_flags: Vec<bool> = conversation
             .messages
             .iter()
             .enumerate()
-            .map(|(index, message)| self.should_preserve(message, index))
+            .map(|(index, message)| {
+                let is_first_user_message = first_user_message_index == Some(index);
+                self.should_preserve(message, is_first_user_message)
+            })
             .collect();
 
         let preserved_count = keep_flags.iter().filter(|&&k| k).count();
 
         if preserved_count >= total_to_keep {
             // Keep only preserved messages (maintaining order)
-            let mut i = 0;
-            conversation.messages.retain(|_| {
-                let should_keep = keep_flags[i];
-                i += 1;
-                should_keep
-            });
+            conversation.messages = conversation
+                .messages
+                .drain(..)
+                .enumerate()
+                .filter_map(|(i, msg)| if keep_flags[i] { Some(msg) } else { None })
+                .collect();
 
             return Ok(());
         }
@@ -84,12 +97,12 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
         }
 
         // Filter messages while maintaining original order
-        let mut i = 0;
-        conversation.messages.retain(|_| {
-            let should_keep = keep_flags[i];
-            i += 1;
-            should_keep
-        });
+        conversation.messages = conversation
+            .messages
+            .drain(..)
+            .enumerate()
+            .filter_map(|(i, msg)| if keep_flags[i] { Some(msg) } else { None })
+            .collect();
 
         Ok(())
     }
@@ -356,6 +369,164 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .contains("Build app")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_preserves_initial_task_with_multiple_system_messages() {
+        let config = SlidingWindowConfig {
+            window_size: 10,
+            min_messages_before_windowing: 5,
+            preserve_system: true,
+            preserve_initial_task: true,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Multiple system messages at the start
+        conversation.add_system_message("System prompt 1".to_string());
+        conversation.add_system_message("System prompt 2".to_string());
+        conversation.add_system_message("System prompt 3".to_string());
+
+        // First user message (initial task) - should be preserved
+        conversation.add_user_message("Build a web server".to_string());
+
+        // Add more messages
+        for i in 4..24 {
+            conversation.add_user_message(format!("msg-{}", i));
+        }
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        assert_eq!(conversation.messages.len(), 10);
+
+        // All system messages should be preserved
+        assert_eq!(conversation.messages[0].role, "system");
+        assert!(
+            conversation.messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("System prompt 1")
+        );
+        assert_eq!(conversation.messages[1].role, "system");
+        assert!(
+            conversation.messages[1]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("System prompt 2")
+        );
+        assert_eq!(conversation.messages[2].role, "system");
+        assert!(
+            conversation.messages[2]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("System prompt 3")
+        );
+
+        // First user message should be preserved despite being at index 3
+        assert_eq!(conversation.messages[3].role, "user");
+        assert!(
+            conversation.messages[3]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("Build a web server")
+        );
+
+        // We have 4 preserved messages (3 system + 1 initial user)
+        // Window size is 10, so we keep 6 more recent messages
+        // Total messages before windowing: 24 (3 system + 1 initial + 20 regular)
+        // We keep the last 6 of the 20 regular messages: msg-18 through msg-23
+        assert!(
+            conversation.messages[4]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("msg-18")
+        );
+        assert!(
+            conversation.messages[9]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("msg-23")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_user_messages_only_system() {
+        let config = SlidingWindowConfig {
+            window_size: 5,
+            min_messages_before_windowing: 3,
+            preserve_system: true,
+            preserve_initial_task: true,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Only system messages, no user messages
+        for i in 0..10 {
+            conversation.add_system_message(format!("system-{}", i));
+        }
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // When preserve_system is true, all system messages are kept even if they exceed window_size
+        // This is the current behavior - preserved messages take priority
+        assert_eq!(conversation.messages.len(), 10);
+
+        // All should be system messages
+        for msg in &conversation.messages {
+            assert_eq!(msg.role, "system");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_no_user_messages_system_not_preserved() {
+        let config = SlidingWindowConfig {
+            window_size: 5,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: true,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Only system messages, no user messages
+        for i in 0..10 {
+            conversation.add_system_message(format!("system-{}", i));
+        }
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // When preserve_system is false, should keep only the most recent 5
+        assert_eq!(conversation.messages.len(), 5);
+
+        // All should be system messages
+        for msg in &conversation.messages {
+            assert_eq!(msg.role, "system");
+        }
+
+        // Should have the last 5 system messages
+        assert!(
+            conversation.messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("system-5")
+        );
+        assert!(
+            conversation.messages[4]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("system-9")
         );
     }
 }
