@@ -275,30 +275,82 @@ impl EditFileTool {
             .cyan()
         ));
 
+        // Collect all changes first to determine context windows
+        let all_changes: Vec<_> = diff.iter_all_changes().collect();
+
+        // Find indices of lines that have actual changes (not Equal)
+        let mut changed_indices = Vec::new();
+        for (idx, change) in all_changes.iter().enumerate() {
+            if !matches!(change.tag(), ChangeTag::Equal) {
+                changed_indices.push(idx);
+            }
+        }
+
+        if changed_indices.is_empty() {
+            return output;
+        }
+
+        // Determine which lines to show (changed lines + 5 lines context on each side)
+        const CONTEXT_LINES: usize = 5;
+        let mut lines_to_show = std::collections::HashSet::new();
+
+        for &changed_idx in &changed_indices {
+            let start = changed_idx.saturating_sub(CONTEXT_LINES);
+            let end = (changed_idx + CONTEXT_LINES + 1).min(all_changes.len());
+            for i in start..end {
+                lines_to_show.insert(i);
+            }
+        }
+
+        // Convert to sorted vec for sequential processing
+        let mut lines_to_show: Vec<_> = lines_to_show.into_iter().collect();
+        lines_to_show.sort_unstable();
+
         // Track line numbers for old and new files
         let mut old_line = 1;
         let mut new_line = 1;
+        let mut last_shown_idx = None;
 
-        // Show full diff with line numbers and bright colors, indented for hierarchy
-        for change in diff.iter_all_changes() {
+        // Show diff with context, with ellipsis for skipped sections
+        for (actual_idx, change) in all_changes.iter().enumerate() {
+            // Update line counters
+            match change.tag() {
+                ChangeTag::Delete => old_line += 1,
+                ChangeTag::Insert => new_line += 1,
+                ChangeTag::Equal => {
+                    old_line += 1;
+                    new_line += 1;
+                }
+            }
+
+            // Check if we should show this line
+            if !lines_to_show.contains(&actual_idx) {
+                continue;
+            }
+
+            // Show ellipsis if we skipped lines
+            if let Some(last_idx) = last_shown_idx
+                && actual_idx > last_idx + 1
+            {
+                output.push_str(&format!("  {}\n", "...".dimmed()));
+            }
+            last_shown_idx = Some(actual_idx);
+
             let line_content = change.to_string();
             let line_content = line_content.trim_end();
 
             let formatted_line = match change.tag() {
                 ChangeTag::Delete => {
-                    let line_str = format!("  {:4} {:4} - {}", old_line, " ", line_content);
-                    old_line += 1;
+                    let line_str = format!("  {:4} {:4} - {}", old_line - 1, " ", line_content);
                     line_str.bright_red().to_string()
                 }
                 ChangeTag::Insert => {
-                    let line_str = format!("  {:4} {:4} + {}", " ", new_line, line_content);
-                    new_line += 1;
+                    let line_str = format!("  {:4} {:4} + {}", " ", new_line - 1, line_content);
                     line_str.green().to_string()
                 }
                 ChangeTag::Equal => {
-                    let line_str = format!("  {:4} {:4}   {}", old_line, new_line, line_content);
-                    old_line += 1;
-                    new_line += 1;
+                    let line_str =
+                        format!("  {:4} {:4}   {}", old_line - 1, new_line - 1, line_content);
                     line_str.dimmed().to_string()
                 }
             };
