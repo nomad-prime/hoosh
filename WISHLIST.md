@@ -26,11 +26,6 @@ current context.
 
 after approval rejection status line stucks on processing
 
-#### Large Diffs
-
-currently when there are large diffs in files, the entire file is shown in the diff view. It would be better to
-only show the relevant changes with some context lines around them, similar to how git shows diffs
-
 #### Running Todos
 
 currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
@@ -59,14 +54,6 @@ if a file is referenced in input, file read should be shown afterwards
 
 very often AI creates a plan before moving on, this should be a
 
-### Low hanging fruit for context reduction
-
-rolling window (keep system and plan)
-
-fluff reduction
-
-remove file content upload and smaller diffs
-
-### ways forward
+### ways forward (question and answer tool)
 
 have llm give forks as to possible implementations, user chooses the way
