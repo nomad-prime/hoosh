@@ -1,6 +1,6 @@
 use super::{LlmBackend, LlmResponse, RequestExecutor};
+use crate::agent::{Conversation, ConversationMessage, ToolCall};
 use crate::backends::llm_error::LlmError;
-use crate::conversations::{Conversation, ConversationMessage, ToolCall};
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -217,7 +217,7 @@ impl AnthropicBackend {
                 role: "user".to_string(),
                 content: AnthropicContent::Text(message.to_string()),
             }],
-            max_tokens: 4096,
+            max_tokens: 8092,
             system: None,
             temperature: Some(0.7),
             tools: None,
@@ -257,7 +257,7 @@ impl AnthropicBackend {
         MessagesRequest {
             model: self.config.model.clone(),
             messages,
-            max_tokens: 4096,
+            max_tokens: 8092,
             system: system_prompt,
             temperature: Some(0.7),
             tools: if has_tools { Some(tool_schemas) } else { None },
@@ -398,7 +398,7 @@ impl AnthropicBackend {
                     tool_calls.push(ToolCall {
                         id,
                         r#type: "function".to_string(),
-                        function: crate::conversations::ToolFunction {
+                        function: crate::agent::ToolFunction {
                             name,
                             arguments: input.to_string(),
                         },
@@ -455,7 +455,7 @@ impl LlmBackend for AnthropicBackend {
     async fn send_message_with_events(
         &self,
         message: &str,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<String> {
         self.default_executor
             .execute(
@@ -470,7 +470,7 @@ impl LlmBackend for AnthropicBackend {
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<LlmResponse> {
         self.default_executor
             .execute(

@@ -6,12 +6,12 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
 
 pub struct PermissionHandler {
-    pub permission_response_tx: mpsc::UnboundedSender<crate::conversations::PermissionResponse>,
+    pub permission_response_tx: mpsc::UnboundedSender<crate::agent::PermissionResponse>,
 }
 
 impl PermissionHandler {
     pub fn new(
-        permission_response_tx: mpsc::UnboundedSender<crate::conversations::PermissionResponse>,
+        permission_response_tx: mpsc::UnboundedSender<crate::agent::PermissionResponse>,
     ) -> Self {
         Self {
             permission_response_tx,
@@ -107,7 +107,7 @@ impl InputHandler for PermissionHandler {
                     app.add_status_message(&format!("Command trusted for {}", path.display()))
                 }
 
-                let perm_response = crate::conversations::PermissionResponse {
+                let perm_response = crate::agent::PermissionResponse {
                     request_id,
                     allowed,
                     scope,

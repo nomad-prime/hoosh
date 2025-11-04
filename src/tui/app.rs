@@ -1,7 +1,7 @@
 use super::clipboard::ClipboardManager;
 use super::events::AgentState;
+use crate::agent::AgentEvent;
 use crate::completion::Completer;
-use crate::conversations::AgentEvent;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
 use rand::Rng;

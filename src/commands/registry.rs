@@ -3,9 +3,10 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::agents::AgentManager;
+use crate::agent::Conversation;
+use crate::agent_definition::AgentDefinitionManager;
 use crate::config::AppConfig;
-use crate::conversations::{Conversation, MessageSummarizer};
+use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
@@ -18,15 +19,16 @@ pub enum CommandResult {
 pub struct CommandContext {
     pub conversation: Option<Arc<tokio::sync::Mutex<Conversation>>>,
     pub tool_registry: Option<Arc<ToolRegistry>>,
-    pub agent_manager: Option<Arc<AgentManager>>,
+    pub agent_manager: Option<Arc<AgentDefinitionManager>>,
     pub command_registry: Option<Arc<CommandRegistry>>,
     pub working_directory: String,
     pub permission_manager: Option<Arc<crate::permissions::PermissionManager>>,
     pub summarizer: Option<Arc<MessageSummarizer>>,
     pub current_agent_name: Option<String>,
-    pub event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
+    pub event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     pub config: Option<AppConfig>,
     pub backend: Option<Arc<dyn crate::backends::LlmBackend>>,
+    pub context_manager: Option<Arc<ContextManager>>,
 }
 
 impl CommandContext {
@@ -43,6 +45,7 @@ impl CommandContext {
             event_tx: None,
             config: None,
             backend: None,
+            context_manager: None,
         }
     }
 
@@ -56,7 +59,7 @@ impl CommandContext {
         self
     }
 
-    pub fn with_agent_manager(mut self, manager: Arc<AgentManager>) -> Self {
+    pub fn with_agent_manager(mut self, manager: Arc<AgentDefinitionManager>) -> Self {
         self.agent_manager = Some(manager);
         self
     }
@@ -91,7 +94,7 @@ impl CommandContext {
 
     pub fn with_event_sender(
         mut self,
-        tx: tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>,
+        tx: tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>,
     ) -> Self {
         self.event_tx = Some(tx);
         self
@@ -104,6 +107,11 @@ impl CommandContext {
 
     pub fn with_backend(mut self, backend: Arc<dyn crate::backends::LlmBackend>) -> Self {
         self.backend = Some(backend);
+        self
+    }
+
+    pub fn with_context_manager(mut self, context_manager: Arc<ContextManager>) -> Self {
+        self.context_manager = Some(context_manager);
         self
     }
 }

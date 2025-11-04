@@ -1,7 +1,7 @@
 use serde_json::{self, Value};
 use tokio::sync::mpsc;
 
-use crate::conversations::{AgentEvent, ToolCall, ToolCallResponse};
+use crate::agent::{AgentEvent, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionManager;
 use crate::tools::error::{ToolError, ToolResult};
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
@@ -32,9 +32,7 @@ pub struct ToolExecutor {
     autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     approval_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     approval_receiver: Option<
-        std::sync::Arc<
-            tokio::sync::Mutex<mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>>,
-        >,
+        std::sync::Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<crate::agent::ApprovalResponse>>>,
     >,
 }
 
@@ -66,7 +64,7 @@ impl ToolExecutor {
 
     pub fn with_approval_receiver(
         mut self,
-        receiver: mpsc::UnboundedReceiver<crate::conversations::ApprovalResponse>,
+        receiver: mpsc::UnboundedReceiver<crate::agent::ApprovalResponse>,
     ) -> Self {
         self.approval_receiver = Some(std::sync::Arc::new(tokio::sync::Mutex::new(receiver)));
         self
@@ -245,7 +243,7 @@ impl ToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversations::{ToolCall, ToolFunction};
+    use crate::agent::{ToolCall, ToolFunction};
     use serde_json::json;
     use tempfile::tempdir;
 

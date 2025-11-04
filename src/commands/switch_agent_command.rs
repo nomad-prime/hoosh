@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 
 use super::registry::{Command, CommandContext, CommandResult};
-use crate::conversations::AgentEvent;
+use crate::agent::AgentEvent;
 
 pub struct SwitchAgentCommand;
 

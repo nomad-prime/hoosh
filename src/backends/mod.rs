@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::conversations::AgentEvent;
-use crate::conversations::{Conversation, ToolCall};
+use crate::agent::AgentEvent;
+use crate::agent::{Conversation, ToolCall};
 use crate::tools::ToolRegistry;
 use tokio::sync::mpsc::UnboundedSender;
 

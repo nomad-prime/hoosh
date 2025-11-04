@@ -1,5 +1,5 @@
+use crate::agent::AgentEvent;
 use crate::backends::llm_error::LlmError;
-use crate::conversations::AgentEvent;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;

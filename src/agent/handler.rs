@@ -2,9 +2,10 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+use crate::agent::agent_events::AgentEvent;
+use crate::agent::{Conversation, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
-use crate::conversations::agent_events::AgentEvent;
-use crate::conversations::{ContextManager, Conversation, ToolCall, ToolCallResponse};
+use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -23,7 +24,7 @@ pub struct ApprovalResponse {
     pub rejection_reason: Option<String>,
 }
 
-pub struct ConversationHandler {
+pub struct Agent {
     backend: Arc<dyn LlmBackend>,
     tool_registry: Arc<ToolRegistry>,
     tool_executor: Arc<ToolExecutor>,
@@ -32,7 +33,7 @@ pub struct ConversationHandler {
     context_manager: Option<Arc<ContextManager>>,
 }
 
-impl ConversationHandler {
+impl Agent {
     pub fn new(
         backend: Arc<dyn LlmBackend>,
         tool_registry: Arc<ToolRegistry>,
@@ -105,7 +106,6 @@ impl ConversationHandler {
     ) -> Result<()> {
         let current_pressure = context_manager.get_token_pressure();
 
-        // Emit warning if approaching threshold
         if context_manager.should_warn_about_pressure() {
             self.send_event(AgentEvent::TokenPressureWarning {
                 current_pressure,
@@ -113,32 +113,21 @@ impl ConversationHandler {
             });
         }
 
-        if context_manager.should_compress() {
-            let original_count = conversation.messages.len();
-            self.send_event(AgentEvent::ContextCompressionTriggered {
-                original_message_count: original_count,
-                compressed_message_count: 0,
-                token_pressure: current_pressure,
-            });
+        let original_count = conversation.messages.len();
 
-            match context_manager
-                .apply_context_compression(&conversation.messages)
-                .await
-            {
-                Ok(compressed_messages) => {
-                    let compressed_count = compressed_messages.len();
-                    conversation.messages = compressed_messages;
-
+        match context_manager.apply_strategies(conversation).await {
+            Ok(_) => {
+                let compressed_count = conversation.messages.len();
+                if compressed_count < original_count {
                     self.send_event(AgentEvent::ContextCompressionComplete {
                         summary_length: original_count - compressed_count,
                     });
                 }
-                Err(e) => {
-                    self.send_event(AgentEvent::ContextCompressionError {
-                        error: e.to_string(),
-                    });
-                    // Continue without compression on error
-                }
+            }
+            Err(e) => {
+                self.send_event(AgentEvent::ContextCompressionError {
+                    error: e.to_string(),
+                });
             }
         }
 
@@ -302,8 +291,8 @@ enum TurnStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{ToolCall, ToolFunction};
     use crate::backends::LlmResponse;
-    use crate::conversations::{ToolCall, ToolFunction};
     use crate::permissions::PermissionManager;
     use async_trait::async_trait;
 
@@ -369,7 +358,7 @@ mod tests {
             permission_manager,
         ));
 
-        let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
+        let handler = Agent::new(mock_backend, tool_registry, tool_executor);
 
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
@@ -413,7 +402,7 @@ mod tests {
             permission_manager,
         ));
 
-        let handler = ConversationHandler::new(mock_backend, tool_registry, tool_executor);
+        let handler = Agent::new(mock_backend, tool_registry, tool_executor);
 
         let mut conversation = Conversation::new();
         conversation.add_user_message("Read test.txt".to_string());

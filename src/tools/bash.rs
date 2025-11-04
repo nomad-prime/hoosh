@@ -379,11 +379,7 @@ impl Tool for BashTool {
 
         ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
-            .with_approval_prompt(format!(
-                " Can I run \"{} {}\"",
-                self.display_name(),
-                target.unwrap_or(" ")
-            ))
+            .with_approval_prompt(format!(" Can I run \"{}\"", target.unwrap_or(" ")))
             .with_persistent_approval(persistent_message)
             .with_suggested_pattern(pattern)
             .with_pattern_matcher(Arc::new(BashPatternMatcher))

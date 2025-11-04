@@ -1,5 +1,5 @@
 use super::{LlmBackend, LlmResponse};
-use crate::conversations::Conversation;
+use crate::agent::Conversation;
 use crate::tools::ToolRegistry;
 use anyhow::Result;
 use async_trait::async_trait;

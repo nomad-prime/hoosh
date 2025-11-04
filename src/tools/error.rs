@@ -83,9 +83,9 @@ impl ToolError {
 
     pub fn user_facing_message(&self) -> String {
         match self {
-            ToolError::UserRejected { .. } => "Rejected, tell hoosh what to do instead".to_string(),
+            ToolError::UserRejected { .. } => "Rejected, tell me what to do instead".to_string(),
             ToolError::PermissionDenied { .. } => {
-                "Permission denied, tell hoosh what to do".to_string()
+                "Permission denied, tell me what to do instead".to_string()
             }
             _ => format!("Error: {}", self),
         }

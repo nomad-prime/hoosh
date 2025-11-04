@@ -1,17 +1,15 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
+use crate::agent::ConversationMessage;
 use crate::backends::LlmBackend;
-use crate::conversations::ConversationMessage;
 
-/// MessageSummarizer handles LLM-based summarization of conversation messages
 #[derive(Clone)]
 pub struct MessageSummarizer {
     backend: Arc<dyn LlmBackend>,
 }
 
 impl MessageSummarizer {
-    /// Create a new MessageSummarizer with the specified LLM backend
     pub fn new(backend: Arc<dyn LlmBackend>) -> Self {
         Self { backend }
     }
@@ -21,7 +19,6 @@ impl MessageSummarizer {
         messages: &[ConversationMessage],
         focus_areas: Option<Vec<String>>,
     ) -> Result<String> {
-        // Build the summary request prompt
         let summary_request = ConversationMessage {
             role: "user".to_string(),
             content: Some(self.build_summary_request(focus_areas)),
