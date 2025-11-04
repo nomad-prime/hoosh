@@ -86,6 +86,40 @@ impl ToolOutputTruncationStrategy {
     fn is_assistant_with_tools(&self, message: &ConversationMessage) -> bool {
         message.role == "assistant" && message.tool_calls.is_some()
     }
+
+    /// Recursively truncates all string values in a JSON value that exceed max_length.
+    /// Returns true if any modifications were made.
+    fn truncate_json_strings(&self, value: &mut serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::String(s) => {
+                if s.len() > self.config.max_length {
+                    *s = self.truncate_content(s);
+                    true
+                } else {
+                    false
+                }
+            }
+            serde_json::Value::Object(map) => {
+                let mut modified = false;
+                for (_key, val) in map.iter_mut() {
+                    if self.truncate_json_strings(val) {
+                        modified = true;
+                    }
+                }
+                modified
+            }
+            serde_json::Value::Array(arr) => {
+                let mut modified = false;
+                for item in arr.iter_mut() {
+                    if self.truncate_json_strings(item) {
+                        modified = true;
+                    }
+                }
+                modified
+            }
+            _ => false,
+        }
+    }
 }
 
 #[async_trait]
@@ -132,31 +166,7 @@ impl ContextManagementStrategy for ToolOutputTruncationStrategy {
                         && let Ok(mut args_json) =
                             serde_json::from_str::<serde_json::Value>(args_str)
                     {
-                        let mut modified = false;
-
-                        if let Some(obj) = args_json.as_object_mut() {
-                            if let Some(content) = obj.get("content").and_then(|v| v.as_str())
-                                && content.len() > self.config.max_length
-                            {
-                                let truncated = self.truncate_content(content);
-                                obj.insert(
-                                    "content".to_string(),
-                                    serde_json::Value::String(truncated),
-                                );
-                                modified = true;
-                            }
-
-                            if let Some(command) = obj.get("command").and_then(|v| v.as_str())
-                                && command.len() > self.config.max_length
-                            {
-                                let truncated = self.truncate_content(command);
-                                obj.insert(
-                                    "command".to_string(),
-                                    serde_json::Value::String(truncated),
-                                );
-                                modified = true;
-                            }
-                        }
+                        let modified = self.truncate_json_strings(&mut args_json);
 
                         if modified {
                             tool_call.function.arguments = serde_json::to_string(&args_json)
@@ -541,5 +551,239 @@ mod tests {
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(args_str);
             assert!(parsed.is_ok());
         }
+    }
+
+    #[tokio::test]
+    async fn test_truncates_all_string_fields() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 50,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let large_string = "x".repeat(200);
+        let args = serde_json::json!({
+            "path": large_string.clone(),
+            "content": large_string.clone(),
+            "command": large_string.clone(),
+            "custom_field": large_string.clone(),
+            "number": 42,
+            "boolean": true,
+        });
+
+        let tool_calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "some_tool".to_string(),
+                arguments: serde_json::to_string(&args).unwrap(),
+            },
+        }];
+
+        conversation.add_assistant_message(Some("Executing".to_string()), Some(tool_calls));
+        conversation.add_user_message("done".to_string());
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let tool_calls = conversation.messages[0].tool_calls.as_ref().unwrap();
+        let args_str = &tool_calls[0].function.arguments;
+        let args_json: serde_json::Value = serde_json::from_str(args_str).unwrap();
+
+        // All string fields should be truncated
+        let path = args_json["path"].as_str().unwrap();
+        assert!(path.contains("truncated"));
+        assert!(path.len() < large_string.len());
+
+        let content = args_json["content"].as_str().unwrap();
+        assert!(content.contains("truncated"));
+        assert!(content.len() < large_string.len());
+
+        let command = args_json["command"].as_str().unwrap();
+        assert!(command.contains("truncated"));
+        assert!(command.len() < large_string.len());
+
+        let custom_field = args_json["custom_field"].as_str().unwrap();
+        assert!(custom_field.contains("truncated"));
+        assert!(custom_field.len() < large_string.len());
+
+        // Non-string fields should remain unchanged
+        assert_eq!(args_json["number"].as_i64().unwrap(), 42);
+        assert!(args_json["boolean"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_truncates_nested_json_fields() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 50,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let large_string = "y".repeat(200);
+        let args = serde_json::json!({
+            "outer": {
+                "inner": {
+                    "deep_field": large_string.clone(),
+                    "number": 123,
+                },
+                "another_field": large_string.clone(),
+            },
+            "top_level": large_string.clone(),
+        });
+
+        let tool_calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "nested_tool".to_string(),
+                arguments: serde_json::to_string(&args).unwrap(),
+            },
+        }];
+
+        conversation.add_assistant_message(Some("Executing".to_string()), Some(tool_calls));
+        conversation.add_user_message("done".to_string());
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let tool_calls = conversation.messages[0].tool_calls.as_ref().unwrap();
+        let args_str = &tool_calls[0].function.arguments;
+        let args_json: serde_json::Value = serde_json::from_str(args_str).unwrap();
+
+        // Nested string fields should be truncated
+        let deep_field = args_json["outer"]["inner"]["deep_field"].as_str().unwrap();
+        assert!(deep_field.contains("truncated"));
+        assert!(deep_field.len() < large_string.len());
+
+        let another_field = args_json["outer"]["another_field"].as_str().unwrap();
+        assert!(another_field.contains("truncated"));
+        assert!(another_field.len() < large_string.len());
+
+        let top_level = args_json["top_level"].as_str().unwrap();
+        assert!(top_level.contains("truncated"));
+        assert!(top_level.len() < large_string.len());
+
+        // Non-string fields should remain unchanged
+        assert_eq!(args_json["outer"]["inner"]["number"].as_i64().unwrap(), 123);
+    }
+
+    #[tokio::test]
+    async fn test_truncates_array_fields() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 50,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let large_string = "z".repeat(200);
+        let args = serde_json::json!({
+            "items": [
+                large_string.clone(),
+                "short",
+                large_string.clone(),
+            ],
+            "nested_array": [
+                {
+                    "field": large_string.clone(),
+                },
+                {
+                    "field": "short",
+                }
+            ],
+        });
+
+        let tool_calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "array_tool".to_string(),
+                arguments: serde_json::to_string(&args).unwrap(),
+            },
+        }];
+
+        conversation.add_assistant_message(Some("Executing".to_string()), Some(tool_calls));
+        conversation.add_user_message("done".to_string());
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let tool_calls = conversation.messages[0].tool_calls.as_ref().unwrap();
+        let args_str = &tool_calls[0].function.arguments;
+        let args_json: serde_json::Value = serde_json::from_str(args_str).unwrap();
+
+        // Array string elements should be truncated
+        let item0 = args_json["items"][0].as_str().unwrap();
+        assert!(item0.contains("truncated"));
+        assert!(item0.len() < large_string.len());
+
+        let item1 = args_json["items"][1].as_str().unwrap();
+        assert_eq!(item1, "short");
+
+        let item2 = args_json["items"][2].as_str().unwrap();
+        assert!(item2.contains("truncated"));
+        assert!(item2.len() < large_string.len());
+
+        // Nested array objects should have their strings truncated
+        let nested0 = args_json["nested_array"][0]["field"].as_str().unwrap();
+        assert!(nested0.contains("truncated"));
+        assert!(nested0.len() < large_string.len());
+
+        let nested1 = args_json["nested_array"][1]["field"].as_str().unwrap();
+        assert_eq!(nested1, "short");
+    }
+
+    #[tokio::test]
+    async fn test_does_not_truncate_short_arguments() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 1000,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "content": "Short content",
+            "command": "ls -la",
+        });
+
+        let original_args_str = serde_json::to_string(&args).unwrap();
+
+        let tool_calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "some_tool".to_string(),
+                arguments: original_args_str.clone(),
+            },
+        }];
+
+        conversation.add_assistant_message(Some("Executing".to_string()), Some(tool_calls));
+        conversation.add_user_message("done".to_string());
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let tool_calls = conversation.messages[0].tool_calls.as_ref().unwrap();
+        let args_str = &tool_calls[0].function.arguments;
+
+        // Arguments should remain unchanged since they're short
+        assert_eq!(args_str, &original_args_str);
     }
 }
