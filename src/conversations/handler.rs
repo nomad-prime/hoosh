@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::backends::{LlmBackend, LlmResponse};
-use crate::conversations::agent_events::AgentEvent;
 use crate::context_management::ContextManager;
+use crate::conversations::agent_events::AgentEvent;
 use crate::conversations::{Conversation, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionScope;
 use crate::tool_executor::ToolExecutor;

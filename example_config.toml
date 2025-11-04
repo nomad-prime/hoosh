@@ -32,6 +32,15 @@ smart_truncate = false               # If true, keep head + tail instead of just
 head_length = 3000                   # Characters to keep from start (smart_truncate only)
 tail_length = 1000                   # Characters to keep from end (smart_truncate only)
 
+# Sliding window configuration
+# Limits the total number of messages in conversation history to prevent unbounded growth
+# This provides predictable token costs and prevents context overflow
+[context_manager.sliding_window]
+window_size = 40                     # Maximum number of messages to keep
+preserve_system = true               # Always keep system messages (recommended)
+preserve_initial_task = true         # Always keep the first user message (recommended)
+min_messages_before_windowing = 50   # Don't apply window until this many messages exist
+
 # Backend configurations
 [backends.anthropic]
 api_key = "your-anthropic-api-key-here"

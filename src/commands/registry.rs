@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::agents::AgentManager;
 use crate::config::AppConfig;
-use crate::context_management::MessageSummarizer;
+use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::conversations::Conversation;
 use crate::tools::ToolRegistry;
 
@@ -28,6 +28,7 @@ pub struct CommandContext {
     pub event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::conversations::AgentEvent>>,
     pub config: Option<AppConfig>,
     pub backend: Option<Arc<dyn crate::backends::LlmBackend>>,
+    pub context_manager: Option<Arc<ContextManager>>,
 }
 
 impl CommandContext {
@@ -44,6 +45,7 @@ impl CommandContext {
             event_tx: None,
             config: None,
             backend: None,
+            context_manager: None,
         }
     }
 
@@ -105,6 +107,11 @@ impl CommandContext {
 
     pub fn with_backend(mut self, backend: Arc<dyn crate::backends::LlmBackend>) -> Self {
         self.backend = Some(backend);
+        self
+    }
+
+    pub fn with_context_manager(mut self, context_manager: Arc<ContextManager>) -> Self {
+        self.context_manager = Some(context_manager);
         self
     }
 }

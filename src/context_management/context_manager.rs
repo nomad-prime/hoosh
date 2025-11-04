@@ -33,6 +33,25 @@ impl Default for ToolOutputTruncationConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlidingWindowConfig {
+    pub window_size: usize,
+    pub preserve_system: bool,
+    pub min_messages_before_windowing: usize,
+    pub preserve_initial_task: bool,
+}
+
+impl Default for SlidingWindowConfig {
+    fn default() -> Self {
+        Self {
+            window_size: 40,
+            preserve_system: true,
+            min_messages_before_windowing: 50,
+            preserve_initial_task: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextManagerConfig {
     pub max_tokens: usize,
     pub compression_threshold: f32,
@@ -40,6 +59,8 @@ pub struct ContextManagerConfig {
     pub warning_threshold: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_output_truncation: Option<ToolOutputTruncationConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sliding_window: Option<SlidingWindowConfig>,
 }
 
 impl Default for ContextManagerConfig {
@@ -50,6 +71,7 @@ impl Default for ContextManagerConfig {
             preserve_recent_percentage: 0.50,
             warning_threshold: 0.70,
             tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
+            sliding_window: None,
         }
     }
 }

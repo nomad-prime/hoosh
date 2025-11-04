@@ -26,7 +26,13 @@ impl ToolOutputTruncationStrategy {
     }
 
     fn simple_truncate(&self, content: &str) -> String {
-        let truncated = &content[..self.config.max_length.min(content.len())];
+        // Find a valid UTF-8 boundary
+        let mut truncate_at = self.config.max_length.min(content.len());
+        while truncate_at > 0 && !content.is_char_boundary(truncate_at) {
+            truncate_at -= 1;
+        }
+
+        let truncated = &content[..truncate_at];
 
         if self.config.show_truncation_notice {
             format!(
@@ -46,15 +52,26 @@ impl ToolOutputTruncationStrategy {
             return content.to_string();
         }
 
-        let head = &content[..self.config.head_length.min(content.len())];
-        let tail_start = content.len().saturating_sub(self.config.tail_length);
+        // Find valid UTF-8 boundary for head
+        let mut head_len = self.config.head_length.min(content.len());
+        while head_len > 0 && !content.is_char_boundary(head_len) {
+            head_len -= 1;
+        }
+
+        // Find valid UTF-8 boundary for tail
+        let mut tail_start = content.len().saturating_sub(self.config.tail_length);
+        while tail_start < content.len() && !content.is_char_boundary(tail_start) {
+            tail_start += 1;
+        }
+
+        let head = &content[..head_len];
         let tail = &content[tail_start..];
 
         if self.config.show_truncation_notice {
             format!(
                 "{}\n\n[... truncated {} characters ...]\n\n{}",
                 head,
-                content.len() - total_keep,
+                content.len() - head_len - (content.len() - tail_start),
                 tail
             )
         } else {
@@ -95,47 +112,55 @@ impl ContextManagementStrategy for ToolOutputTruncationStrategy {
 
             let message = &mut conversation.messages[i];
 
-            if self.is_tool_result(message) {
-                if let Some(content) = &message.content {
-                    let original_len = content.len();
+            if self.is_tool_result(message)
+                && let Some(content) = &message.content
+            {
+                let original_len = content.len();
 
-                    if original_len > self.config.max_length {
-                        message.content = Some(self.truncate_content(content));
-                    }
+                if original_len > self.config.max_length {
+                    message.content = Some(self.truncate_content(content));
                 }
             }
 
-            if self.is_assistant_with_tools(message) {
-                if let Some(ref mut tool_calls) = message.tool_calls {
-                    for tool_call in tool_calls.iter_mut() {
-                        let args_str = &tool_call.function.arguments;
+            if self.is_assistant_with_tools(message)
+                && let Some(ref mut tool_calls) = message.tool_calls
+            {
+                for tool_call in tool_calls.iter_mut() {
+                    let args_str = &tool_call.function.arguments;
 
-                        if args_str.len() > self.config.max_length {
-                            if let Ok(mut args_json) = serde_json::from_str::<serde_json::Value>(args_str) {
-                                let mut modified = false;
+                    if args_str.len() > self.config.max_length
+                        && let Ok(mut args_json) =
+                            serde_json::from_str::<serde_json::Value>(args_str)
+                    {
+                        let mut modified = false;
 
-                                if let Some(obj) = args_json.as_object_mut() {
-                                    if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
-                                        if content.len() > self.config.max_length {
-                                            let truncated = self.truncate_content(content);
-                                            obj.insert("content".to_string(), serde_json::Value::String(truncated));
-                                            modified = true;
-                                        }
-                                    }
-
-                                    if let Some(command) = obj.get("command").and_then(|v| v.as_str()) {
-                                        if command.len() > self.config.max_length {
-                                            let truncated = self.truncate_content(command);
-                                            obj.insert("command".to_string(), serde_json::Value::String(truncated));
-                                            modified = true;
-                                        }
-                                    }
-                                }
-
-                                if modified {
-                                    tool_call.function.arguments = serde_json::to_string(&args_json).unwrap_or_else(|_| args_str.clone());
-                                }
+                        if let Some(obj) = args_json.as_object_mut() {
+                            if let Some(content) = obj.get("content").and_then(|v| v.as_str())
+                                && content.len() > self.config.max_length
+                            {
+                                let truncated = self.truncate_content(content);
+                                obj.insert(
+                                    "content".to_string(),
+                                    serde_json::Value::String(truncated),
+                                );
+                                modified = true;
                             }
+
+                            if let Some(command) = obj.get("command").and_then(|v| v.as_str())
+                                && command.len() > self.config.max_length
+                            {
+                                let truncated = self.truncate_content(command);
+                                obj.insert(
+                                    "command".to_string(),
+                                    serde_json::Value::String(truncated),
+                                );
+                                modified = true;
+                            }
+                        }
+
+                        if modified {
+                            tool_call.function.arguments = serde_json::to_string(&args_json)
+                                .unwrap_or_else(|_| args_str.clone());
                         }
                     }
                 }
@@ -184,22 +209,26 @@ mod tests {
 
         strategy.apply(&mut conversation).await.unwrap();
 
-        assert!(conversation.messages[0]
-            .content
-            .as_ref()
-            .unwrap()
-            .contains("truncated"));
+        assert!(
+            conversation.messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("truncated")
+        );
         assert!(conversation.messages[0].content.as_ref().unwrap().len() < 100);
 
         assert_eq!(
             conversation.messages[1].content.as_ref().unwrap(),
             &"B".repeat(100)
         );
-        assert!(!conversation.messages[1]
-            .content
-            .as_ref()
-            .unwrap()
-            .contains("truncated"));
+        assert!(
+            !conversation.messages[1]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("truncated")
+        );
     }
 
     #[tokio::test]
@@ -336,5 +365,181 @@ mod tests {
             conversation.messages[0].content.as_ref().unwrap(),
             short_content
         );
+    }
+
+    #[tokio::test]
+    async fn test_unicode_safe_simple_truncate() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 7,
+            show_truncation_notice: false,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let max_length = config.max_length;
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // "Hello 世界!" - "世" starts at byte 6 and is 3 bytes
+        // Truncating at byte 7 would be in the middle of "世"
+        // Should truncate at byte 6 instead
+        let content = "Hello 世界!";
+        let result = ToolCallResponse::success(
+            "tool_1".to_string(),
+            "read_file".to_string(),
+            "Read(file.txt)".to_string(),
+            content.to_string(),
+        );
+        conversation.add_tool_result(result);
+
+        let short_result = ToolCallResponse::success(
+            "tool_2".to_string(),
+            "read_file".to_string(),
+            "Read(file2.txt)".to_string(),
+            "Short".to_string(),
+        );
+        conversation.add_tool_result(short_result);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let truncated = conversation.messages[0].content.as_ref().unwrap();
+        // Should not panic and should be valid UTF-8
+        assert!(truncated.len() <= max_length);
+        assert!(truncated.is_char_boundary(truncated.len()));
+        assert_eq!(truncated, "Hello ");
+    }
+
+    #[tokio::test]
+    async fn test_unicode_safe_smart_truncate() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 100,
+            show_truncation_notice: true,
+            smart_truncate: true,
+            head_length: 8,
+            tail_length: 5,
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Create content long enough to trigger smart truncation
+        // head_length + tail_length = 13, so we need content > 13 bytes
+        // And longer than max_length to trigger truncation
+        let content = "Hello 世界 this is some middle content that is very long and should be truncated 🌍🎉!".repeat(3);
+        let result = ToolCallResponse::success(
+            "tool_1".to_string(),
+            "read_file".to_string(),
+            "Read(file.txt)".to_string(),
+            content.to_string(),
+        );
+        conversation.add_tool_result(result);
+
+        let short_result = ToolCallResponse::success(
+            "tool_2".to_string(),
+            "read_file".to_string(),
+            "Read(file2.txt)".to_string(),
+            "Short".to_string(),
+        );
+        conversation.add_tool_result(short_result);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let truncated = conversation.messages[0].content.as_ref().unwrap();
+        // Should not panic and result should be valid UTF-8
+        assert!(truncated.contains("[... truncated"));
+        // Verify all parts are valid UTF-8 by checking char boundaries
+        for (i, _) in truncated.char_indices() {
+            assert!(truncated.is_char_boundary(i));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unicode_safe_with_emojis() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 15,
+            show_truncation_notice: false,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let max_length = config.max_length;
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // "Test 🌍🎉 emoji" - emojis are 4 bytes each
+        let content = "Test 🌍🎉 emoji";
+        let result = ToolCallResponse::success(
+            "tool_1".to_string(),
+            "read_file".to_string(),
+            "Read(file.txt)".to_string(),
+            content.to_string(),
+        );
+        conversation.add_tool_result(result);
+
+        let short_result = ToolCallResponse::success(
+            "tool_2".to_string(),
+            "read_file".to_string(),
+            "Read(file2.txt)".to_string(),
+            "Short".to_string(),
+        );
+        conversation.add_tool_result(short_result);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let truncated = conversation.messages[0].content.as_ref().unwrap();
+        // Should not panic and should be valid UTF-8
+        assert!(truncated.len() <= max_length);
+        assert!(truncated.is_char_boundary(truncated.len()));
+        // Verify the entire string is valid UTF-8
+        for (i, _) in truncated.char_indices() {
+            assert!(truncated.is_char_boundary(i));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unicode_safe_tool_call_arguments() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 25,
+            show_truncation_notice: false,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let large_content = "Hello 世界! ".repeat(10);
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "content": large_content,
+        });
+
+        let tool_calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "write_file".to_string(),
+                arguments: serde_json::to_string(&args).unwrap(),
+            },
+        }];
+
+        conversation.add_assistant_message(Some("Writing file".to_string()), Some(tool_calls));
+
+        conversation.add_user_message("done".to_string());
+
+        conversation.add_assistant_message(Some("ok".to_string()), None);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Should not panic - verify the tool call arguments are still valid JSON
+        if let Some(tool_calls) = &conversation.messages[0].tool_calls {
+            let args_str = &tool_calls[0].function.arguments;
+            // Should be valid JSON
+            let parsed: Result<serde_json::Value, _> = serde_json::from_str(args_str);
+            assert!(parsed.is_ok());
+        }
     }
 }

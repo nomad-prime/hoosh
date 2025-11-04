@@ -101,6 +101,21 @@ impl Command for CompactCommand {
             conv.compact_with_summary(summary, keep_recent);
         }
 
+        // Reset token accountant after compaction (but not cost tracking)
+        if let Some(context_manager) = &context.context_manager {
+            context_manager.token_accountant.reset();
+
+            // Send TokenUsage event to update UI with zero tokens
+            // Note: We don't reset the cost accumulator in the UI
+            if let Some(event_tx) = &context.event_tx {
+                let _ = event_tx.send(AgentEvent::TokenUsage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost: Some(0.0),
+                });
+            }
+        }
+
         Ok(CommandResult::Success(format!(
             "Compacted {} messages into summary",
             messages_len - keep_recent
