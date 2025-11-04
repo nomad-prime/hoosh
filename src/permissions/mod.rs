@@ -37,9 +37,8 @@ pub struct PermissionsInfo {
 pub struct PermissionManager {
     skip_permissions: bool,
     default_permission: PermissionLevel,
-    event_sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
-    response_receiver:
-        Arc<Mutex<mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>>>,
+    event_sender: mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    response_receiver: Arc<Mutex<mpsc::UnboundedReceiver<crate::agent::PermissionResponse>>>,
     request_counter: Arc<AtomicU64>,
     project_root: Arc<Mutex<Option<PathBuf>>>,
     permissions_file: Arc<Mutex<storage::PermissionsFile>>,
@@ -47,8 +46,8 @@ pub struct PermissionManager {
 
 impl PermissionManager {
     pub fn new(
-        event_sender: mpsc::UnboundedSender<crate::conversations::AgentEvent>,
-        response_receiver: mpsc::UnboundedReceiver<crate::conversations::PermissionResponse>,
+        event_sender: mpsc::UnboundedSender<crate::agent::AgentEvent>,
+        response_receiver: mpsc::UnboundedReceiver<crate::agent::PermissionResponse>,
     ) -> Self {
         Self {
             skip_permissions: false,
@@ -212,7 +211,7 @@ impl PermissionManager {
             .fetch_add(1, Ordering::SeqCst)
             .to_string();
 
-        let event = crate::conversations::AgentEvent::ToolPermissionRequest {
+        let event = crate::agent::AgentEvent::ToolPermissionRequest {
             descriptor: descriptor.clone(),
             request_id: request_id.clone(),
         };

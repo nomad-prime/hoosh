@@ -6,12 +6,12 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
 
 pub struct ApprovalHandler {
-    pub approval_response_tx: mpsc::UnboundedSender<crate::conversations::ApprovalResponse>,
+    pub approval_response_tx: mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
 }
 
 impl ApprovalHandler {
     pub fn new(
-        approval_response_tx: mpsc::UnboundedSender<crate::conversations::ApprovalResponse>,
+        approval_response_tx: mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
     ) -> Self {
         Self {
             approval_response_tx,
@@ -78,7 +78,7 @@ impl InputHandler for ApprovalHandler {
             };
 
             if let Some((approved, rejection_reason)) = response {
-                let approval_response = crate::conversations::ApprovalResponse {
+                let approval_response = crate::agent::ApprovalResponse {
                     tool_call_id,
                     approved,
                     rejection_reason,

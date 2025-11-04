@@ -566,25 +566,6 @@ where
     ///
     /// ## Insert a single line before the current viewport
     ///
-    /// ```rust
-    /// use ratatui::{
-    ///     backend::TestBackend,
-    ///     style::{Color, Style},
-    ///     text::{Line, Span},
-    ///     widgets::{Paragraph, Widget},
-    ///     Terminal,
-    /// };
-    /// # let backend = TestBackend::new(10, 10);
-    /// # let mut terminal = Terminal::new(backend).unwrap();
-    /// terminal.insert_before(1, |buf| {
-    ///     Paragraph::new(Line::from(vec![
-    ///         Span::raw("This line will be added "),
-    ///         Span::styled("before", Style::default().fg(Color::Blue)),
-    ///         Span::raw(" the current viewport"),
-    ///     ]))
-    ///     .render(buf.area, buf);
-    /// });
-    /// ```
     pub fn insert_before<F>(&mut self, height: u16, draw_fn: F) -> io::Result<()>
     where
         F: FnOnce(&mut Buffer),

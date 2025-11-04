@@ -9,12 +9,13 @@ use super::actions::{execute_command, start_agent_conversation};
 use super::app::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
-use crate::agents::AgentManager;
+use crate::agent::{AgentEvent, Conversation};
+use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
 use crate::console::{VerbosityLevel, console};
-use crate::conversations::{AgentEvent, ContextManager, Conversation, MessageSummarizer};
+use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -27,7 +28,7 @@ pub struct SystemResources {
     pub parser: Arc<MessageParser>,
     pub tool_registry: Arc<ToolRegistry>,
     pub tool_executor: Arc<ToolExecutor>,
-    pub agent_manager: Arc<AgentManager>,
+    pub agent_manager: Arc<AgentDefinitionManager>,
     pub command_registry: Arc<CommandRegistry>,
 }
 

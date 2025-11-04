@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
+use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
-use crate::conversations::{AgentEvent, ConversationHandler};
 
 pub fn execute_command(
     input: String,
@@ -22,6 +22,7 @@ pub fn execute_command(
         .clone();
     let config = event_loop_context.runtime.config.clone();
     let backend = Arc::clone(&event_loop_context.system_resources.backend);
+    let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
 
     tokio::spawn(async move {
         let mut context = CommandContext::new()
@@ -35,7 +36,8 @@ pub fn execute_command(
             .with_current_agent_name(current_agent_name)
             .with_event_sender(event_tx.clone())
             .with_config(config)
-            .with_backend(backend);
+            .with_backend(backend)
+            .with_context_manager(context_manager);
 
         match command_registry.execute(&input, &mut context).await {
             Ok(CommandResult::Success(msg)) => {
@@ -75,7 +77,7 @@ pub fn start_agent_conversation(
         }
 
         let mut conv = conversation.lock().await;
-        let handler = ConversationHandler::new(backend, tool_registry, tool_executor)
+        let handler = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx)
             .with_context_manager(context_manager);
 

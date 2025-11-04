@@ -23,11 +23,14 @@ pub use message_renderer::MessageRenderer;
 use anyhow::Result;
 use std::sync::Arc;
 
-use crate::agents::AgentManager;
+use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
-use crate::conversations::{ContextManager, MessageSummarizer};
+use crate::context_management::{
+    ContextCompressionStrategy, ContextManager, MessageSummarizer, SlidingWindowStrategy,
+    ToolOutputTruncationStrategy,
+};
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::tool_executor::ToolExecutor;
@@ -77,7 +80,7 @@ pub async fn run(
     app.register_completer(Box::new(command_completer));
 
     // Setup agent manager
-    let agent_manager = AgentManager::new()?;
+    let agent_manager = AgentDefinitionManager::new()?;
     let agent_manager = Arc::new(agent_manager);
     let default_agent = agent_manager.get_default_agent();
 
@@ -141,7 +144,7 @@ pub async fn run(
 
     // Setup conversation
     let conversation = Arc::new(tokio::sync::Mutex::new({
-        let mut conv = crate::conversations::Conversation::new();
+        let mut conv = crate::agent::Conversation::new();
         if let Some(ref agent) = default_agent {
             conv.add_system_message(agent.content.clone());
         }
@@ -170,12 +173,33 @@ pub async fn run(
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
 
     let context_manager_config = config.get_context_manager_config();
-    let token_accountant = Arc::new(crate::conversations::TokenAccountant::new());
-    let context_manager = Arc::new(ContextManager::new(
-        context_manager_config,
+    let token_accountant = Arc::new(crate::context_management::TokenAccountant::new());
+
+    let compression_strategy = ContextCompressionStrategy::new(
+        context_manager_config.clone(),
         Arc::clone(&summarizer),
-        token_accountant,
-    ));
+        Arc::clone(&token_accountant),
+    );
+
+    let mut context_manager_builder = ContextManager::new(
+        context_manager_config.clone(),
+        Arc::clone(&token_accountant),
+    );
+
+    if let Some(truncation_config) = context_manager_config.tool_output_truncation {
+        let truncation_strategy = ToolOutputTruncationStrategy::new(truncation_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(truncation_strategy));
+    }
+
+    if let Some(sliding_window_config) = context_manager_config.sliding_window {
+        let sliding_window_strategy = SlidingWindowStrategy::new(sliding_window_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(sliding_window_strategy));
+    }
+
+    let context_manager =
+        Arc::new(context_manager_builder.add_strategy(Box::new(compression_strategy)));
 
     let context = EventLoopContext {
         system_resources: SystemResources {

@@ -51,7 +51,9 @@ impl WriteFileTool {
                 })?;
         }
 
-        fs::write(&file_path, &args.content)
+        let content = args.content.as_deref().unwrap_or("");
+
+        fs::write(&file_path, content)
             .await
             .map_err(|_| ToolError::WriteFailed {
                 path: file_path.clone(),
@@ -59,7 +61,7 @@ impl WriteFileTool {
 
         Ok(format!(
             "Successfully wrote {} bytes to {}",
-            args.content.len(),
+            content.len(),
             file_path.display()
         ))
     }
@@ -68,7 +70,8 @@ impl WriteFileTool {
 #[derive(Deserialize)]
 struct WriteFileArgs {
     path: String,
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
     #[serde(default)]
     create_dirs: bool,
 }
@@ -101,7 +104,7 @@ impl Tool for WriteFileTool {
                 },
                 "content": {
                     "type": "string",
-                    "description": "The content to write to the file"
+                    "description": "The content to write to the file. If not provided, an empty file will be created."
                 },
                 "create_dirs": {
                     "type": "boolean",
@@ -109,7 +112,7 @@ impl Tool for WriteFileTool {
                     "description": "Whether to create parent directories if they don't exist"
                 }
             },
-            "required": ["path", "content"]
+            "required": ["path"]
         })
     }
 
@@ -126,6 +129,9 @@ impl Tool for WriteFileTool {
         if let Some(bytes_str) = result.split("wrote ").nth(1)
             && let Some(bytes) = bytes_str.split(" bytes").next()
         {
+            if bytes == "0" {
+                return "Created empty file".to_string();
+            }
             return format!("Wrote {} bytes", bytes);
         }
         "File written successfully".to_string()
@@ -134,15 +140,16 @@ impl Tool for WriteFileTool {
     async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: WriteFileArgs = serde_json::from_value(args.clone()).ok()?;
         let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
+        let content = args.content.as_deref().unwrap_or("");
 
         // Check if file exists
         if file_path.exists() {
             // Show diff for overwriting existing file
             let old_content = fs::read_to_string(&file_path).await.ok()?;
-            Some(self.generate_diff(&old_content, &args.content, &args.path))
+            Some(self.generate_diff(&old_content, content, &args.path))
         } else {
             // Show preview of new file content
-            Some(self.generate_new_file_preview(&args.content, &args.path))
+            Some(self.generate_new_file_preview(content, &args.path))
         }
     }
 

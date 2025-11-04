@@ -1,5 +1,5 @@
 use crate::console::VerbosityLevel;
-use crate::conversations::ContextManagerConfig;
+use crate::context_management::ContextManagerConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
 
