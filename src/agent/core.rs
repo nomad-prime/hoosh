@@ -107,38 +107,33 @@ impl Agent {
     async fn ensure_title(&self, conversation: &Conversation) {
         if let (Some(storage), Some(conversation_id)) =
             (&self.conversation_storage, &self.conversation_id)
+            && let Ok(metadata) = storage.load_metadata(conversation_id)
+            && metadata.title.is_empty()
+            && let Some(first_user_msg) = conversation
+                .messages
+                .iter()
+                .find(|m| m.role == "user")
+                .and_then(|m| m.content.as_ref())
         {
-            if let Ok(metadata) = storage.load_metadata(conversation_id) {
-                if metadata.title.is_empty() {
-                    if let Some(first_user_msg) = conversation
-                        .messages
-                        .iter()
-                        .find(|m| m.role == "user")
-                        .and_then(|m| m.content.as_ref())
-                    {
-                        match self.generate_title(first_user_msg).await {
-                            Ok(title) => {
-                                if let Err(e) = storage.update_title(conversation_id, title.clone())
-                                {
-                                    self.send_event(AgentEvent::DebugMessage(format!(
-                                        "Warning: Failed to update title: {}",
-                                        e
-                                    )));
-                                } else {
-                                    self.send_event(AgentEvent::DebugMessage(format!(
-                                        "Started: {} ({})",
-                                        title, conversation_id
-                                    )));
-                                }
-                            }
-                            Err(e) => {
-                                self.send_event(AgentEvent::DebugMessage(format!(
-                                    "Warning: Failed to update title: {}",
-                                    e
-                                )));
-                            }
-                        }
+            match self.generate_title(first_user_msg).await {
+                Ok(title) => {
+                    if let Err(e) = storage.update_title(conversation_id, title.clone()) {
+                        self.send_event(AgentEvent::DebugMessage(format!(
+                            "Warning: Failed to update title: {}",
+                            e
+                        )));
+                    } else {
+                        self.send_event(AgentEvent::DebugMessage(format!(
+                            "Started: {} ({})",
+                            title, conversation_id
+                        )));
                     }
+                }
+                Err(e) => {
+                    self.send_event(AgentEvent::DebugMessage(format!(
+                        "Warning: Failed to update title: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -153,10 +148,9 @@ impl Agent {
     fn persist_message(&self, message: &ConversationMessage) {
         if let (Some(storage), Some(conversation_id)) =
             (&self.conversation_storage, &self.conversation_id)
+            && let Err(e) = storage.append_message(conversation_id, message)
         {
-            if let Err(e) = storage.append_message(conversation_id, message) {
-                eprintln!("Warning: Failed to persist message: {}", e);
-            }
+            eprintln!("Warning: Failed to persist message: {}", e);
         }
     }
 

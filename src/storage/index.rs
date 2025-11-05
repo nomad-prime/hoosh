@@ -86,26 +86,22 @@ impl IndexStorage {
             return Ok(ConversationIndex::new());
         }
 
-        let content = fs::read_to_string(&self.index_path)
-            .context("Failed to read index file")?;
+        let content = fs::read_to_string(&self.index_path).context("Failed to read index file")?;
 
-        let index: ConversationIndex = serde_json::from_str(&content)
-            .context("Failed to parse index file")?;
+        let index: ConversationIndex =
+            serde_json::from_str(&content).context("Failed to parse index file")?;
 
         Ok(index)
     }
 
     pub fn save(&self, index: &ConversationIndex) -> Result<()> {
         if let Some(parent) = self.index_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create index directory")?;
+            fs::create_dir_all(parent).context("Failed to create index directory")?;
         }
 
-        let json = serde_json::to_string_pretty(index)
-            .context("Failed to serialize index")?;
+        let json = serde_json::to_string_pretty(index).context("Failed to serialize index")?;
 
-        fs::write(&self.index_path, json)
-            .context("Failed to write index file")?;
+        fs::write(&self.index_path, json).context("Failed to write index file")?;
 
         Ok(())
     }

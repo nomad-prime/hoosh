@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
 use crate::context_management::{
     ContextCompressionStrategy, ContextManager, MessageSummarizer, SlidingWindowStrategy,
@@ -42,8 +42,8 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
-    run_event_loop,
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
 };
 
 pub async fn run(
@@ -53,7 +53,15 @@ pub async fn run(
     tool_registry: ToolRegistry,
     config: AppConfig,
 ) -> Result<()> {
-    run_with_conversation(backend, parser, skip_permissions, tool_registry, config, None).await
+    run_with_conversation(
+        backend,
+        parser,
+        skip_permissions,
+        tool_registry,
+        config,
+        None,
+    )
+    .await
 }
 
 pub async fn run_with_conversation(
@@ -142,7 +150,8 @@ pub async fn run_with_conversation(
         }
     };
 
-    let (conversation_id, conversation_title) = if let Some(ref conv_id) = continue_conversation_id {
+    let (conversation_id, conversation_title) = if let Some(ref conv_id) = continue_conversation_id
+    {
         if !conversation_storage.conversation_exists(conv_id) {
             use crate::console::console;
             console().error(&format!("Conversation '{}' not found", conv_id));
@@ -186,10 +195,10 @@ pub async fn run_with_conversation(
         app.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
     }
 
-    if let Some(ref title) = conversation_title {
-        if !title.is_empty() {
-            app.add_message(format!("Continuing: {}", title));
-        }
+    if let Some(ref title) = conversation_title
+        && !title.is_empty()
+    {
+        app.add_message(format!("Continuing: {}", title));
     }
 
     app.add_message("\n".to_string());

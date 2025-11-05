@@ -4,8 +4,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::agent::ConversationMessage;
 use super::IndexStorage;
+use crate::agent::ConversationMessage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMetadata {
@@ -81,7 +81,8 @@ impl ConversationStorage {
     }
 
     fn messages_file(&self, conversation_id: &str) -> PathBuf {
-        self.conversation_dir(conversation_id).join("messages.jsonl")
+        self.conversation_dir(conversation_id)
+            .join("messages.jsonl")
     }
 
     fn metadata_file(&self, conversation_id: &str) -> PathBuf {
@@ -95,8 +96,7 @@ impl ConversationStorage {
 
     pub fn create_conversation(&self, conversation_id: &str) -> Result<ConversationMetadata> {
         let conv_dir = self.conversation_dir(conversation_id);
-        fs::create_dir_all(&conv_dir)
-            .context("Failed to create conversation directory")?;
+        fs::create_dir_all(&conv_dir).context("Failed to create conversation directory")?;
 
         let metadata = ConversationMetadata::new(conversation_id.to_string());
         self.save_metadata(&metadata)?;
@@ -107,11 +107,10 @@ impl ConversationStorage {
 
     pub fn save_metadata(&self, metadata: &ConversationMetadata) -> Result<()> {
         let metadata_path = self.metadata_file(&metadata.id);
-        let json = serde_json::to_string_pretty(metadata)
-            .context("Failed to serialize metadata")?;
+        let json =
+            serde_json::to_string_pretty(metadata).context("Failed to serialize metadata")?;
 
-        fs::write(&metadata_path, json)
-            .context("Failed to write metadata file")?;
+        fs::write(&metadata_path, json).context("Failed to write metadata file")?;
 
         self.index.update_conversation(metadata)?;
 
@@ -120,11 +119,10 @@ impl ConversationStorage {
 
     pub fn load_metadata(&self, conversation_id: &str) -> Result<ConversationMetadata> {
         let metadata_path = self.metadata_file(conversation_id);
-        let content = fs::read_to_string(&metadata_path)
-            .context("Failed to read metadata file")?;
+        let content = fs::read_to_string(&metadata_path).context("Failed to read metadata file")?;
 
-        let metadata: ConversationMetadata = serde_json::from_str(&content)
-            .context("Failed to parse metadata")?;
+        let metadata: ConversationMetadata =
+            serde_json::from_str(&content).context("Failed to parse metadata")?;
 
         Ok(metadata)
     }
@@ -142,11 +140,9 @@ impl ConversationStorage {
             .open(&messages_path)
             .context("Failed to open messages file")?;
 
-        let json = serde_json::to_string(message)
-            .context("Failed to serialize message")?;
+        let json = serde_json::to_string(message).context("Failed to serialize message")?;
 
-        writeln!(file, "{}", json)
-            .context("Failed to write message")?;
+        writeln!(file, "{}", json).context("Failed to write message")?;
 
         let mut metadata = self.load_metadata(conversation_id)?;
         metadata.message_count += 1;
@@ -163,8 +159,7 @@ impl ConversationStorage {
             return Ok(Vec::new());
         }
 
-        let content = fs::read_to_string(&messages_path)
-            .context("Failed to read messages file")?;
+        let content = fs::read_to_string(&messages_path).context("Failed to read messages file")?;
 
         let mut messages = Vec::new();
         for (line_num, line) in content.lines().enumerate() {
@@ -263,7 +258,9 @@ mod tests {
         let conv_id = "test_conv_003";
 
         storage.create_conversation(conv_id).unwrap();
-        storage.update_title(conv_id, "Test Conversation".to_string()).unwrap();
+        storage
+            .update_title(conv_id, "Test Conversation".to_string())
+            .unwrap();
 
         let metadata = storage.load_metadata(conv_id).unwrap();
         assert_eq!(metadata.title, "Test Conversation");
@@ -277,9 +274,15 @@ mod tests {
         storage.create_conversation("conv_002").unwrap();
         storage.create_conversation("conv_003").unwrap();
 
-        storage.update_title("conv_001", "First".to_string()).unwrap();
-        storage.update_title("conv_002", "Second".to_string()).unwrap();
-        storage.update_title("conv_003", "Third".to_string()).unwrap();
+        storage
+            .update_title("conv_001", "First".to_string())
+            .unwrap();
+        storage
+            .update_title("conv_002", "Second".to_string())
+            .unwrap();
+        storage
+            .update_title("conv_003", "Third".to_string())
+            .unwrap();
 
         let conversations = storage.list_conversations().unwrap();
         assert_eq!(conversations.len(), 3);
