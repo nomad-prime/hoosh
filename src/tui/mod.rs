@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::config::AppConfig;
 use crate::context_management::{
     ContextCompressionStrategy, ContextManager, MessageSummarizer, SlidingWindowStrategy,
@@ -42,29 +42,11 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
-    run_event_loop,
+    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
+    SystemResources,
 };
 
 pub async fn run(
-    backend: Box<dyn LlmBackend>,
-    parser: MessageParser,
-    skip_permissions: bool,
-    tool_registry: ToolRegistry,
-    config: AppConfig,
-) -> Result<()> {
-    run_with_conversation(
-        backend,
-        parser,
-        skip_permissions,
-        tool_registry,
-        config,
-        None,
-    )
-    .await
-}
-
-pub async fn run_with_conversation(
     backend: Box<dyn LlmBackend>,
     parser: MessageParser,
     skip_permissions: bool,
