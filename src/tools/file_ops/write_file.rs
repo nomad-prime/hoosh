@@ -192,40 +192,25 @@ impl WriteFileTool {
             format!("New: {} lines, {} bytes", total_new, new_content.len()).yellow()
         ));
 
-        let max_preview_lines = 20;
-
-        // Show first few lines of old content
+        // Show all lines of old content
         if total_old > 0 {
-            output.push_str(&format!("{}:\n", "Old content (first lines)".bold()));
-            for (i, line) in old_lines.iter().take(max_preview_lines).enumerate() {
+            output.push_str(&format!("{}:\n", "Old content".bold()));
+            for (i, line) in old_lines.iter().enumerate() {
                 output.push_str(&format!(
                     "{}\n",
                     format!("  {:4} - {}", i + 1, line).bright_red()
                 ));
-                if i == max_preview_lines - 1 && total_old > max_preview_lines {
-                    output.push_str(&format!(
-                        "{}\n",
-                        format!("       ... ({} more lines)", total_old - max_preview_lines)
-                            .dimmed()
-                    ));
-                }
             }
             output.push('\n');
         }
 
-        // Show first few lines of new content
-        output.push_str(&format!("{}:\n", "New content (first lines)".bold()));
-        for (i, line) in new_lines.iter().take(max_preview_lines).enumerate() {
+        // Show all lines of new content
+        output.push_str(&format!("{}:\n", "New content".bold()));
+        for (i, line) in new_lines.iter().enumerate() {
             output.push_str(&format!(
                 "{}\n",
                 format!("  {:4} + {}", i + 1, line).green()
             ));
-            if i == max_preview_lines - 1 && total_new > max_preview_lines {
-                output.push_str(&format!(
-                    "{}\n",
-                    format!("       ... ({} more lines)", total_new - max_preview_lines).dimmed()
-                ));
-            }
         }
 
         output
@@ -242,7 +227,6 @@ impl WriteFileTool {
 
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
-        let max_preview_lines = 20;
 
         output.push_str(&format!(
             "{}\n\n",
@@ -250,21 +234,11 @@ impl WriteFileTool {
         ));
         output.push_str(&format!("{}:\n", "Content".bold()));
 
-        for (i, line) in lines.iter().take(max_preview_lines).enumerate() {
+        for (i, line) in lines.iter().enumerate() {
             output.push_str(&format!(
                 "{}\n",
                 format!("  {:4} + {}", i + 1, line).green()
             ));
-            if i == max_preview_lines - 1 && total_lines > max_preview_lines {
-                output.push_str(&format!(
-                    "{}\n",
-                    format!(
-                        "       ... ({} more lines)",
-                        total_lines - max_preview_lines
-                    )
-                    .dimmed()
-                ));
-            }
         }
 
         output

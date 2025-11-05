@@ -24,6 +24,10 @@ pub struct Cli {
     #[arg(long)]
     pub skip_permissions: bool,
 
+    /// Continue the last conversation
+    #[arg(long = "continue")]
+    pub continue_last: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -34,6 +38,15 @@ pub enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    Conversations {
+        #[command(subcommand)]
+        action: ConversationsAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ConversationsAction {
+    List,
 }
 
 #[derive(Subcommand)]
