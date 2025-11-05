@@ -17,18 +17,18 @@ impl InitialPermissionHandler {
 
 #[async_trait]
 impl InputHandler for InitialPermissionHandler {
-    fn should_handle(&self, event: &Event, app: &AppState) -> bool {
-        matches!(event, Event::Key(_)) && app.is_showing_initial_permission_dialog()
-    }
-
     async fn handle_event(
         &mut self,
         event: &Event,
         app: &mut AppState,
         _agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
+        if !app.is_showing_initial_permission_dialog() {
+            return KeyHandlerResult::NotHandled;
+        }
+
         let Event::Key(key_event) = event else {
-            return Ok(KeyHandlerResult::Handled);
+            return KeyHandlerResult::NotHandled;
         };
 
         let key = key_event.code;
@@ -39,7 +39,7 @@ impl InputHandler for InitialPermissionHandler {
         {
             app.hide_initial_permission_dialog();
             app.should_quit = true;
-            return Ok(KeyHandlerResult::ShouldQuit);
+            return KeyHandlerResult::ShouldQuit;
         }
 
         let choice = match key {
@@ -63,6 +63,6 @@ impl InputHandler for InitialPermissionHandler {
             let _ = self.response_tx.send(choice);
         }
 
-        Ok(KeyHandlerResult::Handled)
+        KeyHandlerResult::Handled
     }
 }

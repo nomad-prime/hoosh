@@ -2,10 +2,9 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
-use super::actions::{answer, execute_command};
 use super::app::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
@@ -14,15 +13,16 @@ use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
-use crate::console::{VerbosityLevel, console};
+use crate::console::{console, VerbosityLevel};
 use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
+use crate::tui::actions::{answer, execute_command};
 use crate::tui::app_layout::AppLayout;
 use crate::tui::layout::Layout;
-use crate::tui::terminal::{HooshTerminal, resize_terminal};
+use crate::tui::terminal::{resize_terminal, HooshTerminal};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -71,115 +71,17 @@ pub async fn run_event_loop(
     let message_renderer = MessageRenderer::new();
 
     loop {
-        message_renderer.render_pending_messages(app, &mut terminal)?;
+        render_frame(app, &mut terminal, &message_renderer)?;
 
-        let layout = Layout::create(app);
+        process_agent_events(app, &mut context).await;
 
-        resize_terminal(&mut terminal, layout.total_height())?;
-
-        terminal.draw(|frame| {
-            layout.render(app, frame.area(), frame.buffer_mut());
-        })?;
-
-        while let Ok(event) = context.channels.event_rx.try_recv() {
-            match event {
-                AgentEvent::ToolPermissionRequest {
-                    descriptor,
-                    request_id,
-                } => {
-                    app.show_tool_permission_dialog(descriptor, request_id);
-                }
-                AgentEvent::ApprovalRequest {
-                    tool_call_id,
-                    tool_name,
-                } => {
-                    app.show_approval_dialog(tool_call_id, tool_name);
-                }
-                AgentEvent::Exit => {
-                    app.should_quit = true;
-                }
-                AgentEvent::ClearConversation => {
-                    let mut conv = context.conversation_state.conversation.lock().await;
-                    conv.messages.clear();
-                    context
-                        .conversation_state
-                        .context_manager
-                        .token_accountant
-                        .reset();
-                    app.input_tokens = 0;
-                    app.output_tokens = 0;
-                    app.total_cost = 0.0;
-                    app.add_message("Conversation cleared.\n".to_string());
-                }
-                AgentEvent::DebugMessage(msg) => {
-                    if console().verbosity() >= VerbosityLevel::Debug {
-                        app.add_debug_message(msg);
-                    }
-                }
-                AgentEvent::AgentSwitched { new_agent_name } => {
-                    context.conversation_state.current_agent_name = new_agent_name;
-                    // The header will be updated on next render
-                }
-                other_event => {
-                    app.handle_agent_event(other_event);
-                }
-            }
-        }
-
-        if let Some(task) = &agent_task
-            && task.is_finished()
-        {
-            agent_task = None;
-        }
+        cleanup_finished_task(&mut agent_task);
 
         app.tick_animation();
 
         if event::poll(Duration::from_millis(100))? {
             let event = event::read()?;
-            let agent_task_active = agent_task.is_some();
-
-            // Iterate through handlers in order until one handles the event
-            for handler in &mut context.runtime.input_handlers {
-                if !handler.should_handle(&event, app) {
-                    continue;
-                }
-
-                match handler.handle_event(&event, app, agent_task_active).await {
-                    Ok(super::handler_result::KeyHandlerResult::Handled) => {
-                        break;
-                    }
-                    Ok(super::handler_result::KeyHandlerResult::ShouldQuit) => {
-                        app.should_quit = true;
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
-                        }
-                        break;
-                    }
-                    Ok(super::handler_result::KeyHandlerResult::ShouldCancelTask) => {
-                        if let Some(task) = agent_task.take() {
-                            task.abort();
-                            app.agent_state = super::events::AgentState::Idle;
-                            app.add_status_message(
-                                "Task cancelled by user (press Ctrl+C again to quit)\n",
-                            );
-                        }
-                        app.should_cancel_task = false;
-                        break;
-                    }
-                    Ok(super::handler_result::KeyHandlerResult::StartCommand(input)) => {
-                        execute_command(input, &context);
-                        break;
-                    }
-                    Ok(super::handler_result::KeyHandlerResult::StartConversation(input)) => {
-                        agent_task = Some(answer(input, &context));
-                        break;
-                    }
-                    Err(_) => {
-                        // Log error but continue to next handler
-                        continue;
-                    }
-                }
-            }
+            handle_user_input(&event, app, &mut agent_task, &mut context).await?;
         }
 
         if app.should_quit {
@@ -194,4 +96,147 @@ pub async fn run_event_loop(
     }
 
     Ok(terminal)
+}
+
+fn render_frame(
+    app: &mut AppState,
+    terminal: &mut HooshTerminal,
+    message_renderer: &MessageRenderer,
+) -> Result<()> {
+    message_renderer.render_pending_messages(app, terminal)?;
+
+    let layout = Layout::create(app);
+    resize_terminal(terminal, layout.total_height())?;
+
+    terminal.draw(|frame| {
+        layout.render(app, frame.area(), frame.buffer_mut());
+    })?;
+
+    Ok(())
+}
+
+async fn process_agent_events(app: &mut AppState, context: &mut EventLoopContext) {
+    while let Ok(event) = context.channels.event_rx.try_recv() {
+        handle_agent_event(app, event, context).await;
+    }
+}
+
+async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut EventLoopContext) {
+    match event {
+        AgentEvent::ToolPermissionRequest {
+            descriptor,
+            request_id,
+        } => {
+            app.show_tool_permission_dialog(descriptor, request_id);
+        }
+        AgentEvent::ApprovalRequest {
+            tool_call_id,
+            tool_name,
+        } => {
+            app.show_approval_dialog(tool_call_id, tool_name);
+        }
+        AgentEvent::Exit => {
+            app.should_quit = true;
+        }
+        AgentEvent::ClearConversation => {
+            clear_conversation(app, context).await;
+        }
+        AgentEvent::DebugMessage(msg) => {
+            if console().verbosity() >= VerbosityLevel::Debug {
+                app.add_debug_message(msg);
+            }
+        }
+        AgentEvent::AgentSwitched { new_agent_name } => {
+            context.conversation_state.current_agent_name = new_agent_name;
+        }
+        other_event => {
+            app.handle_agent_event(other_event);
+        }
+    }
+}
+
+async fn handle_user_input(
+    event: &event::Event,
+    app: &mut AppState,
+    agent_task: &mut Option<JoinHandle<()>>,
+    context: &mut EventLoopContext,
+) -> Result<()> {
+    let agent_task_active = agent_task.is_some();
+
+    // Collect results first to avoid borrowing issues
+    let mut handler_results = Vec::new();
+
+    for handler in &mut context.runtime.input_handlers {
+        let result = handler.handle_event(event, app, agent_task_active).await;
+        handler_results.push(result);
+    }
+
+    // Process results after releasing the borrow on input_handlers
+    for result in handler_results {
+        if process_handler_result(result, app, agent_task, context) {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn process_handler_result(
+    result: super::handler_result::KeyHandlerResult,
+    app: &mut AppState,
+    agent_task: &mut Option<JoinHandle<()>>,
+    context: &EventLoopContext,
+) -> bool {
+    use super::handler_result::KeyHandlerResult;
+
+    match result {
+        KeyHandlerResult::NotHandled => false,
+        KeyHandlerResult::Handled => true,
+        KeyHandlerResult::ShouldQuit => {
+            app.should_quit = true;
+            if let Some(task) = agent_task.take() {
+                task.abort();
+            }
+            true
+        }
+        KeyHandlerResult::ShouldCancelTask => {
+            if let Some(task) = agent_task.take() {
+                task.abort();
+                app.agent_state = super::events::AgentState::Idle;
+                app.add_status_message("Task cancelled by user (press Ctrl+C again to quit)\n");
+            }
+            app.should_cancel_task = false;
+            true
+        }
+        KeyHandlerResult::StartCommand(input) => {
+            execute_command(input, context);
+            true
+        }
+        KeyHandlerResult::StartConversation(input) => {
+            *agent_task = Some(answer(input, context));
+            true
+        }
+    }
+}
+
+async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) {
+    let mut conv = context.conversation_state.conversation.lock().await;
+    conv.messages.clear();
+    context
+        .conversation_state
+        .context_manager
+        .token_accountant
+        .reset();
+    app.input_tokens = 0;
+    app.output_tokens = 0;
+    app.total_cost = 0.0;
+    app.add_message("Conversation cleared.\n".to_string());
+}
+
+fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>) {
+    if let Some(task) = agent_task
+        && task.is_finished()
+    {
+        *agent_task = None;
+    }
 }

@@ -20,16 +20,20 @@ impl Default for SubmitHandler {
 
 #[async_trait]
 impl InputHandler for SubmitHandler {
-    fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
-        matches!(event, Event::Key(key) if key.code == KeyCode::Enter)
-    }
-
     async fn handle_event(
         &mut self,
-        _event: &Event,
+        event: &Event,
         app: &mut AppState,
         agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
+        let Event::Key(key) = event else {
+            return KeyHandlerResult::NotHandled;
+        };
+
+        if key.code != KeyCode::Enter {
+            return KeyHandlerResult::NotHandled;
+        }
+
         let input_text = app.get_input_text();
         if !input_text.trim().is_empty() && !agent_task_active {
             app.add_user_input(&input_text);
@@ -38,12 +42,12 @@ impl InputHandler for SubmitHandler {
             app.clear_input();
 
             if input_text.trim().starts_with('/') {
-                Ok(KeyHandlerResult::StartCommand(input_text))
+                KeyHandlerResult::StartCommand(input_text)
             } else {
-                Ok(KeyHandlerResult::StartConversation(input_text))
+                KeyHandlerResult::StartConversation(input_text)
             }
         } else {
-            Ok(KeyHandlerResult::Handled)
+            KeyHandlerResult::Handled
         }
     }
 }

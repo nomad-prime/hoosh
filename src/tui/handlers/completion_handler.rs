@@ -20,18 +20,18 @@ impl Default for CompletionHandler {
 
 #[async_trait]
 impl InputHandler for CompletionHandler {
-    fn should_handle(&self, event: &Event, app: &AppState) -> bool {
-        matches!(event, Event::Key(_)) && app.is_completing()
-    }
-
     async fn handle_event(
         &mut self,
         event: &Event,
         app: &mut AppState,
         _agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
+        if !app.is_completing() {
+            return KeyHandlerResult::NotHandled;
+        }
+
         let Event::Key(key_event) = event else {
-            return Ok(KeyHandlerResult::Handled);
+            return KeyHandlerResult::NotHandled;
         };
 
         let key = key_event.code;
@@ -39,11 +39,11 @@ impl InputHandler for CompletionHandler {
         match key {
             KeyCode::Up => {
                 app.select_prev_completion();
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
             KeyCode::Down => {
                 app.select_next_completion();
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
             KeyCode::Tab | KeyCode::Enter => {
                 // Save the completer index before applying completion
@@ -70,11 +70,11 @@ impl InputHandler for CompletionHandler {
                         }
                     }
                 }
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
             KeyCode::Esc => {
                 app.cancel_completion();
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
             KeyCode::Backspace => {
                 app.input
@@ -102,7 +102,7 @@ impl InputHandler for CompletionHandler {
                 } else {
                     app.cancel_completion();
                 }
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
             KeyCode::Char(c) => {
                 app.input
@@ -126,11 +126,11 @@ impl InputHandler for CompletionHandler {
                         }
                     }
                 }
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
             _ => {
                 app.cancel_completion();
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             }
         }
     }

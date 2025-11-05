@@ -21,18 +21,18 @@ impl ApprovalHandler {
 
 #[async_trait]
 impl InputHandler for ApprovalHandler {
-    fn should_handle(&self, event: &Event, app: &AppState) -> bool {
-        matches!(event, Event::Key(_)) && app.is_showing_approval_dialog()
-    }
-
     async fn handle_event(
         &mut self,
         event: &Event,
         app: &mut AppState,
         _agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
+        if !app.is_showing_approval_dialog() {
+            return KeyHandlerResult::NotHandled;
+        }
+
         let Event::Key(key_event) = event else {
-            return Ok(KeyHandlerResult::Handled);
+            return KeyHandlerResult::NotHandled;
         };
 
         let key = key_event.code;
@@ -48,7 +48,7 @@ impl InputHandler for ApprovalHandler {
             {
                 app.hide_approval_dialog();
                 app.should_cancel_task = true;
-                return Ok(KeyHandlerResult::ShouldCancelTask);
+                return KeyHandlerResult::ShouldCancelTask;
             }
 
             let response = match key {
@@ -88,6 +88,6 @@ impl InputHandler for ApprovalHandler {
             }
         }
 
-        Ok(KeyHandlerResult::Handled)
+        KeyHandlerResult::Handled
     }
 }
