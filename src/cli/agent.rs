@@ -1,5 +1,5 @@
 use crate::backends::backend_factory::create_backend;
-use crate::{AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor, console};
+use crate::{console, AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor};
 use std::path::PathBuf;
 
 pub async fn handle_agent(
@@ -39,7 +39,7 @@ pub async fn handle_agent(
         None
     };
 
-    crate::tui::run_with_conversation(
+    crate::tui::run(
         backend,
         parser,
         skip_permissions,
