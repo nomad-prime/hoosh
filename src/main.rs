@@ -1,17 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
-use hoosh::backends::backend_factory::BackendFactory;
-use hoosh::backends::{AnthropicBackend, OpenAICompatibleBackend, TogetherAiBackend};
-use hoosh::backends::{LlmBackend, MockBackend};
+use hoosh::cli::{handle_agent, handle_config, handle_conversations};
 use hoosh::{
-    cli::{Cli, Commands, ConfigAction, ConversationsAction},
+    cli::{Cli, Commands},
     config::AppConfig,
-    console::{console, init_console},
     parser::MessageParser,
     storage::ConversationStorage,
     tool_executor::ToolExecutor,
+    console::init_console,
 };
-use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -223,56 +220,16 @@ fn handle_config(action: ConfigAction) -> Result<()> {
         }
         ConfigAction::Set { key, value } => {
             let mut config = AppConfig::load()?;
-
-            if key == "default_backend" {
-                config.default_backend = value;
-                config.save()?;
-                console().success("Configuration updated successfully");
-            } else if key == "verbosity" {
-                match value.as_str() {
-                    "quiet" | "normal" | "verbose" | "debug" => {
-                        config.verbosity = Some(value);
-                        config.save()?;
-                        console().success("Verbosity configuration updated successfully");
-                    }
-                    _ => {
-                        console().error(
-                            "Invalid verbosity level. Valid options: quiet, normal, verbose, debug",
-                        );
-                        return Ok(());
-                    }
-                }
-            } else if key == "default_agent" {
-                config.default_agent = Some(value);
-                config.save()?;
-                console().success("Default agent configuration updated successfully");
-            } else {
-                // Handle backend config keys: <backend>_api_key, <backend>_model, <backend>_base_url, <backend>_temperature
-                // Try to match known patterns
-                let (backend_name, actual_key) = if key.ends_with("_api_key") {
-                    (&key[..key.len() - 8], "api_key")
-                } else if key.ends_with("_base_url") {
-                    (&key[..key.len() - 9], "base_url")
-                } else if key.ends_with("_model") {
-                    (&key[..key.len() - 6], "model")
-                } else if key.ends_with("_temperature") {
-                    (&key[..key.len() - 12], "temperature")
-                } else {
-                    ("", "")
-                };
-
-                if !backend_name.is_empty() && !actual_key.is_empty() {
-                    config.update_backend_setting(backend_name, actual_key, value)?;
-                    config.save()?;
-                    console().success("Backend configuration updated successfully");
-                } else {
-                    console().error(&format!(
-                        "Unknown config key: {}. Use format: <backend>_<setting> where backend is one of [openai, together_ai, ollama, groq, anthropic] and setting is one of [api_key, model, base_url, temperature]",
-                        key
-                    ));
-                }
-            }
+            handle_agent(
+                cli.backend,
+                cli.add_dir,
+                cli.skip_permissions,
+                cli.continue_last,
+                &config,
+            )
+            .await?;
         }
     }
+
     Ok(())
 }
