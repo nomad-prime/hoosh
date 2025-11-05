@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{register_default_commands, CommandRegistry};
+use crate::commands::{CommandRegistry, register_default_commands};
 use crate::config::AppConfig;
 use crate::context_management::{
     ContextCompressionStrategy, ContextManager, MessageSummarizer, SlidingWindowStrategy,
@@ -42,8 +42,8 @@ use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use app::AppState;
 use event_loop::{
-    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
-    SystemResources,
+    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
+    run_event_loop,
 };
 
 pub async fn run(
