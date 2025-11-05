@@ -12,26 +12,26 @@ development environment.
     - **Anthropic** (Claude Sonnet, Claude Opus)
     - **Together AI** (200+ open source models)
     - **Ollama** (local models for offline operation)
-    - **Groq** (ultra-fast inference)
 - **Tool Integration**: Execute system commands, file operations, and custom tools through AI
 - **Conversation Management**: Maintain context across multiple interactions
 - **Permission System**: Control what actions the AI can perform on your system
 - **Review/Autopilot Modes**: Toggle between reviewing every operation or running on autopilot (Shift+Tab)
 - **Configurable**: Customize behavior through TOML configuration files
-- **Graceful Error Handling**: Automatic retry with exponential backoff for transient errors (rate limits, server errors) with real-time user feedback through the event system
+- **Graceful Error Handling**: Automatic retry with exponential backoff for transient errors (rate limits, server
+  errors) with real-time user feedback through the event system
 - **CLI Interface**: Intuitive command-line interface with subcommands
 
 ## Installation
 
 ### Prerequisites
 
-- Rust 2021 edition or later
+- Rust 2024 edition or later
 - Cargo package manager
 
 ### Building from Source
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/nomad-prime/hoosh
 cd hoosh
 cargo build --release
 ```
@@ -42,10 +42,10 @@ The compiled binary will be available at `target/release/hoosh`.
 
 ### Basic Chat
 
-Start a conversation with the AI:
+Start a conversation with the AI (interactive TUI mode):
 
 ```bash
-hoosh chat "Explain how this project works"
+hoosh
 ```
 
 ### Specify Backend
@@ -53,7 +53,7 @@ hoosh chat "Explain how this project works"
 Choose a specific backend for your conversation:
 
 ```bash
-hoosh chat --backend together-ai "Help me with this code"
+hoosh --backend anthropic
 ```
 
 ### Directory Access
@@ -61,7 +61,15 @@ hoosh chat --backend together-ai "Help me with this code"
 Allow the AI to access specific directories:
 
 ```bash
-hoosh chat --add-dir ./src "Analyze this codebase"
+hoosh --add-dir ./src
+```
+
+### Continue Last Conversation
+
+Resume your previous conversation:
+
+```bash
+hoosh --continue
 ```
 
 ### Review vs Autopilot Mode
@@ -70,44 +78,43 @@ Hoosh operates in two modes to control how operations are executed:
 
 #### Review Mode (Default)
 
-- Shows a preview of every file edit, write, or bash command before execution
-- Allows you to approve or reject each operation
-- Ideal when you want full control and visibility
+- Shows an approval dialog for **every tool call** before execution
+- Displays the tool name and allows you to approve or reject
+- Provides maximum control and visibility over AI actions
+- Ideal when you want to inspect each operation
 
 #### Autopilot Mode
 
-- Automatically executes operations after permission checks
-- Still respects the permission system (asks for destructive operations)
+- Automatically executes all tool calls without approval dialogs
+- Still respects the permission system (asks for risky operations)
 - Ideal for faster iteration when you trust the AI's actions
 
 **Toggle modes**: Press `Shift+Tab` during a session to switch between Review and Autopilot modes.
 
 The current mode is always displayed in the status bar:
 
-- `[Review Mode 🔍]` - You'll be prompted to approve each operation
-- `[Autopilot ✈️]` - Operations execute automatically (after permission checks)
+- `[Review]` - You'll see an approval dialog for each tool call
+- `[Autopilot]` - Tool calls execute automatically (after permission checks)
 
 ### Permission Management
 
-Hoosh includes a granular permission system to control what operations the AI can perform on your system.
+Hoosh includes a security-focused permission system to control risky operations.
 
 #### Permission Dialogs
 
-When the AI attempts a potentially risky operation (file writes, deletions, bash commands), you'll see a permission dialog with several options:
+When the AI attempts a potentially risky operation (file writes, deletions, bash commands), you'll see a permission
+dialog with three options:
 
-- **Yes, once** - Allow this specific operation
-- **No** - Deny this operation
-- **Always for this file** - Remember your choice for this specific file
-- **Always for directory** - Allow all operations of this type in the directory
-- **Always for all [type]** - Allow all operations of this type (e.g., all writes)
-- **Trust entire project** - Grant permission for all operations within the current project directory
+- **[y] Yes, once** - Allow this specific operation only
+- **[n] No** - Deny this operation
+- **[t] Trust project** - Grant permission for all operations within the current project directory
 
 #### Trust Project Mode
 
-The "Trust Project" option is particularly useful when working on a codebase you trust:
+The "Trust Project" option provides convenient authorization for trusted codebases:
 
-1. When prompted for permission, select the "Trust Project" option (or press `T`)
-2. All operations within the current project directory will be automatically approved
+1. When prompted for permission, select "Trust project" (press `T` or select and press Enter)
+2. All risky operations within the current project directory will be automatically approved
 3. A visual indicator (`🔓 Project Trusted`) appears in the TUI header
 4. Trust is session-only and cleared when you exit Hoosh
 
@@ -127,6 +134,7 @@ This will re-enable permission dialogs for all operations.
 - Trust is never persisted to disk - each session starts fresh
 - Operations outside the trusted directory still require permission
 - Safe operations (reading files, listing directories) are always allowed
+- Permission checks happen **in addition to** approval dialogs in Review mode
 
 ### Configuration
 
@@ -212,18 +220,6 @@ hoosh config set default_backend ollama
 
 No API key required - runs completely offline!
 
-### Groq
-
-Ultra-fast inference with OpenAI-compatible API.
-
-```bash
-hoosh config set groq_api_key gsk_...
-hoosh config set groq_model mixtral-8x7b-32768
-hoosh config set default_backend groq
-```
-
-Get your API key: https://console.groq.com/keys
-
 ## Configuration
 
 Hoosh uses a TOML configuration file located at `~/.config/hoosh/config.toml`. You can customize various aspects of the
@@ -235,7 +231,8 @@ application including:
 - Permission defaults
 - Agent configurations
 
-> ⚠️ **Security Warning**: This configuration file contains sensitive API keys. Ensure the file permissions are set to 0600 (owner read/write only) to prevent unauthorized access. Never commit this file to version control.
+> ⚠️ **Security Warning**: This configuration file contains sensitive API keys. Ensure the file permissions are set to
+> 0600 (owner read/write only) to prevent unauthorized access. Never commit this file to version control.
 
 ## Development
 
