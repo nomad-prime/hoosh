@@ -1,6 +1,7 @@
+use crate::AppConfig;
 use crate::backends::{
-    AnthropicBackend, AnthropicConfig, LlmBackend, OpenAICompatibleBackend, OpenAICompatibleConfig,
-    TogetherAiBackend, TogetherAiConfig,
+    AnthropicBackend, AnthropicConfig, LlmBackend, MockBackend, OpenAICompatibleBackend,
+    OpenAICompatibleConfig, TogetherAiBackend, TogetherAiConfig,
 };
 use crate::config::BackendConfig;
 use anyhow::Result;
@@ -88,5 +89,38 @@ impl BackendFactory for OpenAICompatibleBackend {
         };
 
         Ok(Box::new(OpenAICompatibleBackend::new(openai_config)?))
+    }
+}
+
+pub fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
+    let backend_config = config
+        .get_backend_config(backend_name)
+        .ok_or_else(|| anyhow::anyhow!("Backend '{}' not found in config", backend_name))?;
+
+    match backend_name {
+        "mock" => Ok(Box::new(MockBackend::new())),
+        #[cfg(feature = "together-ai")]
+        "together_ai" => TogetherAiBackend::create(backend_config, backend_name),
+        #[cfg(feature = "anthropic")]
+        "anthropic" => AnthropicBackend::create(backend_config, backend_name),
+        #[cfg(feature = "openai-compatible")]
+        name if matches!(name, "openai" | "ollama" | "groq") => {
+            OpenAICompatibleBackend::create(backend_config, name)
+        }
+        _ => {
+            let mut available = vec!["mock"];
+            #[cfg(feature = "together-ai")]
+            available.push("together_ai");
+            #[cfg(feature = "openai-compatible")]
+            available.extend_from_slice(&["openai", "ollama", "groq"]);
+            #[cfg(feature = "anthropic")]
+            available.push("anthropic");
+
+            anyhow::bail!(
+                "Unknown backend: {}. Available backends: {}",
+                backend_name,
+                available.join(", ")
+            );
+        }
     }
 }
