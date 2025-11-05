@@ -33,6 +33,7 @@ use crate::context_management::{
 };
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
+use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -51,6 +52,25 @@ pub async fn run(
     skip_permissions: bool,
     tool_registry: ToolRegistry,
     config: AppConfig,
+) -> Result<()> {
+    run_with_conversation(
+        backend,
+        parser,
+        skip_permissions,
+        tool_registry,
+        config,
+        None,
+    )
+    .await
+}
+
+pub async fn run_with_conversation(
+    backend: Box<dyn LlmBackend>,
+    parser: MessageParser,
+    skip_permissions: bool,
+    tool_registry: ToolRegistry,
+    config: AppConfig,
+    continue_conversation_id: Option<String>,
 ) -> Result<()> {
     let terminal = init_terminal()?;
     let mut app = AppState::new();
@@ -121,17 +141,52 @@ pub async fn run(
         }
     };
 
-    // Wrap backend in Arc for shared ownership
+    let conversation_storage = match ConversationStorage::with_default_path() {
+        Ok(storage) => Arc::new(storage),
+        Err(e) => {
+            use crate::console::console;
+            console().error(&format!("Failed to initialize conversation storage: {}", e));
+            std::process::exit(1);
+        }
+    };
+
+    let (conversation_id, conversation_title) = if let Some(ref conv_id) = continue_conversation_id
+    {
+        if !conversation_storage.conversation_exists(conv_id) {
+            use crate::console::console;
+            console().error(&format!("Conversation '{}' not found", conv_id));
+            std::process::exit(1);
+        }
+
+        let metadata = match conversation_storage.load_metadata(conv_id) {
+            Ok(meta) => meta,
+            Err(e) => {
+                use crate::console::console;
+                console().error(&format!("Failed to load conversation metadata: {}", e));
+                std::process::exit(1);
+            }
+        };
+
+        (conv_id.clone(), Some(metadata.title))
+    } else {
+        let conv_id = ConversationStorage::generate_conversation_id();
+        if let Err(e) = conversation_storage.create_conversation(&conv_id) {
+            use crate::console::console;
+            console().error(&format!("Failed to create conversation: {}", e));
+            std::process::exit(1);
+        }
+        (conv_id, None)
+    };
+
     let backend: Arc<dyn LlmBackend> = Arc::from(backend);
 
-    // Add header
     let agent_name = default_agent.as_ref().map(|a| a.name.as_str());
     for line in header::create_header_block(
         backend.backend_name(),
         backend.model_name(),
         &working_dir_display,
         agent_name,
-        None, // Initially no project is trusted
+        None,
     ) {
         app.add_styled_line(line);
     }
@@ -140,15 +195,35 @@ pub async fn run(
         app.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
     }
 
+    if let Some(ref title) = conversation_title
+        && !title.is_empty()
+    {
+        app.add_message(format!("Continuing: {}", title));
+    }
+
     app.add_message("\n".to_string());
 
-    // Setup conversation
     let conversation = Arc::new(tokio::sync::Mutex::new({
-        let mut conv = crate::agent::Conversation::new();
-        if let Some(ref agent) = default_agent {
-            conv.add_system_message(agent.content.clone());
+        if let Some(ref conv_id_to_load) = continue_conversation_id {
+            match conversation_storage.load_messages(conv_id_to_load) {
+                Ok(messages) => {
+                    let mut c = crate::agent::Conversation::new();
+                    c.messages = messages;
+                    c
+                }
+                Err(e) => {
+                    use crate::console::console;
+                    console().error(&format!("Failed to load conversation messages: {}", e));
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            let mut conv = crate::agent::Conversation::new();
+            if let Some(ref agent) = default_agent {
+                conv.add_system_message(agent.content.clone());
+            }
+            conv
         }
-        conv
     }));
 
     let permission_manager_arc = Arc::new(permission_manager.clone());
@@ -218,6 +293,8 @@ pub async fn run(
                 .as_ref()
                 .map(|a| a.name.clone())
                 .unwrap_or_else(|| "assistant".to_string()),
+            conversation_storage,
+            conversation_id,
         },
         channels: EventChannels { event_rx, event_tx },
         runtime: RuntimeState {
