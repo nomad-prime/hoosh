@@ -1,5 +1,13 @@
+mod agent;
+mod config;
+mod conversations;
+
 use crate::console::VerbosityLevel;
 use clap::{Parser, Subcommand};
+
+pub use agent::handle_agent;
+pub use config::handle_config;
+pub use conversations::handle_conversations;
 
 #[derive(Parser)]
 #[command(author, version, about)]
