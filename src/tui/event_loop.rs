@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
 use super::app::AppState;
@@ -13,7 +13,7 @@ use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
-use crate::console::{console, VerbosityLevel};
+use crate::console::{VerbosityLevel, console};
 use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::storage::ConversationStorage;
@@ -22,7 +22,7 @@ use crate::tools::ToolRegistry;
 use crate::tui::actions::{answer, execute_command};
 use crate::tui::app_layout::AppLayout;
 use crate::tui::layout::Layout;
-use crate::tui::terminal::{resize_terminal, HooshTerminal};
+use crate::tui::terminal::{HooshTerminal, resize_terminal};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
