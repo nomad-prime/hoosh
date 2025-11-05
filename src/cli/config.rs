@@ -1,126 +1,121 @@
 use crate::cli::ConfigAction;
 use crate::{AppConfig, console};
 
+enum ConfigKey {
+    DefaultBackend,
+    Verbosity,
+    DefaultAgent,
+    BackendSetting { backend: String, key: String },
+}
+
+impl ConfigKey {
+    fn parse(key: &str) -> Result<Self, String> {
+        match key {
+            "default_backend" => Ok(Self::DefaultBackend),
+            "verbosity" => Ok(Self::Verbosity),
+            "default_agent" => Ok(Self::DefaultAgent),
+            _ => Self::parse_backend_key(key),
+        }
+    }
+
+    fn parse_backend_key(key: &str) -> Result<Self, String> {
+        const SUFFIXES: &[(&str, &str)] = &[
+            ("_api_key", "api_key"),
+            ("_base_url", "base_url"),
+            ("_temperature", "temperature"),
+            ("_model", "model"),
+        ];
+
+        for (suffix, setting_key) in SUFFIXES {
+            if let Some(backend) = key.strip_suffix(suffix) {
+                if !backend.is_empty() {
+                    return Ok(Self::BackendSetting {
+                        backend: backend.to_string(),
+                        key: setting_key.to_string(),
+                    });
+                }
+            }
+        }
+
+        Err(format!(
+            "Unknown config key: {}. Use format: <backend>_<setting> where backend is one of \
+             [openai, together_ai, ollama, groq, anthropic] and setting is one of \
+             [api_key, model, base_url, temperature]",
+            key
+        ))
+    }
+}
+
+fn mask_api_key(api_key: &str) -> String {
+    let char_count = api_key.chars().count();
+    if char_count > 8 {
+        let chars: Vec<char> = api_key.chars().collect();
+        let prefix: String = chars.iter().take(4).collect();
+        let suffix: String = chars.iter().rev().take(4).rev().collect();
+        format!("{}...{}", prefix, suffix)
+    } else {
+        "***".to_string()
+    }
+}
+
+fn create_masked_config(config: &AppConfig) -> AppConfig {
+    let mut masked_config = config.clone();
+
+    for backend_config in masked_config.backends.values_mut() {
+        if let Some(ref api_key) = backend_config.api_key {
+            backend_config.api_key = Some(mask_api_key(api_key));
+        }
+    }
+
+    masked_config
+}
+
 pub fn handle_config(action: ConfigAction) -> anyhow::Result<()> {
     match action {
         ConfigAction::Show => {
             let config = AppConfig::load()?;
-            console().plain(&format!("default_backend = \"{}\"", config.default_backend));
-            if let Some(ref default_agent) = config.default_agent {
-                console().plain(&format!("default_agent = \"{}\"", default_agent));
-            }
-            if let Some(ref verbosity) = config.verbosity {
-                console().plain(&format!("verbosity = \"{}\"", verbosity));
-            }
-            console().plain(&format!("review_mode = {}", config.review_mode));
+            let masked_config = create_masked_config(&config);
 
-            if !config.agents.is_empty() {
-                console().newline();
-                console().plain("[agents]");
-                for (agent_name, agent_config) in &config.agents {
-                    console().plain(&format!(
-                        "{} = {{ file = \"{}\"",
-                        agent_name, agent_config.file
-                    ));
-                    if let Some(ref description) = agent_config.description {
-                        console().plain(&format!("  description = \"{}\"", description));
-                    }
-                    if !agent_config.tags.is_empty() {
-                        console().plain(&format!(
-                            "  tags = [{}]",
-                            agent_config
-                                .tags
-                                .iter()
-                                .map(|t| format!("\"{}\"", t))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ));
-                    }
-                    console().plain("}");
-                }
-            }
-
-            if !config.backends.is_empty() {
-                console().newline();
-                for (backend_name, backend_config) in &config.backends {
-                    console().newline();
-                    console().plain(&format!("[{}]", backend_name));
-                    if let Some(ref api_key) = backend_config.api_key {
-                        // Use char-based slicing to safely handle UTF-8 and avoid panics
-                        let masked_key = if api_key.chars().count() > 8 {
-                            let chars: Vec<char> = api_key.chars().collect();
-                            let prefix: String = chars.iter().take(4).collect();
-                            let suffix: String = chars.iter().rev().take(4).rev().collect();
-                            format!("{}...{}", prefix, suffix)
-                        } else {
-                            "***".to_string()
-                        };
-                        console().plain(&format!("api_key = \"{}\"", masked_key));
-                    }
-                    if let Some(ref model) = backend_config.model {
-                        console().plain(&format!("model = \"{}\"", model));
-                    }
-                    if let Some(ref base_url) = backend_config.base_url {
-                        console().plain(&format!("base_url = \"{}\"", base_url));
-                    }
-                    if let Some(temperature) = backend_config.temperature {
-                        console().plain(&format!("temperature = {}", temperature));
-                    }
-                }
-            }
+            let toml_output = toml::to_string_pretty(&masked_config)?;
+            console().plain(&toml_output);
         }
         ConfigAction::Set { key, value } => {
             let mut config = AppConfig::load()?;
+            let config_key = ConfigKey::parse(&key).map_err(|e| anyhow::anyhow!(e))?;
 
-            if key == "default_backend" {
-                config.default_backend = value;
-                config.save()?;
-                console().success("Configuration updated successfully");
-            } else if key == "verbosity" {
-                match value.as_str() {
-                    "quiet" | "normal" | "verbose" | "debug" => {
-                        config.verbosity = Some(value);
-                        config.save()?;
-                        console().success("Verbosity configuration updated successfully");
-                    }
-                    _ => {
-                        console().error(
-                            "Invalid verbosity level. Valid options: quiet, normal, verbose, debug",
-                        );
-                        return Ok(());
-                    }
+            match config_key {
+                ConfigKey::DefaultBackend => {
+                    config.default_backend = value;
+                    config.save()?;
+                    console().success("Configuration updated successfully");
                 }
-            } else if key == "default_agent" {
-                config.default_agent = Some(value);
-                config.save()?;
-                console().success("Default agent configuration updated successfully");
-            } else {
-                // Handle backend config keys: <backend>_api_key, <backend>_model, <backend>_base_url, <backend>_temperature
-                // Try to match known patterns
-                let (backend_name, actual_key) = if key.ends_with("_api_key") {
-                    (&key[..key.len() - 8], "api_key")
-                } else if key.ends_with("_base_url") {
-                    (&key[..key.len() - 9], "base_url")
-                } else if key.ends_with("_model") {
-                    (&key[..key.len() - 6], "model")
-                } else if key.ends_with("_temperature") {
-                    (&key[..key.len() - 12], "temperature")
-                } else {
-                    ("", "")
-                };
-
-                if !backend_name.is_empty() && !actual_key.is_empty() {
-                    config.update_backend_setting(backend_name, actual_key, value)?;
+                ConfigKey::Verbosity => {
+                    validate_verbosity(&value)?;
+                    config.verbosity = Some(value);
+                    config.save()?;
+                    console().success("Verbosity configuration updated successfully");
+                }
+                ConfigKey::DefaultAgent => {
+                    config.default_agent = Some(value);
+                    config.save()?;
+                    console().success("Default agent configuration updated successfully");
+                }
+                ConfigKey::BackendSetting { backend, key } => {
+                    config.update_backend_setting(&backend, &key, value)?;
                     config.save()?;
                     console().success("Backend configuration updated successfully");
-                } else {
-                    console().error(&format!(
-                        "Unknown config key: {}. Use format: <backend>_<setting> where backend is one of [openai, together_ai, ollama, groq, anthropic] and setting is one of [api_key, model, base_url, temperature]",
-                        key
-                    ));
                 }
             }
         }
     }
     Ok(())
+}
+
+fn validate_verbosity(value: &str) -> anyhow::Result<()> {
+    match value {
+        "quiet" | "normal" | "verbose" | "debug" => Ok(()),
+        _ => Err(anyhow::anyhow!(
+            "Invalid verbosity level. Valid options: quiet, normal, verbose, debug"
+        )),
+    }
 }

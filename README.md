@@ -147,20 +147,30 @@ hoosh config show
 # Set default backend
 hoosh config set default_backend anthropic
 
-# Set default verbosity
+# Set default agent
+hoosh config set default_agent hoosh_coder
+
+# Set default verbosity (quiet, normal, verbose, debug)
 hoosh config set verbosity debug
 
 # Configure backend API keys
 hoosh config set openai_api_key sk-...
 hoosh config set anthropic_api_key sk-ant-...
 hoosh config set together_ai_api_key tgp_...
-hoosh config set groq_api_key gsk_...
 
 # Configure backend models
 hoosh config set openai_model gpt-4
 hoosh config set anthropic_model claude-sonnet-4.5
 hoosh config set together_ai_model Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
 hoosh config set ollama_model llama3
+
+# Configure backend base URLs (for custom endpoints)
+hoosh config set openai_base_url https://api.openai.com/v1
+hoosh config set ollama_base_url http://localhost:11434
+
+# Configure backend temperature (0.0-2.0)
+hoosh config set openai_temperature 0.7
+hoosh config set anthropic_temperature 1.0
 ```
 
 ## Supported Backends
@@ -220,16 +230,21 @@ hoosh config set default_backend ollama
 
 No API key required - runs completely offline!
 
-## Configuration
+## Configuration File
 
 Hoosh uses a TOML configuration file located at `~/.config/hoosh/config.toml`. You can customize various aspects of the
 application including:
 
-- Default backend settings
-- Backend-specific API keys, models, and URLs
-- Verbosity levels
-- Permission defaults
-- Agent configurations
+- **default_backend**: The backend to use by default (e.g., "anthropic", "openai", "ollama")
+- **default_agent**: The default agent to use for conversations
+- **verbosity**: Logging verbosity level (quiet, normal, verbose, debug)
+- **review_mode**: Whether to require approval for tool calls (true/false)
+- **backends**: Backend-specific configurations
+    - **api_key**: Authentication key for the backend
+    - **model**: Model to use for this backend
+    - **base_url**: Custom API endpoint URL
+    - **temperature**: Sampling temperature (0.0-2.0)
+- **agents**: Custom agent configurations with prompts and tags
 
 > ⚠️ **Security Warning**: This configuration file contains sensitive API keys. Ensure the file permissions are set to
 > 0600 (owner read/write only) to prevent unauthorized access. Never commit this file to version control.
