@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
-use super::actions::{execute_command, start_agent_conversation};
+use super::actions::{answer, execute_command};
 use super::app::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
@@ -17,6 +17,7 @@ use crate::config::AppConfig;
 use crate::console::{VerbosityLevel, console};
 use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
+use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 use crate::tui::app_layout::AppLayout;
@@ -37,6 +38,8 @@ pub struct ConversationState {
     pub summarizer: Arc<MessageSummarizer>,
     pub context_manager: Arc<ContextManager>,
     pub current_agent_name: String,
+    pub conversation_storage: Arc<ConversationStorage>,
+    pub conversation_id: String,
 }
 
 pub struct EventChannels {
@@ -168,7 +171,7 @@ pub async fn run_event_loop(
                         break;
                     }
                     Ok(super::handler_result::KeyHandlerResult::StartConversation(input)) => {
-                        agent_task = Some(start_agent_conversation(input, &context));
+                        agent_task = Some(answer(input, &context));
                         break;
                     }
                     Err(_) => {

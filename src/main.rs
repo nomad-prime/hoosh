@@ -4,10 +4,11 @@ use hoosh::backends::backend_factory::BackendFactory;
 use hoosh::backends::{AnthropicBackend, OpenAICompatibleBackend, TogetherAiBackend};
 use hoosh::backends::{LlmBackend, MockBackend};
 use hoosh::{
-    cli::{Cli, Commands, ConfigAction},
+    cli::{Cli, Commands, ConfigAction, ConversationsAction},
     config::AppConfig,
     console::{console, init_console},
     parser::MessageParser,
+    storage::ConversationStorage,
     tool_executor::ToolExecutor,
 };
 use std::path::PathBuf;
@@ -33,9 +34,18 @@ async fn main() -> Result<()> {
         Some(Commands::Config { action }) => {
             handle_config(action)?;
         }
+        Some(Commands::Conversations { action }) => {
+            handle_conversations(action)?;
+        }
         None => {
-            // Default to chat mode
-            handle_chat(cli.backend, cli.add_dir, cli.skip_permissions, &config).await?;
+            handle_chat(
+                cli.backend,
+                cli.add_dir,
+                cli.skip_permissions,
+                cli.continue_last,
+                &config,
+            )
+            .await?;
         }
     }
 
@@ -46,6 +56,7 @@ async fn handle_chat(
     backend_name: Option<String>,
     add_dirs: Vec<String>,
     skip_permissions: bool,
+    continue_last: bool,
     config: &AppConfig,
 ) -> Result<()> {
     let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
@@ -64,12 +75,27 @@ async fn handle_chat(
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    hoosh::tui::run(
+    let continue_conversation_id = if continue_last {
+        let storage = ConversationStorage::with_default_path()?;
+        let conversations = storage.list_conversations()?;
+
+        if let Some(latest) = conversations.first() {
+            Some(latest.id.clone())
+        } else {
+            console().warning("No previous conversations found. Starting new conversation.");
+            None
+        }
+    } else {
+        None
+    };
+
+    hoosh::tui::run_with_conversation(
         backend,
         parser,
         skip_permissions,
         tool_registry,
         config.clone(),
+        continue_conversation_id,
     )
     .await?;
 
@@ -106,6 +132,25 @@ fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmB
             );
         }
     }
+}
+
+fn handle_conversations(action: ConversationsAction) -> Result<()> {
+    match action {
+        ConversationsAction::List => {
+            let storage = ConversationStorage::with_default_path()?;
+            let conversations = storage.list_conversations()?;
+
+            if conversations.is_empty() {
+                console().plain("No conversations found.");
+                return Ok(());
+            }
+
+            for conv in conversations {
+                console().plain(&format!("{:<25} {}", conv.id, conv.title));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn handle_config(action: ConfigAction) -> Result<()> {

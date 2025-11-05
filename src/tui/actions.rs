@@ -3,6 +3,7 @@ use tokio::task::JoinHandle;
 
 use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
+use crate::tui::event_loop::EventLoopContext;
 
 pub fn execute_command(
     input: String,
@@ -56,10 +57,7 @@ pub fn execute_command(
     });
 }
 
-pub fn start_agent_conversation(
-    input: String,
-    event_loop_context: &crate::tui::event_loop::EventLoopContext,
-) -> JoinHandle<()> {
+pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandle<()> {
     let parser = Arc::clone(&event_loop_context.system_resources.parser);
     let conversation = Arc::clone(&event_loop_context.conversation_state.conversation);
     let backend = Arc::clone(&event_loop_context.system_resources.backend);
@@ -67,20 +65,32 @@ pub fn start_agent_conversation(
     let tool_executor = Arc::clone(&event_loop_context.system_resources.tool_executor);
     let event_tx = event_loop_context.channels.event_tx.clone();
     let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
+    let conversation_storage =
+        Arc::clone(&event_loop_context.conversation_state.conversation_storage);
+    let conversation_id = event_loop_context
+        .conversation_state
+        .conversation_id
+        .clone();
 
     tokio::spawn(async move {
         let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
 
         {
             let mut conv = conversation.lock().await;
-            conv.add_user_message(expanded_input);
+            conv.add_user_message(expanded_input.clone());
+
+            let user_message = &conv.messages[conv.messages.len() - 1];
+            if let Err(e) = conversation_storage.append_message(&conversation_id, user_message) {
+                eprintln!("Warning: Failed to persist user message: {}", e);
+            }
         }
 
         let mut conv = conversation.lock().await;
-        let handler = Agent::new(backend, tool_registry, tool_executor)
+        let agent = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx)
-            .with_context_manager(context_manager);
+            .with_context_manager(context_manager)
+            .with_conversation_storage(conversation_storage, conversation_id);
 
-        let _ = handler.handle_turn(&mut conv).await;
+        let _ = agent.handle_turn(&mut conv).await;
     })
 }
