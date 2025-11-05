@@ -98,3 +98,59 @@ Extensions
 
 - Skill - Execute skills for specialized capabilities
 - SlashCommand - Execute custom slash commands from .claude/commands/
+
+### 5. Conversation Persistence
+
+- **Status**: Not implemented (mentioned in ROADMAP)
+- **Required Commands**:
+    - `/save [name]` - Save current conversation
+    - `/load <name>` - Load saved conversation
+    - `/list` - List saved conversations
+    - `/delete <name>` - Delete conversation
+- **Storage**: `~/.config/hoosh/conversations/` (JSON format)
+- **Why MVP**: Essential for multi-session work
+- **Priority**: HIGH
+- **Effort**: 4-6 hours
+- **Dependencies**: Command system (✅ already implemented)
+
+### 8. Config Validation & Defaults
+
+- **Issue**: Silent failures when config is invalid
+- **Required**:
+    - Validate config on load with helpful error messages
+    - Better defaults (e.g., use mock backend if no API key)
+    - Config migration/upgrade system for future versions
+    - `hoosh config validate` command
+- **Priority**: MEDIUM
+- **Effort**: 2-3 hours
+
+### 9. Command History Persistence
+
+- **Status**: In-memory only (mentioned in ROADMAP)
+- **Required**: Save command history to `~/.config/hoosh/command_history`
+- **Why Useful**: Improve UX with persistent history across sessions
+- **Priority**: MEDIUM
+- **Effort**: 1-2 hours
+
+### 10. Better Logging System
+
+- **Issue**: Debug messages sent via AgentEvent but not used
+- **Required**:
+    - Proper logging framework (e.g., `tracing` or `env_logger`)
+    - Log file at `~/.config/hoosh/logs/hoosh.log`
+    - Configurable log levels
+    - Log rotation
+- **Priority**: MEDIUM
+- **Effort**: 2-3 hours
+
+### 11. Graceful Shutdown
+
+- **Issue**: No cleanup on exit (e.g., save unsaved work)
+- **Required**:
+    - Prompt to save conversation if modified
+    - Clean up temp files
+    - Close backend connections gracefully
+- **Priority**: MEDIUM
+- **Effort**: 1-2 hours
+
+---
