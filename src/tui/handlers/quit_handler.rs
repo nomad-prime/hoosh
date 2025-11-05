@@ -20,31 +20,31 @@ impl Default for QuitHandler {
 
 #[async_trait]
 impl InputHandler for QuitHandler {
-    fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
-        if let Event::Key(key) = event {
-            key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)
-        } else {
-            false
-        }
-    }
-
     async fn handle_event(
         &mut self,
-        _event: &Event,
+        event: &Event,
         app: &mut AppState,
         agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
+        let Event::Key(key) = event else {
+            return KeyHandlerResult::NotHandled;
+        };
+
+        if !(key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)) {
+            return KeyHandlerResult::NotHandled;
+        }
+
         if agent_task_active {
             app.should_cancel_task = true;
-            Ok(KeyHandlerResult::ShouldCancelTask)
+            KeyHandlerResult::ShouldCancelTask
         } else {
             let input_text = app.get_input_text();
             if !input_text.is_empty() {
                 app.clear_input();
-                Ok(KeyHandlerResult::Handled)
+                KeyHandlerResult::Handled
             } else {
                 app.should_quit = true;
-                Ok(KeyHandlerResult::ShouldQuit)
+                KeyHandlerResult::ShouldQuit
             }
         }
     }

@@ -48,11 +48,10 @@ async fn run_dialog_loop(
 
         if event::poll(Duration::from_millis(100)).expect("could not poll events") {
             let event = event::read().expect("could not read event");
-            if let Ok(handler_result) = handler.handle_event(&event, app, false).await {
-                use crate::tui::handler_result::KeyHandlerResult;
-                if matches!(handler_result, KeyHandlerResult::ShouldQuit) {
-                    return (terminal, None);
-                }
+            let handler_result = handler.handle_event(&event, app, false).await;
+            use crate::tui::handler_result::KeyHandlerResult;
+            if matches!(handler_result, KeyHandlerResult::ShouldQuit) {
+                return (terminal, None);
             }
         }
 

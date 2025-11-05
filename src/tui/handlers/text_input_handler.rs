@@ -20,18 +20,14 @@ impl Default for TextInputHandler {
 
 #[async_trait]
 impl InputHandler for TextInputHandler {
-    fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
-        matches!(event, Event::Key(_))
-    }
-
     async fn handle_event(
         &mut self,
         event: &Event,
         app: &mut AppState,
         _agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
         let Event::Key(key_event) = event else {
-            return Ok(KeyHandlerResult::Handled);
+            return KeyHandlerResult::NotHandled;
         };
 
         match key_event.code {
@@ -110,6 +106,6 @@ impl InputHandler for TextInputHandler {
             }
         }
 
-        Ok(KeyHandlerResult::Handled)
+        KeyHandlerResult::Handled
     }
 }

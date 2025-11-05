@@ -20,18 +20,14 @@ impl Default for PasteHandler {
 
 #[async_trait]
 impl InputHandler for PasteHandler {
-    fn should_handle(&self, event: &Event, _app: &AppState) -> bool {
-        matches!(event, Event::Paste(_))
-    }
-
     async fn handle_event(
         &mut self,
         event: &Event,
         app: &mut AppState,
         _agent_task_active: bool,
-    ) -> anyhow::Result<KeyHandlerResult> {
+    ) -> KeyHandlerResult {
         let Event::Paste(text) = event else {
-            return Ok(KeyHandlerResult::Handled);
+            return KeyHandlerResult::NotHandled;
         };
 
         let lines: Vec<&str> = text.lines().collect();
@@ -42,6 +38,6 @@ impl InputHandler for PasteHandler {
             }
         }
 
-        Ok(KeyHandlerResult::Handled)
+        KeyHandlerResult::Handled
     }
 }

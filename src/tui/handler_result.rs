@@ -1,4 +1,5 @@
 pub enum KeyHandlerResult {
+    NotHandled,
     Handled,
     ShouldQuit,
     ShouldCancelTask,
