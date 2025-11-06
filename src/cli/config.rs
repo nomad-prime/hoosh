@@ -1,5 +1,5 @@
 use crate::cli::ConfigAction;
-use crate::{console, AppConfig};
+use crate::{AppConfig, console};
 
 enum ConfigKey {
     DefaultBackend,
