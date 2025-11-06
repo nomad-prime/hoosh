@@ -1,5 +1,5 @@
 use crate::cli::ConfigAction;
-use crate::{AppConfig, console};
+use crate::{console, AppConfig};
 
 enum ConfigKey {
     DefaultBackend,
@@ -28,13 +28,13 @@ impl ConfigKey {
         ];
 
         for (suffix, setting_key) in SUFFIXES {
-            if let Some(backend) = key.strip_suffix(suffix) {
-                if !backend.is_empty() {
-                    return Ok(Self::BackendSetting {
-                        backend: backend.to_string(),
-                        key: setting_key.to_string(),
-                    });
-                }
+            if let Some(backend) = key.strip_suffix(suffix)
+                && !backend.is_empty()
+            {
+                return Ok(Self::BackendSetting {
+                    backend: backend.to_string(),
+                    key: setting_key.to_string(),
+                });
             }
         }
 
