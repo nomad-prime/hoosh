@@ -57,11 +57,26 @@ impl AgentDefinitionManager {
     fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
         // Embed default prompts at compile time
         let default_prompts = [
-            ("hoosh_planner.txt", include_str!("../prompts/hoosh_planner.txt")),
-            ("hoosh_coder.txt", include_str!("../prompts/hoosh_coder.txt")),
-            ("hoosh_reviewer.txt", include_str!("../prompts/hoosh_reviewer.txt")),
-            ("hoosh_troubleshooter.txt", include_str!("../prompts/hoosh_troubleshooter.txt")),
-            ("hoosh_assistant.txt", include_str!("../prompts/hoosh_assistant.txt")),
+            (
+                "hoosh_planner.txt",
+                include_str!("../prompts/hoosh_planner.txt"),
+            ),
+            (
+                "hoosh_coder.txt",
+                include_str!("../prompts/hoosh_coder.txt"),
+            ),
+            (
+                "hoosh_reviewer.txt",
+                include_str!("../prompts/hoosh_reviewer.txt"),
+            ),
+            (
+                "hoosh_troubleshooter.txt",
+                include_str!("../prompts/hoosh_troubleshooter.txt"),
+            ),
+            (
+                "hoosh_assistant.txt",
+                include_str!("../prompts/hoosh_assistant.txt"),
+            ),
         ];
 
         // Write each embedded prompt to the agents directory
