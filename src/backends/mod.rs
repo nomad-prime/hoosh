@@ -100,6 +100,7 @@ pub mod anthropic;
 pub mod backend_factory;
 pub mod llm_error;
 pub mod mock;
+pub mod ollama;
 #[cfg(feature = "openai-compatible")]
 pub mod openai_compatible;
 #[cfg(feature = "together-ai")]
@@ -107,6 +108,7 @@ pub mod together_ai;
 
 #[cfg(feature = "anthropic")]
 pub use self::anthropic::AnthropicBackend;
+pub use self::ollama::OllamaBackend;
 #[cfg(feature = "openai-compatible")]
 pub use self::openai_compatible::OpenAICompatibleBackend;
 #[cfg(feature = "together-ai")]
@@ -117,6 +119,7 @@ pub use llm_error::LlmError;
 #[cfg(feature = "anthropic")]
 pub use anthropic::AnthropicConfig;
 pub use mock::MockBackend;
+pub use ollama::OllamaConfig;
 #[cfg(feature = "openai-compatible")]
 pub use openai_compatible::OpenAICompatibleConfig;
 #[cfg(feature = "together-ai")]

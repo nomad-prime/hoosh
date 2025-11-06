@@ -9,10 +9,11 @@ name = "hoosh"
 path = "src/main.rs"
 
 [features]
-default = ["openai-compatible", "together-ai", "anthropic"]
+default = ["openai-compatible", "together-ai", "anthropic", "ollama"]
 openai-compatible = ["dep:reqwest"]
 together-ai = ["dep:reqwest"]
 anthropic = ["dep:reqwest"]
+ollama = ["dep:reqwest"]
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }

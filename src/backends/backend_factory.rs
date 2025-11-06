@@ -1,6 +1,6 @@
 use crate::backends::{
-    AnthropicBackend, AnthropicConfig, LlmBackend, MockBackend, OpenAICompatibleBackend,
-    OpenAICompatibleConfig, TogetherAiBackend, TogetherAiConfig,
+    AnthropicBackend, AnthropicConfig, LlmBackend, MockBackend, OllamaBackend, OllamaConfig,
+    OpenAICompatibleBackend, OpenAICompatibleConfig, TogetherAiBackend, TogetherAiConfig,
 };
 use crate::config::BackendConfig;
 use crate::AppConfig;
@@ -58,17 +58,10 @@ impl BackendFactory for OpenAICompatibleBackend {
     fn create(config: &BackendConfig, name: &str) -> Result<Box<dyn LlmBackend>> {
         let (default_model, default_base_url, default_chat_api) = match name {
             "openai" => ("gpt-4", "https://api.openai.com/v1", "/chat/completions"),
-            "ollama" => ("gemma3", "http://localhost:11434/v1", "/api/chat"),
             _ => ("", "", ""),
         };
 
-        let api_key = config.api_key.clone().unwrap_or_else(|| {
-            if name == "ollama" {
-                "ollama".to_string()
-            } else {
-                String::new()
-            }
-        });
+        let api_key = config.api_key.clone().unwrap_or(String::from(""));
         let model = config
             .model
             .clone()
@@ -96,6 +89,29 @@ impl BackendFactory for OpenAICompatibleBackend {
     }
 }
 
+impl BackendFactory for OllamaBackend {
+    fn create(config: &BackendConfig, name: &str) -> Result<Box<dyn LlmBackend>> {
+        let (default_model, default_base_url) = ("llama3.1", "http://localhost:11434");
+
+        let model = config
+            .model
+            .clone()
+            .unwrap_or_else(|| default_model.to_string());
+        let base_url = config
+            .base_url
+            .clone()
+            .unwrap_or_else(|| default_base_url.to_string());
+
+        let ollama_config = OllamaConfig {
+            name: name.to_string(),
+            model,
+            base_url,
+            temperature: config.temperature,
+        };
+
+        Ok(Box::new(OllamaBackend::new(ollama_config)?))
+    }
+}
 pub fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn LlmBackend>> {
     let backend_config = config
         .get_backend_config(backend_name)
@@ -107,8 +123,10 @@ pub fn create_backend(backend_name: &str, config: &AppConfig) -> Result<Box<dyn 
         "together_ai" => TogetherAiBackend::create(backend_config, backend_name),
         #[cfg(feature = "anthropic")]
         "anthropic" => AnthropicBackend::create(backend_config, backend_name),
+        #[cfg(feature = "ollama")]
+        "ollama" => OllamaBackend::create(backend_config, backend_name),
         #[cfg(feature = "openai-compatible")]
-        name if matches!(name, "openai" | "ollama" | "groq") => {
+        name if matches!(name, "openai" | "groq") => {
             OpenAICompatibleBackend::create(backend_config, name)
         }
         _ => {
