@@ -55,39 +55,19 @@ impl AgentDefinitionManager {
     }
 
     fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
-        // Get the path to the prompts directory in the source code
-        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("prompts");
+        // Embed default prompts at compile time
+        let default_prompts = [
+            ("hoosh_planner.txt", include_str!("../prompts/hoosh_planner.txt")),
+            ("hoosh_coder.txt", include_str!("../prompts/hoosh_coder.txt")),
+            ("hoosh_reviewer.txt", include_str!("../prompts/hoosh_reviewer.txt")),
+            ("hoosh_troubleshooter.txt", include_str!("../prompts/hoosh_troubleshooter.txt")),
+            ("hoosh_assistant.txt", include_str!("../prompts/hoosh_assistant.txt")),
+        ];
 
-        // Read all files from the prompts directory
-        let prompt_files =
-            fs::read_dir(&prompts_dir).context("Failed to read prompts directory")?;
-
-        // Process each prompt file
-        for entry in prompt_files {
-            let entry = entry.context("Failed to read directory entry")?;
-            let file_path = entry.path();
-
-            // Skip directories and non-file entries
-            if !file_path.is_file() {
-                continue;
-            }
-
-            // Get the file name
-            let file_name = file_path
-                .file_name()
-                .context("Failed to get file name")?
-                .to_str()
-                .context("Failed to convert file name to string")?;
-
-            // Read the prompt content
-            let prompt_content = fs::read_to_string(&file_path)
-                .with_context(|| format!("Failed to read prompt file: {}", file_name))?;
-
-            // Write the prompt content to the agent file
+        // Write each embedded prompt to the agents directory
+        for (file_name, content) in default_prompts {
             let agent_path = agents_dir.join(file_name);
-            fs::write(&agent_path, prompt_content)
+            fs::write(&agent_path, content)
                 .with_context(|| format!("Failed to write agent file: {}", file_name))?;
         }
 
