@@ -1,9 +1,9 @@
+use crate::AppConfig;
 use crate::backends::{
     AnthropicBackend, AnthropicConfig, LlmBackend, MockBackend, OllamaBackend, OllamaConfig,
     OpenAICompatibleBackend, OpenAICompatibleConfig, TogetherAiBackend, TogetherAiConfig,
 };
 use crate::config::BackendConfig;
-use crate::AppConfig;
 use anyhow::Result;
 
 pub trait BackendFactory {
