@@ -147,12 +147,12 @@ struct OllamaToolFunction {
 }
 
 impl OllamaToolCall {
-    fn to_standard_tool_call(self, index: usize) -> ToolCall {
+    fn to_standard_tool_call(&self, index: usize) -> ToolCall {
         ToolCall {
             id: format!("call_{}", index),
             r#type: "function".to_string(),
             function: crate::agent::ToolFunction {
-                name: self.function.name,
+                name: self.function.name.clone(),
                 arguments: self.function.arguments.to_string(),
             },
         }
