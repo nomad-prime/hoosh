@@ -14,6 +14,7 @@ pub struct OpenAICompatibleConfig {
     pub model: String,
     pub base_url: String,
     pub temperature: Option<f32>,
+    pub chat_api: String,
 }
 
 impl Default for OpenAICompatibleConfig {
@@ -23,6 +24,7 @@ impl Default for OpenAICompatibleConfig {
             api_key: String::new(),
             model: "gpt-4".to_string(),
             base_url: "https://api.openai.com/v1".to_string(),
+            chat_api: "/chat/completions".to_string(),
             temperature: None,
         }
     }
@@ -171,7 +173,7 @@ impl OpenAICompatibleBackend {
         }
 
         let request = self.create_request(message);
-        let url = format!("{}/chat/completions", self.config.base_url);
+        let url = format!("{}{}", self.config.base_url, self.config.chat_api);
 
         let response = self
             .client
@@ -236,7 +238,7 @@ impl OpenAICompatibleBackend {
         }
 
         let request = self.create_request_with_tools(conversation, tools);
-        let url = format!("{}/chat/completions", self.config.base_url);
+        let url = format!("{}{}", self.config.base_url, self.config.chat_api);
 
         let response = self
             .client
