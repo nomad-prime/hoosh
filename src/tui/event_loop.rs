@@ -163,16 +163,12 @@ async fn handle_user_input(
 ) -> Result<()> {
     let agent_task_active = agent_task.is_some();
 
-    // Collect results first to avoid borrowing issues
-    let mut handler_results = Vec::new();
-
-    for handler in &mut context.runtime.input_handlers {
-        let result = handler.handle_event(event, app, agent_task_active).await;
-        handler_results.push(result);
-    }
-
-    // Process results after releasing the borrow on input_handlers
-    for result in handler_results {
+    // Process handlers one at a time, stopping when one handles the event
+    let handler_count = context.runtime.input_handlers.len();
+    for i in 0..handler_count {
+        let result = context.runtime.input_handlers[i]
+            .handle_event(event, app, agent_task_active)
+            .await;
         if process_handler_result(result, app, agent_task, context) {
             break;
         }

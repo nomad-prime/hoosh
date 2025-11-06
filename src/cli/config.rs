@@ -1,5 +1,5 @@
 use crate::cli::ConfigAction;
-use crate::{AppConfig, console};
+use crate::{console, AppConfig};
 
 enum ConfigKey {
     DefaultBackend,
@@ -22,6 +22,7 @@ impl ConfigKey {
         const SUFFIXES: &[(&str, &str)] = &[
             ("_api_key", "api_key"),
             ("_base_url", "base_url"),
+            ("_chat_api", "chat_api"),
             ("_temperature", "temperature"),
             ("_model", "model"),
         ];
@@ -39,8 +40,8 @@ impl ConfigKey {
 
         Err(format!(
             "Unknown config key: {}. Use format: <backend>_<setting> where backend is one of \
-             [openai, together_ai, ollama, groq, anthropic] and setting is one of \
-             [api_key, model, base_url, temperature]",
+             [openai, together_ai, ollama, anthropic] and setting is one of \
+             [api_key, model, base_url, temperature, chat_api]",
             key
         ))
     }

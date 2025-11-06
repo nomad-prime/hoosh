@@ -1,9 +1,9 @@
-use crate::AppConfig;
 use crate::backends::{
     AnthropicBackend, AnthropicConfig, LlmBackend, MockBackend, OpenAICompatibleBackend,
     OpenAICompatibleConfig, TogetherAiBackend, TogetherAiConfig,
 };
 use crate::config::BackendConfig;
+use crate::AppConfig;
 use anyhow::Result;
 
 pub trait BackendFactory {
@@ -56,12 +56,10 @@ impl BackendFactory for AnthropicBackend {
 
 impl BackendFactory for OpenAICompatibleBackend {
     fn create(config: &BackendConfig, name: &str) -> Result<Box<dyn LlmBackend>> {
-        // Get provider-specific defaults from the backend name
-        let (default_model, default_base_url) = match name {
-            "openai" => ("gpt-4", "https://api.openai.com/v1"),
-            "ollama" => ("llama3", "http://localhost:11434/v1"),
-            "groq" => ("mixtral-8x7b-32768", "https://api.groq.com/openai/v1"),
-            _ => ("", ""),
+        let (default_model, default_base_url, default_chat_api) = match name {
+            "openai" => ("gpt-4", "https://api.openai.com/v1", "/chat/completions"),
+            "ollama" => ("gemma3", "http://localhost:11434/v1", "/api/chat"),
+            _ => ("", "", ""),
         };
 
         let api_key = config.api_key.clone().unwrap_or_else(|| {
@@ -80,11 +78,17 @@ impl BackendFactory for OpenAICompatibleBackend {
             .clone()
             .unwrap_or_else(|| default_base_url.to_string());
 
+        let chat_api = config
+            .chat_api
+            .clone()
+            .unwrap_or_else(|| default_chat_api.to_string());
+
         let openai_config = OpenAICompatibleConfig {
             name: name.to_string(),
             api_key,
             model,
             base_url,
+            chat_api,
             temperature: config.temperature,
         };
 

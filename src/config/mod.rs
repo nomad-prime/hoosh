@@ -11,6 +11,7 @@ pub struct BackendConfig {
     pub api_key: Option<String>,
     pub model: Option<String>,
     pub base_url: Option<String>,
+    pub chat_api: Option<String>,
     pub temperature: Option<f32>,
 }
 
@@ -234,6 +235,7 @@ impl AppConfig {
                 api_key: None,
                 model: None,
                 base_url: None,
+                chat_api: None,
                 temperature: None,
             });
 
@@ -241,6 +243,7 @@ impl AppConfig {
             "api_key" => config.api_key = Some(value),
             "model" => config.model = Some(value),
             "base_url" => config.base_url = Some(value),
+            "chat_api" => config.chat_api = Some(value),
             "temperature" => {
                 let temp: f32 = value.parse().map_err(|_| ConfigError::InvalidValue {
                     field: "temperature".to_string(),
