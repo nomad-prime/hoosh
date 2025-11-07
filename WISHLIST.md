@@ -1,4 +1,4 @@
-### Issues
+### Wishes
 
 #### Add messages midflight
 
@@ -99,20 +99,6 @@ Extensions
 - Skill - Execute skills for specialized capabilities
 - SlashCommand - Execute custom slash commands from .claude/commands/
 
-### 5. Conversation Persistence
-
-- **Status**: Not implemented (mentioned in ROADMAP)
-- **Required Commands**:
-    - `/save [name]` - Save current conversation
-    - `/load <name>` - Load saved conversation
-    - `/list` - List saved conversations
-    - `/delete <name>` - Delete conversation
-- **Storage**: `~/.config/hoosh/conversations/` (JSON format)
-- **Why MVP**: Essential for multi-session work
-- **Priority**: HIGH
-- **Effort**: 4-6 hours
-- **Dependencies**: Command system (✅ already implemented)
-
 ### 8. Config Validation & Defaults
 
 - **Issue**: Silent failures when config is invalid
@@ -155,7 +141,7 @@ Extensions
 
 ---
 
-### 1. Web Search Tool 🔧 HIGH PRIORITY
+### 1. Web Search Tool
 
 **Current State:** No web search capability
 **What's Missing:**
@@ -179,7 +165,7 @@ Extensions
 **Why it matters:** Many coding tasks require up-to-date information. Web search allows the AI to access current
 documentation, libraries, and best practices.
 
-### 4. Multi-Agent System with ACE Orchestration 🔧 HIGH PRIORITY
+### 4. Multi-Agent System with ACE Orchestration
 
 **Current State:** Basic agent system exists in config (`default_agent`, agents defined in
 `~/.config/hoosh/config.toml`)
@@ -333,34 +319,7 @@ tags = ["meta", "coordination"]
 
 ---
 
-### 6. Multi-file Operations 🔧 MEDIUM PRIORITY
-
-**Current State:** Tools work on single files
-
-**What's Missing:**
-
-- Batch operations across multiple files
-- Refactoring tools (rename symbol across files)
-- Multi-file diff viewing
-- Project-wide search and replace
-
-**Technical Requirements:**
-
-```rust
-struct MultiFileOp {
-    fn rename_symbol( & self,
-    old_name: &str,
-    new_name: &str) -> Result<Vec<FileChange> >
-    fn batch_edit( & self,
-    edits: Vec<FileEdit>) -> Result<() >
-    fn multi_diff( & self,
-    files: Vec<PathBuf>) -> Result<String>
-}
-```
-
----
-
-### 7. MCP (Model Context Protocol) Support 🔧 CRITICAL
+### 7. MCP (Model Context Protocol) Support
 
 **Current State:** No MCP support
 
@@ -448,7 +407,7 @@ env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
 
 ---
 
-### 8. LSP (Language Server Protocol) Integration 🔧 LOW PRIORITY (Post-v1)
+### 8. LSP (Language Server Protocol) Integration
 
 **Current State:** No LSP support, limited code intelligence
 **Note:** Not required for v1 - can be added in future releases
@@ -545,7 +504,7 @@ args = ["--stdio"]
 
 ---
 
-### 9. Project/Codebase Indexing and Understanding 🔧 LOW PRIORITY (Post-v1)
+### 9. Project/Codebase Indexing and Understanding
 
 **Current State:** No project indexing, limited codebase understanding
 **Note:** Not required for v1 - can be added in future releases
@@ -612,7 +571,7 @@ struct Symbol {
 
 ---
 
-### 11. Screenshot Tool for Visual Tasks 🔧 LOW PRIORITY
+### 11. Screenshot Tool for Visual Tasks
 
 **Current State:** No screenshot capability
 **What's Missing:**
@@ -628,7 +587,7 @@ struct Symbol {
 **Why it matters:** Some coding tasks involve visual elements (e.g., UI design, bug reproduction). Screenshots allow the
 AI to access visual context and provide better assistance.
 
-### 12. Markdown rendering in TUI 🔧 LOW PRIORITY
+### 12. Markdown rendering in TUI
 
 **Current State:** Plain text only in TUI
 **What's Missing:**
@@ -637,3 +596,4 @@ AI to access visual context and provide better assistance.
 - Support for inline code highlighting
 - Render links and allow opening in browser
 
+### 13. Dynamic Tools
