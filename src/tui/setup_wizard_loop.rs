@@ -59,11 +59,7 @@ async fn run_wizard_loop(
 pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
     let config_path = AppConfig::config_path()?;
 
-    // If config exists, load it; otherwise start with default
-    let mut config = match AppConfig::load() {
-        Ok(cfg) => cfg,
-        Err(_) => AppConfig::default(),
-    };
+    let mut config = AppConfig::load().unwrap_or_else(|_| AppConfig::default());
 
     config.default_backend = result.backend.clone();
 
