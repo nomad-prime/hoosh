@@ -114,13 +114,25 @@ temperature = 0.7
 # model = "gpt-4"
 ```
 
+### Technical Details
+
+we already have an initial permission layout in initial_permission_layout.rs. and init. You need to do something similar
+that. Strive NOT to touch existing code in the implementation. If a module does not work for your usecase write a new
+one for it, we will remove duplication later.
+
+create these files
+
+an InitAppState like AppState in app.rs
+a layout like app_layout.rs and initial_permission_layout.rs
+and a loop like app_loop.rs and init_permission_loop.rs
+
+the component should go in components folder like tui/components/initial_permission_dialog
+and the input handler to tui/handlers/initial_permission_handler.rs
+
 ### Testing Requirements
 
 - Unit tests for each wizard step
-- Integration test for full wizard flow with mocked input
-- Test config file generation
 - Test handling of existing config files
-- Test non-interactive mode with flags
 
 ## Acceptance Criteria
 

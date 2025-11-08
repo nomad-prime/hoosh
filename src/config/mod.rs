@@ -295,7 +295,7 @@ impl AppConfig {
         self.context_manager = Some(config);
     }
 
-    fn config_path() -> ConfigResult<PathBuf> {
+    pub fn config_path() -> ConfigResult<PathBuf> {
         let path = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .map_err(|_| ConfigError::NoHomeDirectory)?;

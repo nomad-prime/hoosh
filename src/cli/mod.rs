@@ -1,6 +1,7 @@
 mod agent;
 mod config;
 mod conversations;
+mod setup;
 
 use crate::console::VerbosityLevel;
 use clap::{Parser, Subcommand};
@@ -8,6 +9,7 @@ use clap::{Parser, Subcommand};
 pub use agent::handle_agent;
 pub use config::handle_config;
 pub use conversations::handle_conversations;
+pub use setup::handle_setup;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -50,6 +52,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: ConversationsAction,
     },
+    Setup,
 }
 
 #[derive(Subcommand)]

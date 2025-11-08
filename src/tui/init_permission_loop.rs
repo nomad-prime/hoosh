@@ -1,6 +1,6 @@
 use crate::permissions::storage::{PermissionRule, PermissionsFile};
 use crate::tools::ToolRegistry;
-use crate::tui::app::{AppState, InitialPermissionChoice};
+use crate::tui::app_state::{AppState, InitialPermissionChoice};
 use crate::tui::handlers::InitialPermissionHandler;
 use crate::tui::initial_permission_layout::InitialPermissionLayout;
 use crate::tui::input_handler::InputHandler;

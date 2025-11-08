@@ -1,22 +1,25 @@
 mod actions;
-mod app;
 mod app_layout;
 mod app_layout_builder;
+mod app_loop;
+mod app_state;
 mod clipboard;
 mod component;
 pub mod components;
-mod event_loop;
 mod events;
 mod handler_result;
 pub mod handlers;
 mod header;
-mod init;
+mod init_permission_loop;
 mod initial_permission_layout;
 mod input_handler;
 mod layout;
 mod layout_builder;
 mod message_renderer;
-mod terminal;
+mod setup_wizard_app;
+mod setup_wizard_layout;
+pub mod setup_wizard_loop;
+pub mod terminal;
 
 pub use message_renderer::MessageRenderer;
 
@@ -40,11 +43,11 @@ use crate::tools::ToolRegistry;
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::history::PromptHistory;
 use crate::tui::terminal::{init_terminal, restore_terminal};
-use app::AppState;
-use event_loop::{
+use app_loop::{
     ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
     run_event_loop,
 };
+use app_state::AppState;
 
 pub async fn run(
     backend: Box<dyn LlmBackend>,
@@ -91,8 +94,9 @@ pub async fn run(
     let should_show_initial_dialog = !skip_permissions && !permissions_path.exists();
 
     let terminal = if should_show_initial_dialog {
-        use crate::tui::app::InitialPermissionChoice;
-        let (terminal, choice) = init::run(terminal, working_dir.clone(), &tool_registry).await?;
+        use crate::tui::app_state::InitialPermissionChoice;
+        let (terminal, choice) =
+            init_permission_loop::run(terminal, working_dir.clone(), &tool_registry).await?;
 
         if choice.is_none() || matches!(choice, Some(InitialPermissionChoice::Deny)) {
             restore_terminal(terminal)?;

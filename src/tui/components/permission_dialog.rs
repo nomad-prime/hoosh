@@ -1,4 +1,4 @@
-use crate::tui::app::{AppState, PermissionOption};
+use crate::tui::app_state::{AppState, PermissionOption};
 use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,

@@ -596,4 +596,11 @@ AI to access visual context and provide better assistance.
 - Support for inline code highlighting
 - Render links and allow opening in browser
 
-### 13. Dynamic Tools
+### Config Pricing API Open AI Compatible
+
+- add support for pricing API for open ai compatible (openrouter e.g.)
+
+### Checkpoint stopping after 100 (configurable steps)
+
+- when in autopilot, we should have llm stop
+
