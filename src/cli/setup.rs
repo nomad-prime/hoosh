@@ -26,23 +26,41 @@ pub async fn handle_setup() -> Result<()> {
     restore_terminal(terminal)?;
 
     if let Some(result) = result {
-        setup_wizard_loop::save_wizard_result(&result)?;
+        match setup_wizard_loop::save_wizard_result(&result) {
+            Ok(()) => {
+                println!("\n✓ Configuration saved");
+                println!("  Backend: {}", result.backend);
+                println!("  Model: {}", result.model);
 
-        println!("\n✓ Configuration saved successfully!");
-        println!("  Backend: {}", result.backend);
-        println!("  Model: {}", result.model);
+                if result.api_key.is_some() {
+                    println!("  API Key: Set");
+                } else {
+                    println!("  API Key: Not set");
+                }
 
-        if result.api_key.is_some() {
-            println!("  API Key: Stored in config file");
-        } else {
-            let env_var_name = format!(
-                "{}_API_KEY",
-                result.backend.to_uppercase().replace("-", "_")
-            );
-            println!("  API Key: Using environment variable {}", env_var_name);
+                // Verify the config can be loaded
+                match AppConfig::load() {
+                    Ok(_) => {
+                        println!("\nRun 'hoosh' to start agent!");
+                    }
+                    Err(e) => {
+                        eprintln!("\n✗ Configuration saved but could not be loaded: {}", e);
+                        eprintln!(
+                            "Check your config file at: {}",
+                            AppConfig::config_path()?.display()
+                        );
+                        return Err(e.into());
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("\n✗ Failed to save configuration: {}", e);
+                eprintln!("Check:");
+                eprintln!("  1. Write permissions to ~/.config/hoosh/");
+                eprintln!("  2. Sufficient disk space");
+                return Err(e);
+            }
         }
-
-        println!("\nYou can now run 'hoosh' to start chatting!");
     } else {
         println!("Setup cancelled.");
     }

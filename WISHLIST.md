@@ -604,3 +604,7 @@ AI to access visual context and provide better assistance.
 
 - when in autopilot, we should have llm stop
 
+### Show elapsed time like in claude code
+
+Processing… (esc to interrupt · 24s · ↓ 1.0k tokens)
+

@@ -1,12 +1,12 @@
 use crate::config::AppConfig;
+use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::handlers::SetupWizardHandler;
 use crate::tui::layout::Layout;
 use crate::tui::setup_wizard_app::{SetupWizardApp, SetupWizardResult};
 use crate::tui::setup_wizard_layout::SetupWizardLayout;
-use crate::tui::terminal::{HooshTerminal, resize_terminal};
+use crate::tui::terminal::{resize_terminal, HooshTerminal};
 use anyhow::Result;
 use crossterm::event;
-use std::collections::HashMap;
 use tokio::time::Duration;
 
 pub async fn run(terminal: HooshTerminal) -> Result<(HooshTerminal, Option<SetupWizardResult>)> {
@@ -38,8 +38,10 @@ async fn run_wizard_loop(
         if event::poll(Duration::from_millis(100)).expect("could not poll events") {
             let event = event::read().expect("could not read event");
             let handler_result = handler.handle_event(&event, app).await;
-            use crate::tui::handler_result::KeyHandlerResult;
             if matches!(handler_result, KeyHandlerResult::ShouldQuit) {
+                if let Ok(result) = response_rx.try_recv() {
+                    return (terminal, result);
+                }
                 return (terminal, None);
             }
         }
@@ -55,30 +57,20 @@ async fn run_wizard_loop(
 }
 
 pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
-    let mut config = AppConfig::load().unwrap_or_default();
+    let config_path = AppConfig::config_path()?;
+
+    // If config exists, load it; otherwise start with default
+    let mut config = match AppConfig::load() {
+        Ok(cfg) => cfg,
+        Err(_) => AppConfig::default(),
+    };
 
     config.default_backend = result.backend.clone();
-
-    let mut backend_config = HashMap::new();
-    if let Some(api_key) = &result.api_key {
-        backend_config.insert("api_key".to_string(), api_key.clone());
-    } else {
-        let env_var_name = format!(
-            "{}_API_KEY",
-            result.backend.to_uppercase().replace("-", "_")
-        );
-        backend_config.insert("api_key".to_string(), format!("${{{}}}", env_var_name));
-    }
-    backend_config.insert("model".to_string(), result.model.clone());
 
     config.backends.insert(
         result.backend.clone(),
         crate::config::BackendConfig {
-            api_key: if result.api_key.is_some() {
-                result.api_key.clone()
-            } else {
-                None
-            },
+            api_key: result.api_key.clone(),
             model: Some(result.model.clone()),
             base_url: None,
             chat_api: None,
@@ -86,7 +78,16 @@ pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
         },
     );
 
+    // Save the config
     config.save()?;
+
+    // Verify the file was actually written
+    if !config_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Config file not found after save operation at {}",
+            config_path.display()
+        ));
+    }
 
     Ok(())
 }

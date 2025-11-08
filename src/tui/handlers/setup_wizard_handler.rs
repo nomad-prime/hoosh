@@ -15,9 +15,7 @@ impl SetupWizardHandler {
     fn handle_text_input(&self, app: &mut SetupWizardApp, event: &KeyEvent) {
         match &app.current_step {
             SetupWizardStep::ApiKeyInput => {
-                if !app.use_env_var {
-                    app.api_key_input.input(*event);
-                }
+                app.api_key_input.input(*event);
             }
             SetupWizardStep::ModelSelection => {
                 app.model_input.input(*event);
@@ -66,9 +64,6 @@ impl SetupWizardHandler {
                 _ => {}
             },
             SetupWizardStep::ApiKeyInput => match key {
-                KeyCode::Char('e') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.toggle_env_var();
-                }
                 KeyCode::Enter => app.advance_step(),
                 KeyCode::Esc => app.go_back(),
                 _ => {

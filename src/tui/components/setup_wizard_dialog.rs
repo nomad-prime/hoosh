@@ -21,13 +21,12 @@ impl SetupWizardDialog {
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
-            Line::from("This wizard will guide you through the initial configuration:"),
-            Line::from(""),
             Line::from("  • Select your preferred LLM backend"),
             Line::from("  • Configure API credentials"),
             Line::from("  • Choose your default model"),
             Line::from(""),
-            Line::from("You can reconfigure these settings later using 'hoosh config'."),
+            Line::from("You can rerun this wizard using 'hoosh setup'"),
+            Line::from("Or reconfigure these settings using 'hoosh config'"),
             Line::from(""),
             Line::from(""),
             Line::from(Span::styled(
@@ -114,8 +113,6 @@ impl SetupWizardDialog {
             .map(|b| b.as_str())
             .unwrap_or("unknown");
 
-        let env_var_name = format!("{}_API_KEY", backend_name.to_uppercase().replace("-", "_"));
-
         let mut lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
@@ -125,74 +122,29 @@ impl SetupWizardDialog {
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
-        ];
-
-        let use_env_label = if state.use_env_var {
-            format!("[x] Use environment variable ({})", env_var_name)
-        } else {
-            format!("[ ] Use environment variable ({})", env_var_name)
-        };
-
-        let store_config_label = if !state.use_env_var {
-            "[x] Store in config file"
-        } else {
-            "[ ] Store in config file"
-        };
-
-        lines.push(Line::from(Span::styled(
-            use_env_label,
-            Style::default().fg(if state.use_env_var {
-                Color::Green
-            } else {
-                Color::Gray
-            }),
-        )));
-
-        lines.push(Line::from(Span::styled(
-            store_config_label,
-            Style::default().fg(if !state.use_env_var {
-                Color::Yellow
-            } else {
-                Color::Gray
-            }),
-        )));
-
-        lines.push(Line::from(""));
-
-        if !state.use_env_var {
-            lines.push(Line::from(Span::styled(
+            Line::from(Span::styled(
                 "API Key:",
                 Style::default().add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::from(""));
+            )),
+            Line::from(""),
+        ];
 
-            let widget = state.api_key_input.widget();
-            widget.render(
-                Rect {
-                    x: area.x + 2,
-                    y: area.y + lines.len() as u16 + 1,
-                    width: area.width.saturating_sub(4),
-                    height: 1,
-                },
-                buf,
-            );
-            lines.push(Line::from(""));
-            lines.push(Line::from(""));
-
-            lines.push(Line::from(Span::styled(
-                "⚠ Warning: Storing API keys in config file is less secure",
-                Style::default().fg(Color::Yellow),
-            )));
-        } else {
-            lines.push(Line::from(Span::styled(
-                format!("Make sure {} is set in your environment", env_var_name),
-                Style::default().fg(Color::Green),
-            )));
-        }
+        let widget = state.api_key_input.widget();
+        widget.render(
+            Rect {
+                x: area.x + 2,
+                y: area.y + lines.len() as u16 + 1,
+                width: area.width.saturating_sub(4),
+                height: 1,
+            },
+            buf,
+        );
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "Ctrl+E to toggle, Enter to continue, Esc to go back",
+            "Enter to continue, Esc to go back",
             Style::default().fg(Color::Cyan),
         )));
 
@@ -286,10 +238,10 @@ impl SetupWizardDialog {
             .map(|s| s.as_str())
             .unwrap_or("");
 
-        let api_key_status = if state.use_env_var {
-            "Environment variable".to_string()
+        let api_key_status = if state.api_key_input.lines()[0].is_empty() {
+            "Not set".to_string()
         } else {
-            "Stored in config".to_string()
+            "Set".to_string()
         };
 
         let mut lines = vec![

@@ -74,7 +74,6 @@ pub struct SetupWizardApp {
     pub selected_backend: Option<BackendType>,
     pub api_key_input: TextArea<'static>,
     pub model_input: TextArea<'static>,
-    pub use_env_var: bool,
     pub selected_confirmation_index: usize,
     pub should_quit: bool,
     pub result: Option<SetupWizardResult>,
@@ -90,6 +89,7 @@ impl Default for SetupWizardApp {
         let mut model_input = TextArea::default();
         model_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         model_input.set_cursor_line_style(Style::default());
+        model_input.set_placeholder_text("Enter Model name");
 
         Self {
             current_step: SetupWizardStep::Welcome,
@@ -97,7 +97,6 @@ impl Default for SetupWizardApp {
             selected_backend: None,
             api_key_input,
             model_input,
-            use_env_var: true,
             selected_confirmation_index: 0,
             should_quit: false,
             result: None,
@@ -178,23 +177,23 @@ impl SetupWizardApp {
         };
     }
 
-    pub fn toggle_env_var(&mut self) {
-        self.use_env_var = !self.use_env_var;
-    }
-
     pub fn select_next_confirmation_option(&mut self) {
         self.selected_confirmation_index = (self.selected_confirmation_index + 1) % 2;
     }
 
     pub fn select_prev_confirmation_option(&mut self) {
-        self.selected_confirmation_index = (self.selected_confirmation_index + 1) % 2;
+        if self.selected_confirmation_index == 0 {
+            self.selected_confirmation_index = 1;
+        } else {
+            self.selected_confirmation_index = 0;
+        }
     }
 
     pub fn confirm_setup(&mut self) {
         if let Some(backend) = &self.selected_backend {
             let api_key = if backend.needs_api_key() {
                 let key_text = self.api_key_input.lines()[0].clone();
-                if self.use_env_var || key_text.is_empty() {
+                if key_text.is_empty() {
                     None
                 } else {
                     Some(key_text)
@@ -209,7 +208,7 @@ impl SetupWizardApp {
                 backend: backend.as_str().to_string(),
                 api_key,
                 model,
-                store_key_in_config: !self.use_env_var,
+                store_key_in_config: true,
             });
         }
     }

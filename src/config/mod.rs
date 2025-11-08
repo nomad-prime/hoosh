@@ -101,16 +101,14 @@ impl Default for AppConfig {
 impl AppConfig {
     pub fn load() -> ConfigResult<Self> {
         let config_path = Self::config_path()?;
-        let mut config = if config_path.exists() {
-            Self::validate_permissions(&config_path)?;
+        if !config_path.exists() {
+            return Err(ConfigError::NotFound { path: config_path });
+        }
 
-            let content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
-            toml::from_str(&content).map_err(ConfigError::InvalidToml)?
-        } else {
-            let config = Self::default();
-            config.save()?;
-            config
-        };
+        Self::validate_permissions(&config_path)?;
+
+        let content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
+        let mut config: Self = toml::from_str(&content).map_err(ConfigError::InvalidToml)?;
 
         // Ensure default agents are always available
         config.ensure_default_agents()?;
@@ -211,7 +209,17 @@ impl AppConfig {
         }
         let content = toml::to_string_pretty(self)
             .map_err(|e| ConfigError::SerializationError(e.to_string()))?;
-        fs::write(&config_path, content).map_err(ConfigError::IoError)
+        fs::write(&config_path, content).map_err(ConfigError::IoError)?;
+
+        // Set secure permissions on Unix systems (0600)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o600);
+            fs::set_permissions(&config_path, permissions).map_err(ConfigError::IoError)?;
+        }
+
+        Ok(())
     }
 
     pub fn get_backend_config(&self, backend_name: &str) -> Option<&BackendConfig> {
