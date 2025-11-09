@@ -1,4 +1,4 @@
-use crate::tui::app::{AppState, InitialPermissionChoice};
+use crate::tui::app_state::{AppState, InitialPermissionChoice};
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::input_handler::InputHandler;
 use async_trait::async_trait;

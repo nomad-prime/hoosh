@@ -1,4 +1,4 @@
-use crate::tui::app::AppState;
+use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
 use ratatui::text::Span;
 use ratatui::{

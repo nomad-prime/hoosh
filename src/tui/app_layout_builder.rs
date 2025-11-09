@@ -1,4 +1,4 @@
-use crate::tui::app::AppState;
+use crate::tui::app_state::AppState;
 use crate::tui::components::approval_dialog::ApprovalDialog;
 use crate::tui::components::completion_popup::CompletionPopup;
 use crate::tui::components::initial_permission_dialog::InitialPermissionDialog;

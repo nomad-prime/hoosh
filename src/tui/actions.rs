@@ -3,12 +3,9 @@ use tokio::task::JoinHandle;
 
 use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
-use crate::tui::event_loop::EventLoopContext;
+use crate::tui::app_loop::EventLoopContext;
 
-pub fn execute_command(
-    input: String,
-    event_loop_context: &crate::tui::event_loop::EventLoopContext,
-) {
+pub fn execute_command(input: String, event_loop_context: &crate::tui::app_loop::EventLoopContext) {
     let command_registry = Arc::clone(&event_loop_context.system_resources.command_registry);
     let conversation = Arc::clone(&event_loop_context.conversation_state.conversation);
     let tool_registry = Arc::clone(&event_loop_context.system_resources.tool_registry);

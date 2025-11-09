@@ -1,4 +1,4 @@
-use crate::tui::app::AppState;
+use crate::tui::app_state::AppState;
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::input_handler::InputHandler;
 use async_trait::async_trait;
@@ -65,9 +65,9 @@ impl InputHandler for PermissionHandler {
                     None
                 }
                 KeyCode::Enter => selected_option.as_ref().map(|opt| match opt {
-                    crate::tui::app::PermissionOption::YesOnce => (true, None),
-                    crate::tui::app::PermissionOption::No => (false, None),
-                    crate::tui::app::PermissionOption::TrustProject(project_path) => (
+                    crate::tui::app_state::PermissionOption::YesOnce => (true, None),
+                    crate::tui::app_state::PermissionOption::No => (false, None),
+                    crate::tui::app_state::PermissionOption::TrustProject(project_path) => (
                         true,
                         Some(crate::permissions::PermissionScope::ProjectWide(
                             project_path.clone(),

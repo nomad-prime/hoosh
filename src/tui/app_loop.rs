@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
-use super::app::AppState;
+use super::app_state::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
 use crate::agent::{AgentEvent, Conversation};
