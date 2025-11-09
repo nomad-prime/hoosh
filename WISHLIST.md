@@ -1,9 +1,5 @@
 ### Wishes
 
-### Continuing conversations is not working
-
-seems to be broken, need to investigate
-
 ### Tool Status
 
 currently I add the tool and then append tool result (preview) in messages. Ideally there is a space above status and

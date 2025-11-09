@@ -157,6 +157,16 @@ impl Agent {
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(AgentEvent::Thinking);
 
+        // Repair any incomplete tool calls from previous interrupted sessions
+        let pre_repair_count = conversation.messages.len();
+        if conversation.repair_incomplete_tool_calls() {
+            // Persist the synthetic tool results that were just added
+            let post_repair_count = conversation.messages.len();
+            for i in pre_repair_count..post_repair_count {
+                self.persist_message(&conversation.messages[i]);
+            }
+        }
+
         // Apply context compression if configured
         if let Some(context_manager) = &self.context_manager {
             self.apply_context_compression(conversation, context_manager)
