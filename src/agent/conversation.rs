@@ -155,21 +155,106 @@ impl Conversation {
     }
 
     pub fn has_pending_tool_calls(&self) -> bool {
+        // Check last message first (assistant with tool_calls)
         if let Some(last_message) = self.messages.last()
             && last_message.role == "assistant"
+            && last_message.tool_calls.is_some()
         {
-            return last_message.tool_calls.is_some();
+            return true;
         }
+
+        // Check second-to-last message (assistant with tool_calls, followed by user message)
+        if self.messages.len() >= 2 {
+            let last_is_user = self
+                .messages
+                .last()
+                .map(|m| m.role == "user")
+                .unwrap_or(false);
+
+            if last_is_user {
+                let second_to_last = &self.messages[self.messages.len() - 2];
+                if second_to_last.role == "assistant" && second_to_last.tool_calls.is_some() {
+                    return true;
+                }
+            }
+        }
+
         false
     }
 
     pub fn get_pending_tool_calls(&self) -> Option<&Vec<ToolCall>> {
+        // Check last message first (assistant with tool_calls)
         if let Some(last_message) = self.messages.last()
             && last_message.role == "assistant"
+            && let Some(ref tool_calls) = last_message.tool_calls
         {
-            return last_message.tool_calls.as_ref();
+            return Some(tool_calls);
         }
+
+        // Check second-to-last message (assistant with tool_calls, followed by user message)
+        if self.messages.len() >= 2 {
+            let last_is_user = self
+                .messages
+                .last()
+                .map(|m| m.role == "user")
+                .unwrap_or(false);
+
+            if last_is_user {
+                let second_to_last = &self.messages[self.messages.len() - 2];
+                if second_to_last.role == "assistant" {
+                    return second_to_last.tool_calls.as_ref();
+                }
+            }
+        }
+
         None
+    }
+
+    /// Repairs the conversation by adding synthetic tool_results for pending tool_calls.
+    /// This handles the case where the system crashed after persisting an assistant message
+    /// with tool_calls but before persisting the tool_results.
+    /// Returns true if any repair was performed.
+    pub fn repair_incomplete_tool_calls(&mut self) -> bool {
+        if !self.has_pending_tool_calls() {
+            return false;
+        }
+
+        let tool_calls = self.get_pending_tool_calls().unwrap().clone();
+
+        // Check if last message is a user message (interruption + continue scenario)
+        let last_is_user = self
+            .messages
+            .last()
+            .map(|m| m.role == "user")
+            .unwrap_or(false);
+
+        // If last is user, we need to insert tool results before it
+        let user_message = if last_is_user {
+            self.messages.pop()
+        } else {
+            None
+        };
+
+        // Add synthetic tool_results for each incomplete tool_call
+        for tool_call in tool_calls {
+            let synthetic_result = ConversationMessage {
+                role: "tool".to_string(),
+                content: Some(
+                    "Error: Tool execution was interrupted. The previous session ended before this tool could complete. Please try again.".to_string()
+                ),
+                tool_calls: None,
+                tool_call_id: Some(tool_call.id),
+                name: None,
+            };
+            self.messages.push(synthetic_result);
+        }
+
+        // Put user message back if we removed it
+        if let Some(user_msg) = user_message {
+            self.messages.push(user_msg);
+        }
+
+        true
     }
 
     /// Compact the conversation by replacing old messages with a summary
@@ -341,5 +426,261 @@ mod tests {
         assert!(message.content.unwrap().starts_with("Error: "));
         assert_eq!(message.tool_call_id, Some("call_123".to_string()));
         assert_eq!(message.name, Some("read_file".to_string()));
+    }
+
+    #[test]
+    fn test_has_pending_tool_calls_when_last_message_is_assistant() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read test.txt".to_string());
+
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test.txt\"}".to_string(),
+            },
+        };
+
+        conversation.add_assistant_message(None, Some(vec![tool_call]));
+
+        // Last message is assistant with tool_calls
+        assert!(conversation.has_pending_tool_calls());
+        assert!(conversation.get_pending_tool_calls().is_some());
+        assert_eq!(conversation.get_pending_tool_calls().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_has_pending_tool_calls_when_user_message_follows() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read test.txt".to_string());
+
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test.txt\"}".to_string(),
+            },
+        };
+
+        conversation.add_assistant_message(None, Some(vec![tool_call]));
+        // Simulate user saying "continue" after interruption
+        conversation.add_user_message("continue".to_string());
+
+        // Second-to-last message is assistant with tool_calls, last is user
+        assert!(conversation.has_pending_tool_calls());
+        assert!(conversation.get_pending_tool_calls().is_some());
+        assert_eq!(conversation.get_pending_tool_calls().unwrap().len(), 1);
+        assert_eq!(
+            conversation.get_pending_tool_calls().unwrap()[0].id,
+            "call_123"
+        );
+    }
+
+    #[test]
+    fn test_no_pending_tool_calls_when_results_provided() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read test.txt".to_string());
+
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test.txt\"}".to_string(),
+            },
+        };
+
+        conversation.add_assistant_message(None, Some(vec![tool_call]));
+
+        let tool_result = ToolCallResponse::success(
+            "call_123".to_string(),
+            "read_file".to_string(),
+            "Read(test.txt)".to_string(),
+            "File contents".to_string(),
+        );
+        conversation.add_tool_result(tool_result);
+
+        // Tool results provided, no pending calls
+        assert!(!conversation.has_pending_tool_calls());
+        assert!(conversation.get_pending_tool_calls().is_none());
+    }
+
+    #[test]
+    fn test_repair_incomplete_tool_calls_without_user_message() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read test.txt".to_string());
+
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test.txt\"}".to_string(),
+            },
+        };
+
+        conversation
+            .add_assistant_message(Some("Let me read that".to_string()), Some(vec![tool_call]));
+
+        // Last message is assistant with tool_calls (interruption scenario)
+        assert_eq!(conversation.messages.len(), 2);
+        assert!(conversation.has_pending_tool_calls());
+
+        let repaired = conversation.repair_incomplete_tool_calls();
+        assert!(repaired);
+
+        // Should have added synthetic tool result
+        assert_eq!(conversation.messages.len(), 3);
+        assert_eq!(conversation.messages[2].role, "tool");
+        assert_eq!(
+            conversation.messages[2].tool_call_id,
+            Some("call_123".to_string())
+        );
+        assert!(
+            conversation.messages[2]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("interrupted")
+        );
+    }
+
+    #[test]
+    fn test_repair_incomplete_tool_calls_with_user_message() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read test.txt".to_string());
+
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test.txt\"}".to_string(),
+            },
+        };
+
+        conversation
+            .add_assistant_message(Some("Let me read that".to_string()), Some(vec![tool_call]));
+        // User says "continue" after interruption
+        conversation.add_user_message("continue".to_string());
+
+        assert_eq!(conversation.messages.len(), 3);
+        assert!(conversation.has_pending_tool_calls());
+
+        let repaired = conversation.repair_incomplete_tool_calls();
+        assert!(repaired);
+
+        // Should have inserted synthetic tool result BEFORE user message
+        assert_eq!(conversation.messages.len(), 4);
+        assert_eq!(conversation.messages[2].role, "tool");
+        assert_eq!(
+            conversation.messages[2].tool_call_id,
+            Some("call_123".to_string())
+        );
+        assert!(
+            conversation.messages[2]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("interrupted")
+        );
+        // User message should still be last
+        assert_eq!(conversation.messages[3].role, "user");
+        assert_eq!(
+            conversation.messages[3].content,
+            Some("continue".to_string())
+        );
+    }
+
+    #[test]
+    fn test_repair_multiple_incomplete_tool_calls() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read two files".to_string());
+
+        let tool_call1 = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test1.txt\"}".to_string(),
+            },
+        };
+
+        let tool_call2 = ToolCall {
+            id: "call_456".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test2.txt\"}".to_string(),
+            },
+        };
+
+        conversation.add_assistant_message(None, Some(vec![tool_call1, tool_call2]));
+        conversation.add_user_message("continue".to_string());
+
+        assert!(conversation.has_pending_tool_calls());
+        assert_eq!(conversation.get_pending_tool_calls().unwrap().len(), 2);
+
+        let repaired = conversation.repair_incomplete_tool_calls();
+        assert!(repaired);
+
+        // Should have added 2 synthetic tool results before user message
+        assert_eq!(conversation.messages.len(), 5);
+        assert_eq!(conversation.messages[2].role, "tool");
+        assert_eq!(
+            conversation.messages[2].tool_call_id,
+            Some("call_123".to_string())
+        );
+        assert_eq!(conversation.messages[3].role, "tool");
+        assert_eq!(
+            conversation.messages[3].tool_call_id,
+            Some("call_456".to_string())
+        );
+        assert_eq!(conversation.messages[4].role, "user");
+    }
+
+    #[test]
+    fn test_repair_does_nothing_when_no_pending_calls() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Hello".to_string());
+        conversation.add_assistant_message(Some("Hi!".to_string()), None);
+
+        assert!(!conversation.has_pending_tool_calls());
+
+        let repaired = conversation.repair_incomplete_tool_calls();
+        assert!(!repaired);
+
+        // No changes should be made
+        assert_eq!(conversation.messages.len(), 2);
+    }
+
+    #[test]
+    fn test_repair_idempotent() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Read test.txt".to_string());
+
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: "read_file".to_string(),
+                arguments: "{\"path\": \"test.txt\"}".to_string(),
+            },
+        };
+
+        conversation.add_assistant_message(None, Some(vec![tool_call]));
+        conversation.add_user_message("continue".to_string());
+
+        // First repair
+        let repaired1 = conversation.repair_incomplete_tool_calls();
+        assert!(repaired1);
+        let len_after_first = conversation.messages.len();
+
+        // Second repair should do nothing (already repaired)
+        let repaired2 = conversation.repair_incomplete_tool_calls();
+        assert!(!repaired2);
+        assert_eq!(conversation.messages.len(), len_after_first);
     }
 }

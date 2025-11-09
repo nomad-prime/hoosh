@@ -67,11 +67,9 @@ impl IndexStorage {
     }
 
     pub fn default_path() -> Result<PathBuf> {
-        let home = dirs::home_dir().context("Failed to get home directory")?;
-        Ok(home
-            .join(".local")
-            .join("share")
-            .join("hoosh")
+        let project_root = std::env::current_dir().context("Failed to get current directory")?;
+        Ok(project_root
+            .join(".hoosh")
             .join("conversations")
             .join("index.json"))
     }

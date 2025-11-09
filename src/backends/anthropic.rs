@@ -276,6 +276,9 @@ impl AnthropicBackend {
                     message: error_text,
                 }
             }
+            400 => LlmError::InvalidRequest {
+                message: error_text,
+            },
             500..=599 => LlmError::ServerError {
                 status: status_code,
                 message: error_text,

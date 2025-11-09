@@ -14,6 +14,9 @@ pub enum LlmError {
     NetworkError {
         message: String,
     },
+    InvalidRequest {
+        message: String,
+    },
     Other {
         message: String,
     },
@@ -45,6 +48,10 @@ impl LlmError {
             LlmError::NetworkError { message } => {
                 format!("Network error: {}", message)
             }
+            LlmError::InvalidRequest { message } => {
+                let error_msg = Self::extract_error_message(message).unwrap_or(message.clone());
+                format!("Invalid request: {}", error_msg)
+            }
             LlmError::Other { message } => {
                 format!("Error: {}", message)
             }
@@ -68,6 +75,7 @@ impl LlmError {
             LlmError::ServerError { status, .. } => format!("Server error ({})", status),
             LlmError::AuthenticationError { .. } => "Authentication error".to_string(),
             LlmError::NetworkError { .. } => "Network error".to_string(),
+            LlmError::InvalidRequest { .. } => "Invalid request".to_string(),
             LlmError::Other { .. } => "Error occurred".to_string(),
         }
     }
