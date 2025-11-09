@@ -38,6 +38,23 @@ cargo build --release
 
 The compiled binary will be available at `target/release/hoosh`.
 
+## Quick Start
+
+### Initial Setup
+
+Run the interactive setup wizard to configure Hoosh:
+
+```bash
+hoosh init
+```
+
+The wizard will guide you through:
+- Selecting your preferred AI backend (Anthropic, OpenAI, Together AI, or Ollama)
+- Configuring API credentials (environment variable or stored in config)
+- Choosing your default model
+
+You can re-run `hoosh init` at any time to reconfigure your settings.
+
 ## Usage
 
 ### Basic Chat

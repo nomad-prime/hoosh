@@ -1,5 +1,5 @@
-use crate::tui::app::AppState;
 use crate::tui::app_layout_builder::AppLayoutBuilder;
+use crate::tui::app_state::AppState;
 use crate::tui::layout::Layout;
 use crate::tui::layout_builder::LayoutBuilder;
 

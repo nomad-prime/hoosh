@@ -1,4 +1,4 @@
-use super::app::{AppState, MessageLine};
+use super::app_state::{AppState, MessageLine};
 use crate::tui::terminal::HooshTerminal;
 use anyhow::Result;
 use ratatui::text::{Line, Text};

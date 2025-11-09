@@ -1,5 +1,31 @@
 ### Wishes
 
+### Continuing conversations is not working
+
+seems to be broken, need to investigate
+
+### Tool Status
+
+currently I add the tool and then append tool result (preview) in messages. Ideally there is a space above status and
+keeps tool calls there -> important for parallel tools calls
+(especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
+then I keep it above status bar
+
+#### Running Todos
+
+currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
+CRUDing todos could also be a tool call for the model
+
+#### Memory-> and the tool to load
+
+I find myself referencing previous conversations often, so having a way to load previous conversations into memory would
+be helpful. Maybe a command like /load_conversation <conversation_id> that fetches and loads the conversation into the
+current context.
+
+### File Expansion
+
+if a file is referenced in input, file read should be shown afterwards
+
 #### Add messages midflight
 
 want to add messages as llm is working same as claude code
@@ -16,20 +42,9 @@ should always cancel current operation instead of exiting the program, with seco
 
 for LLM calls when repeated failures occur
 
-#### Memory-> and the tool to load
-
-I find myself referencing previous conversations often, so having a way to load previous conversations into memory would
-be helpful. Maybe a command like /load_conversation <conversation_id> that fetches and loads the conversation into the
-current context.
-
 #### Status Flaky
 
 after approval rejection status line stucks on processing
-
-#### Running Todos
-
-currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
-CRUDing todos could also be a tool call for the model
 
 ### System Reminder
 
@@ -38,17 +53,6 @@ Claude code uses system reminder to observe the changes done in the system in re
 ### switch backend
 
 currently switching models and backends is only possible through configs. lets make it into a command
-
-### Tool Status
-
-currently I add the tool and then append tool result (preview) in messages. Ideally there is a space above status and
-keeps tool calls there
-(especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
-then I keep it above status bar
-
-### File Expansion
-
-if a file is referenced in input, file read should be shown afterwards
 
 ### Approve Plan
 
@@ -78,7 +82,6 @@ Search & Navigation Tools
     - general-purpose - Multi-step tasks and research
     - Explore - Fast codebase exploration
     - Plan - Planning and analysis
-    - statusline-setup - Configure status line settings
 
 Web Tools
 
@@ -596,4 +599,15 @@ AI to access visual context and provide better assistance.
 - Support for inline code highlighting
 - Render links and allow opening in browser
 
-### 13. Dynamic Tools
+### Config Pricing API Open AI Compatible
+
+- add support for pricing API for open ai compatible (openrouter e.g.)
+
+### Checkpoint stopping after 100 (configurable steps)
+
+- when in autopilot, we should have llm stop
+
+### Show elapsed time like in claude code
+
+Processing… (esc to interrupt · 24s · ↓ 1.0k tokens)
+
