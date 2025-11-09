@@ -1,23 +1,31 @@
+use super::init_permission_handler::InitialPermissionHandler;
+use super::init_permission_layout::InitialPermissionLayout;
+use super::init_permission_state::{InitialPermissionChoice, InitialPermissionState};
 use crate::permissions::storage::{PermissionRule, PermissionsFile};
 use crate::tools::ToolRegistry;
-use crate::tui::app_state::{AppState, InitialPermissionChoice};
-use crate::tui::handlers::InitialPermissionHandler;
-use crate::tui::init_permission_layout::InitialPermissionLayout;
-use crate::tui::input_handler::InputHandler;
+use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::layout::Layout;
 use crate::tui::terminal::{HooshTerminal, resize_terminal};
 use anyhow::Result;
 use crossterm::event;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::time::Duration;
 
 pub async fn run(
     terminal: HooshTerminal,
     project_root: PathBuf,
     tool_registry: &ToolRegistry,
+    skip_permissions: bool,
 ) -> Result<(HooshTerminal, Option<InitialPermissionChoice>)> {
-    let mut app = AppState::new();
-    app.show_initial_permission_dialog(project_root.clone());
+    // Check if we should show the initial permission dialog
+    let permissions_path = PermissionsFile::get_permissions_path(&project_root);
+    let should_show_initial_dialog = !skip_permissions && !permissions_path.exists();
+
+    if !should_show_initial_dialog {
+        return Ok((terminal, None));
+    }
+
+    let mut app = InitialPermissionState::new(project_root.clone());
 
     let (terminal, choice) = run_dialog_loop(terminal, &mut app).await;
 
@@ -30,7 +38,7 @@ pub async fn run(
 
 async fn run_dialog_loop(
     mut terminal: HooshTerminal,
-    app: &mut AppState,
+    app: &mut InitialPermissionState,
 ) -> (HooshTerminal, Option<InitialPermissionChoice>) {
     let (response_tx, mut response_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut handler = InitialPermissionHandler::new(response_tx);
@@ -48,15 +56,17 @@ async fn run_dialog_loop(
 
         if event::poll(Duration::from_millis(100)).expect("could not poll events") {
             let event = event::read().expect("could not read event");
-            let handler_result = handler.handle_event(&event, app, false).await;
-            use crate::tui::handler_result::KeyHandlerResult;
+            let handler_result = handler.handle_event(&event, app).await;
             if matches!(handler_result, KeyHandlerResult::ShouldQuit) {
+                if let Ok(choice) = response_rx.try_recv() {
+                    return (terminal, choice);
+                }
                 return (terminal, None);
             }
         }
 
         if let Ok(choice) = response_rx.try_recv() {
-            return (terminal, Some(choice));
+            return (terminal, choice);
         }
 
         if app.should_quit {
@@ -67,7 +77,7 @@ async fn run_dialog_loop(
 
 fn save_permission_choice(
     choice: &InitialPermissionChoice,
-    project_root: &Path,
+    project_root: &std::path::Path,
     tool_registry: &ToolRegistry,
 ) -> Result<()> {
     let mut perms_file = PermissionsFile::default();

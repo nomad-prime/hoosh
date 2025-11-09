@@ -1,32 +1,22 @@
-use crate::tui::app_state::{AppState, InitialPermissionChoice};
+use super::init_permission_state::{InitialPermissionChoice, InitialPermissionState};
 use crate::tui::handler_result::KeyHandlerResult;
-use crate::tui::input_handler::InputHandler;
-use async_trait::async_trait;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
 
 pub struct InitialPermissionHandler {
-    pub response_tx: mpsc::UnboundedSender<InitialPermissionChoice>,
+    pub response_tx: mpsc::UnboundedSender<Option<InitialPermissionChoice>>,
 }
 
 impl InitialPermissionHandler {
-    pub fn new(response_tx: mpsc::UnboundedSender<InitialPermissionChoice>) -> Self {
+    pub fn new(response_tx: mpsc::UnboundedSender<Option<InitialPermissionChoice>>) -> Self {
         Self { response_tx }
     }
-}
 
-#[async_trait]
-impl InputHandler for InitialPermissionHandler {
-    async fn handle_event(
+    pub async fn handle_event(
         &mut self,
         event: &Event,
-        app: &mut AppState,
-        _agent_task_active: bool,
+        state: &mut InitialPermissionState,
     ) -> KeyHandlerResult {
-        if !app.is_showing_initial_permission_dialog() {
-            return KeyHandlerResult::NotHandled;
-        }
-
         let Event::Key(key_event) = event else {
             return KeyHandlerResult::NotHandled;
         };
@@ -37,21 +27,21 @@ impl InputHandler for InitialPermissionHandler {
         if let KeyCode::Char('c') = key
             && modifiers.contains(KeyModifiers::CONTROL)
         {
-            app.hide_initial_permission_dialog();
-            app.should_quit = true;
+            state.should_quit = true;
+            let _ = self.response_tx.send(None);
             return KeyHandlerResult::ShouldQuit;
         }
 
         let choice = match key {
             KeyCode::Up => {
-                app.select_prev_initial_permission_option();
+                state.select_prev();
                 None
             }
             KeyCode::Down => {
-                app.select_next_initial_permission_option();
+                state.select_next();
                 None
             }
-            KeyCode::Enter => app.get_selected_initial_permission_choice(),
+            KeyCode::Enter => Some(state.get_selected_choice()),
             KeyCode::Char('1') => Some(InitialPermissionChoice::ReadOnly),
             KeyCode::Char('2') => Some(InitialPermissionChoice::EnableWriteEdit),
             KeyCode::Char('3') | KeyCode::Esc => Some(InitialPermissionChoice::Deny),
@@ -59,8 +49,9 @@ impl InputHandler for InitialPermissionHandler {
         };
 
         if let Some(choice) = choice {
-            app.hide_initial_permission_dialog();
-            let _ = self.response_tx.send(choice);
+            state.should_quit = true;
+            let _ = self.response_tx.send(Some(choice));
+            return KeyHandlerResult::ShouldQuit;
         }
 
         KeyHandlerResult::Handled
