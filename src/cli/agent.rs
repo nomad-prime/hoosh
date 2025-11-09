@@ -1,5 +1,7 @@
 use crate::backends::backend_factory::create_backend;
-use crate::{AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor, console};
+use crate::tui::init_permission;
+use crate::tui::terminal::{init_terminal, restore_terminal};
+use crate::{console, AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor};
 use std::path::PathBuf;
 
 pub async fn handle_agent(
@@ -24,6 +26,25 @@ pub async fn handle_agent(
     let parser = MessageParser::with_working_directory(working_dir.clone());
 
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
+
+    // Initialize permissions before starting the TUI
+    let terminal = init_terminal()?;
+    let terminal = match init_permission::run(
+        terminal,
+        working_dir.clone(),
+        &tool_registry,
+        skip_permissions,
+    )
+    .await?
+    {
+        (terminal, Some(init_permission::InitialPermissionChoice::Deny)) => {
+            restore_terminal(terminal)?;
+            return Ok(());
+        }
+        (terminal, None) => terminal,
+        (terminal, Some(_)) => terminal,
+    };
+    restore_terminal(terminal)?;
 
     let continue_conversation_id = if continue_last {
         let storage = ConversationStorage::with_default_path()?;
