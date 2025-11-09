@@ -1,7 +1,6 @@
 use crate::tui::app_state::AppState;
 use crate::tui::components::approval_dialog::ApprovalDialog;
 use crate::tui::components::completion_popup::CompletionPopup;
-use crate::tui::components::initial_permission_dialog::InitialPermissionDialog;
 use crate::tui::components::input::Input;
 use crate::tui::components::mode_indicator::ModeIndicator;
 use crate::tui::components::permission_dialog::PermissionDialog;
@@ -15,7 +14,6 @@ pub trait AppLayoutBuilder {
     fn mode_indicator(self, visible: bool) -> Self;
     fn permission_dialog(self, content_lines: u16, visible: bool) -> Self;
     fn approval_dialog(self, visible: bool) -> Self;
-    fn initial_permission_dialog(self, visible: bool) -> Self;
     fn completion_popup(self, content_lines: u16, visible: bool) -> Self;
 }
 
@@ -45,14 +43,6 @@ impl AppLayoutBuilder for LayoutBuilder<AppState> {
     fn approval_dialog(self, visible: bool) -> Self {
         self.component(
             ComponentDescriptor::new(6, Some(Box::new(ApprovalDialog)))
-                .with_border()
-                .with_visibility(visible),
-        )
-    }
-
-    fn initial_permission_dialog(self, visible: bool) -> Self {
-        self.component(
-            ComponentDescriptor::new(18, Some(Box::new(InitialPermissionDialog)))
                 .with_border()
                 .with_visibility(visible),
         )

@@ -1,6 +1,5 @@
 pub mod approval_dialog;
 pub mod completion_popup;
-pub mod initial_permission_dialog;
 pub mod input;
 pub mod mode_indicator;
 pub mod permission_dialog;
@@ -8,7 +7,6 @@ pub mod status;
 pub mod status_bar;
 pub use approval_dialog::ApprovalDialog;
 pub use completion_popup::CompletionPopup;
-pub use initial_permission_dialog::InitialPermissionDialog;
 pub use input::Input;
 pub use mode_indicator::ModeIndicator;
 pub use permission_dialog::PermissionDialog;

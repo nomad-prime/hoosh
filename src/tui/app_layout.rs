@@ -11,7 +11,6 @@ impl AppLayout for Layout<AppState> {
     fn create(app: &AppState) -> Self {
         let has_overlay = app.is_showing_tool_permission_dialog()
             || app.is_showing_approval_dialog()
-            || app.is_showing_initial_permission_dialog()
             || app.is_completing();
 
         let mut builder = LayoutBuilder::new()
@@ -20,9 +19,7 @@ impl AppLayout for Layout<AppState> {
             .input_field()
             .mode_indicator(!has_overlay);
 
-        if app.is_showing_initial_permission_dialog() {
-            builder = builder.initial_permission_dialog(true);
-        } else if app.is_showing_tool_permission_dialog() {
+        if app.is_showing_tool_permission_dialog() {
             let lines = app
                 .tool_permission_dialog_state
                 .as_ref()

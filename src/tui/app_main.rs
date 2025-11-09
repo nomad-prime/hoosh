@@ -10,7 +10,7 @@ use crate::tui::app_loop::{
 };
 use crate::tui::app_state::AppState;
 use crate::tui::terminal::{init_terminal, restore_terminal};
-use crate::tui::{handlers, header, init_permission_loop, input_handler};
+use crate::tui::{handlers, header, input_handler};
 use crate::{
     AgentDefinitionManager, AppConfig, CommandRegistry, ConversationStorage, LlmBackend,
     MessageParser, PermissionManager, ToolExecutor, ToolRegistry, register_default_commands,
@@ -25,14 +25,14 @@ pub async fn run(
     config: AppConfig,
     continue_conversation_id: Option<String>,
 ) -> anyhow::Result<()> {
-    let terminal = init_terminal()?;
-    let mut app = AppState::new();
+    let mut terminal = init_terminal()?;
+    let mut app_state = AppState::new();
 
     // Load history from file
     if let Some(history_path) = PromptHistory::default_history_path()
         && let Ok(history) = PromptHistory::with_file(1000, &history_path)
     {
-        app.prompt_history = history;
+        app_state.prompt_history = history;
     }
 
     // Setup working directory
@@ -44,39 +44,25 @@ pub async fn run(
 
     // Register completers
     let file_completer = FileCompleter::new(working_dir.clone());
-    app.register_completer(Box::new(file_completer));
+    app_state.register_completer(Box::new(file_completer));
 
     let mut command_registry = CommandRegistry::new();
     register_default_commands(&mut command_registry)?;
     let command_registry = Arc::new(command_registry);
     let command_completer = CommandCompleter::new(Arc::clone(&command_registry));
-    app.register_completer(Box::new(command_completer));
+    app_state.register_completer(Box::new(command_completer));
 
     // Setup agent manager
     let agent_manager = AgentDefinitionManager::new()?;
     let agent_manager = Arc::new(agent_manager);
     let default_agent = agent_manager.get_default_agent();
 
-    use crate::permissions::storage::PermissionsFile;
-    let permissions_path = PermissionsFile::get_permissions_path(&working_dir);
-    let should_show_initial_dialog = !skip_permissions && !permissions_path.exists();
-
-    let terminal = if should_show_initial_dialog {
-        use crate::tui::app_state::InitialPermissionChoice;
-        let (terminal, choice) =
-            init_permission_loop::run(terminal, working_dir.clone(), &tool_registry).await?;
-
-        if choice.is_none() || matches!(choice, Some(InitialPermissionChoice::Deny)) {
+    let terminal = match terminal.clear() {
+        Ok(_) => terminal,
+        Err(e) => {
             restore_terminal(terminal)?;
-            return Ok(());
+            return Err(e.into());
         }
-
-        // Clear the terminal to remove any remnants from the permission dialog
-        let mut terminal = terminal;
-        terminal.clear()?;
-        terminal
-    } else {
-        terminal
     };
 
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -142,20 +128,20 @@ pub async fn run(
         agent_name,
         None,
     ) {
-        app.add_styled_line(line);
+        app_state.add_styled_line(line);
     }
 
     if !permission_manager.is_enforcing() {
-        app.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
+        app_state.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
     }
 
     if let Some(ref title) = conversation_title
         && !title.is_empty()
     {
-        app.add_message(format!("Continuing: {}", title));
+        app_state.add_message(format!("Continuing: {}", title));
     }
 
-    app.add_message("\n".to_string());
+    app_state.add_message("\n".to_string());
 
     let conversation = Arc::new(tokio::sync::Mutex::new({
         if let Some(ref conv_id_to_load) = continue_conversation_id {
@@ -184,7 +170,7 @@ pub async fn run(
 
     let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager)
         .with_event_sender(event_tx.clone())
-        .with_autopilot_state(std::sync::Arc::clone(&app.autopilot_enabled))
+        .with_autopilot_state(std::sync::Arc::clone(&app_state.autopilot_enabled))
         .with_approval_receiver(approval_response_rx);
 
     let input_handlers: Vec<Box<dyn input_handler::InputHandler + Send>> = vec![
@@ -259,9 +245,9 @@ pub async fn run(
         },
     };
 
-    let terminal = run_event_loop(terminal, &mut app, context).await?;
+    let terminal = run_event_loop(terminal, &mut app_state, context).await?;
 
-    let _ = app.prompt_history.save();
+    let _ = app_state.prompt_history.save();
 
     restore_terminal(terminal)?;
     Ok(())

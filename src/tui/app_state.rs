@@ -51,27 +51,6 @@ impl ApprovalDialogState {
     }
 }
 
-pub struct InitialPermissionDialogState {
-    pub project_path: std::path::PathBuf,
-    pub selected_index: usize,
-}
-
-impl InitialPermissionDialogState {
-    pub fn new(project_path: std::path::PathBuf) -> Self {
-        Self {
-            project_path,
-            selected_index: 0,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum InitialPermissionChoice {
-    ReadOnly,
-    EnableWriteEdit,
-    Deny,
-}
-
 #[derive(Clone)]
 pub enum PermissionOption {
     YesOnce,
@@ -134,7 +113,6 @@ pub struct AppState {
     pub completers: Vec<Box<dyn Completer>>,
     pub tool_permission_dialog_state: Option<ToolPermissionDialogState>,
     pub approval_dialog_state: Option<ApprovalDialogState>,
-    pub initial_permission_dialog_state: Option<InitialPermissionDialogState>,
     pub autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub animation_frame: usize,
     pub prompt_history: PromptHistory,
@@ -170,7 +148,6 @@ impl AppState {
             completers: Vec::new(),
             tool_permission_dialog_state: None,
             approval_dialog_state: None,
-            initial_permission_dialog_state: None,
             autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             animation_frame: 0,
             prompt_history: PromptHistory::new(1000),
@@ -281,46 +258,6 @@ impl AppState {
 
     pub fn hide_tool_permission_dialog(&mut self) {
         self.tool_permission_dialog_state = None;
-    }
-
-    pub fn show_initial_permission_dialog(&mut self, project_path: std::path::PathBuf) {
-        self.initial_permission_dialog_state =
-            Some(InitialPermissionDialogState::new(project_path));
-    }
-
-    pub fn is_showing_initial_permission_dialog(&self) -> bool {
-        self.initial_permission_dialog_state.is_some()
-    }
-
-    pub fn select_next_initial_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.initial_permission_dialog_state {
-            dialog.selected_index = (dialog.selected_index + 1) % 3;
-        }
-    }
-
-    pub fn select_prev_initial_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.initial_permission_dialog_state {
-            if dialog.selected_index == 0 {
-                dialog.selected_index = 2;
-            } else {
-                dialog.selected_index -= 1;
-            }
-        }
-    }
-
-    pub fn get_selected_initial_permission_choice(&self) -> Option<InitialPermissionChoice> {
-        self.initial_permission_dialog_state
-            .as_ref()
-            .map(|dialog| match dialog.selected_index {
-                0 => InitialPermissionChoice::ReadOnly,
-                1 => InitialPermissionChoice::EnableWriteEdit,
-                2 => InitialPermissionChoice::Deny,
-                _ => InitialPermissionChoice::ReadOnly,
-            })
-    }
-
-    pub fn hide_initial_permission_dialog(&mut self) {
-        self.initial_permission_dialog_state = None;
     }
 
     pub fn start_completion(&mut self, trigger_position: usize, completer_index: usize) {
