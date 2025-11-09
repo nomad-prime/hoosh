@@ -45,6 +45,7 @@ pub async fn handle_agent(
         (terminal, Some(_)) => terminal,
     };
     restore_terminal(terminal)?;
+    print!("\n");
 
     let continue_conversation_id = if continue_last {
         let storage = ConversationStorage::with_default_path()?;

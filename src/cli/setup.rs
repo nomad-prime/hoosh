@@ -41,7 +41,7 @@ pub async fn handle_setup() -> Result<()> {
                 // Verify the config can be loaded
                 match AppConfig::load() {
                     Ok(_) => {
-                        println!("\nRun 'hoosh' to start agent!");
+                        print!("\n")
                     }
                     Err(e) => {
                         eprintln!("\n✗ Configuration saved but could not be loaded: {}", e);
