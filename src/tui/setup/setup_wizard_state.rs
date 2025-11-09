@@ -68,7 +68,7 @@ pub struct SetupWizardResult {
     pub store_key_in_config: bool,
 }
 
-pub struct SetupWizardApp {
+pub struct SetupWizardState {
     pub current_step: SetupWizardStep,
     pub selected_backend_index: usize,
     pub selected_backend: Option<BackendType>,
@@ -79,7 +79,7 @@ pub struct SetupWizardApp {
     pub result: Option<SetupWizardResult>,
 }
 
-impl Default for SetupWizardApp {
+impl Default for SetupWizardState {
     fn default() -> Self {
         let mut api_key_input = TextArea::default();
         api_key_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
@@ -104,7 +104,7 @@ impl Default for SetupWizardApp {
     }
 }
 
-impl SetupWizardApp {
+impl SetupWizardState {
     pub fn new() -> Self {
         Self::default()
     }

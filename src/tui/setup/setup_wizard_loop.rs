@@ -1,16 +1,16 @@
 use crate::config::AppConfig;
 use crate::tui::handler_result::KeyHandlerResult;
-use crate::tui::handlers::SetupWizardHandler;
 use crate::tui::layout::Layout;
-use crate::tui::setup_wizard_app::{SetupWizardApp, SetupWizardResult};
-use crate::tui::setup_wizard_layout::SetupWizardLayout;
+use crate::tui::setup::setup_wizard_handler::SetupWizardHandler;
+use crate::tui::setup::setup_wizard_layout::SetupWizardLayout;
+use crate::tui::setup::setup_wizard_state::{SetupWizardResult, SetupWizardState};
 use crate::tui::terminal::{HooshTerminal, resize_terminal};
 use anyhow::Result;
 use crossterm::event;
 use tokio::time::Duration;
 
 pub async fn run(terminal: HooshTerminal) -> Result<(HooshTerminal, Option<SetupWizardResult>)> {
-    let mut app = SetupWizardApp::new();
+    let mut app = SetupWizardState::new();
 
     let (terminal, result) = run_wizard_loop(terminal, &mut app).await;
 
@@ -19,7 +19,7 @@ pub async fn run(terminal: HooshTerminal) -> Result<(HooshTerminal, Option<Setup
 
 async fn run_wizard_loop(
     mut terminal: HooshTerminal,
-    app: &mut SetupWizardApp,
+    app: &mut SetupWizardState,
 ) -> (HooshTerminal, Option<SetupWizardResult>) {
     let (response_tx, mut response_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut handler = SetupWizardHandler::new(response_tx);

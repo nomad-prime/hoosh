@@ -1,5 +1,5 @@
 use crate::tui::component::Component;
-use crate::tui::setup_wizard_app::{BackendType, SetupWizardApp, SetupWizardStep};
+use crate::tui::setup::setup_wizard_state::{BackendType, SetupWizardState, SetupWizardStep};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -48,7 +48,7 @@ impl SetupWizardDialog {
         paragraph.render(area, buf);
     }
 
-    fn render_backend_selection(&self, state: &SetupWizardApp, area: Rect, buf: &mut Buffer) {
+    fn render_backend_selection(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
         let mut lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
@@ -106,7 +106,7 @@ impl SetupWizardDialog {
         paragraph.render(area, buf);
     }
 
-    fn render_api_key_input(&self, state: &SetupWizardApp, area: Rect, buf: &mut Buffer) {
+    fn render_api_key_input(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
         let backend_name = state
             .selected_backend
             .as_ref()
@@ -161,7 +161,7 @@ impl SetupWizardDialog {
         paragraph.render(area, buf);
     }
 
-    fn render_model_selection(&self, state: &SetupWizardApp, area: Rect, buf: &mut Buffer) {
+    fn render_model_selection(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
         let backend_name = state
             .selected_backend
             .as_ref()
@@ -224,7 +224,7 @@ impl SetupWizardDialog {
         paragraph.render(area, buf);
     }
 
-    fn render_confirmation(&self, state: &SetupWizardApp, area: Rect, buf: &mut Buffer) {
+    fn render_confirmation(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
         let backend_name = state
             .selected_backend
             .as_ref()
@@ -309,9 +309,9 @@ impl SetupWizardDialog {
 }
 
 impl Component for SetupWizardDialog {
-    type State = SetupWizardApp;
+    type State = SetupWizardState;
 
-    fn render(&self, state: &SetupWizardApp, area: Rect, buf: &mut Buffer) {
+    fn render(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
         match state.current_step {
             SetupWizardStep::Welcome => self.render_welcome(area, buf),
             SetupWizardStep::BackendSelection => self.render_backend_selection(state, area, buf),

@@ -1,14 +1,14 @@
-use crate::tui::components::SetupWizardDialog;
 use crate::tui::layout::{ComponentDescriptor, Layout};
 use crate::tui::layout_builder::LayoutBuilder;
-use crate::tui::setup_wizard_app::SetupWizardApp;
+use crate::tui::setup::setup_wizard_dialog::SetupWizardDialog;
+use crate::tui::setup::setup_wizard_state::SetupWizardState;
 
 pub trait SetupWizardLayout {
-    fn create(app: &SetupWizardApp) -> Self;
+    fn create(app: &SetupWizardState) -> Self;
 }
 
-impl SetupWizardLayout for Layout<SetupWizardApp> {
-    fn create(_app: &SetupWizardApp) -> Self {
+impl SetupWizardLayout for Layout<SetupWizardState> {
+    fn create(_app: &SetupWizardState) -> Self {
         let mut builder = LayoutBuilder::new();
 
         builder = builder.component(

@@ -1,5 +1,5 @@
 use crate::tui::handler_result::KeyHandlerResult;
-use crate::tui::setup_wizard_app::{SetupWizardApp, SetupWizardResult, SetupWizardStep};
+use crate::tui::setup::setup_wizard_state::{SetupWizardResult, SetupWizardState, SetupWizardStep};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 
@@ -12,7 +12,7 @@ impl SetupWizardHandler {
         Self { response_tx }
     }
 
-    fn handle_text_input(&self, app: &mut SetupWizardApp, event: &KeyEvent) {
+    fn handle_text_input(&self, app: &mut SetupWizardState, event: &KeyEvent) {
         match &app.current_step {
             SetupWizardStep::ApiKeyInput => {
                 app.api_key_input.input(*event);
@@ -27,7 +27,7 @@ impl SetupWizardHandler {
     pub async fn handle_event(
         &mut self,
         event: &Event,
-        app: &mut SetupWizardApp,
+        state: &mut SetupWizardState,
     ) -> KeyHandlerResult {
         let Event::Key(key_event) = event else {
             return KeyHandlerResult::NotHandled;
@@ -39,58 +39,58 @@ impl SetupWizardHandler {
         if let KeyCode::Char('c') = key
             && modifiers.contains(KeyModifiers::CONTROL)
         {
-            app.cancel_setup();
+            state.cancel_setup();
             let _ = self.response_tx.send(None);
             return KeyHandlerResult::ShouldQuit;
         }
 
-        match &app.current_step {
+        match &state.current_step {
             SetupWizardStep::Welcome => match key {
                 KeyCode::Enter => {
-                    app.advance_step();
+                    state.advance_step();
                 }
                 KeyCode::Esc => {
-                    app.cancel_setup();
+                    state.cancel_setup();
                     let _ = self.response_tx.send(None);
                     return KeyHandlerResult::ShouldQuit;
                 }
                 _ => {}
             },
             SetupWizardStep::BackendSelection => match key {
-                KeyCode::Up => app.select_prev_backend(),
-                KeyCode::Down => app.select_next_backend(),
-                KeyCode::Enter => app.advance_step(),
-                KeyCode::Esc => app.go_back(),
+                KeyCode::Up => state.select_prev_backend(),
+                KeyCode::Down => state.select_next_backend(),
+                KeyCode::Enter => state.advance_step(),
+                KeyCode::Esc => state.go_back(),
                 _ => {}
             },
             SetupWizardStep::ApiKeyInput => match key {
-                KeyCode::Enter => app.advance_step(),
-                KeyCode::Esc => app.go_back(),
+                KeyCode::Enter => state.advance_step(),
+                KeyCode::Esc => state.go_back(),
                 _ => {
-                    self.handle_text_input(app, key_event);
+                    self.handle_text_input(state, key_event);
                 }
             },
             SetupWizardStep::ModelSelection => match key {
-                KeyCode::Enter => app.advance_step(),
-                KeyCode::Esc => app.go_back(),
+                KeyCode::Enter => state.advance_step(),
+                KeyCode::Esc => state.go_back(),
                 _ => {
-                    self.handle_text_input(app, key_event);
+                    self.handle_text_input(state, key_event);
                 }
             },
             SetupWizardStep::Confirmation => match key {
-                KeyCode::Up => app.select_prev_confirmation_option(),
-                KeyCode::Down => app.select_next_confirmation_option(),
+                KeyCode::Up => state.select_prev_confirmation_option(),
+                KeyCode::Down => state.select_next_confirmation_option(),
                 KeyCode::Enter => {
-                    if app.selected_confirmation_index == 0 {
-                        app.confirm_setup();
-                        let _ = self.response_tx.send(app.result.clone());
+                    if state.selected_confirmation_index == 0 {
+                        state.confirm_setup();
+                        let _ = self.response_tx.send(state.result.clone());
                     } else {
-                        app.cancel_setup();
+                        state.cancel_setup();
                         let _ = self.response_tx.send(None);
                     }
                     return KeyHandlerResult::ShouldQuit;
                 }
-                KeyCode::Esc => app.go_back(),
+                KeyCode::Esc => state.go_back(),
                 _ => {}
             },
         }

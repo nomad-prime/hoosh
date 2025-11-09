@@ -1,5 +1,5 @@
 use crate::config::AppConfig;
-use crate::tui::setup_wizard_loop;
+use crate::tui::setup::{run, save_wizard_result};
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use anyhow::Result;
 
@@ -21,12 +21,12 @@ pub async fn handle_setup() -> Result<()> {
 
     let terminal = init_terminal()?;
 
-    let (terminal, result) = setup_wizard_loop::run(terminal).await?;
+    let (terminal, result) = run(terminal).await?;
 
     restore_terminal(terminal)?;
 
     if let Some(result) = result {
-        match setup_wizard_loop::save_wizard_result(&result) {
+        match save_wizard_result(&result) {
             Ok(()) => {
                 println!("\n✓ Configuration saved");
                 println!("  Backend: {}", result.backend);

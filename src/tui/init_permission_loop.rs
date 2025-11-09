@@ -2,7 +2,7 @@ use crate::permissions::storage::{PermissionRule, PermissionsFile};
 use crate::tools::ToolRegistry;
 use crate::tui::app_state::{AppState, InitialPermissionChoice};
 use crate::tui::handlers::InitialPermissionHandler;
-use crate::tui::initial_permission_layout::InitialPermissionLayout;
+use crate::tui::init_permission_layout::InitialPermissionLayout;
 use crate::tui::input_handler::InputHandler;
 use crate::tui::layout::Layout;
 use crate::tui::terminal::{HooshTerminal, resize_terminal};
