@@ -4,7 +4,7 @@ use crate::tui::handlers::SetupWizardHandler;
 use crate::tui::layout::Layout;
 use crate::tui::setup_wizard_app::{SetupWizardApp, SetupWizardResult};
 use crate::tui::setup_wizard_layout::SetupWizardLayout;
-use crate::tui::terminal::{resize_terminal, HooshTerminal};
+use crate::tui::terminal::{HooshTerminal, resize_terminal};
 use anyhow::Result;
 use crossterm::event;
 use tokio::time::Duration;
