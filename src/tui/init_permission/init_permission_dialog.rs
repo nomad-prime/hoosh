@@ -1,5 +1,5 @@
-use crate::tui::component::Component;
 use super::init_permission_state::InitialPermissionState;
+use crate::tui::component::Component;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

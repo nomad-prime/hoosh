@@ -5,15 +5,15 @@ use crate::context_management::{
 };
 use crate::history::PromptHistory;
 use crate::tui::app_loop::{
-    run_event_loop, ConversationState, EventChannels, EventLoopContext, RuntimeState,
-    SystemResources,
+    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
+    run_event_loop,
 };
 use crate::tui::app_state::AppState;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use crate::tui::{handlers, header, input_handler};
 use crate::{
-    register_default_commands, AgentDefinitionManager, AppConfig, CommandRegistry, ConversationStorage,
-    LlmBackend, MessageParser, PermissionManager, ToolExecutor, ToolRegistry,
+    AgentDefinitionManager, AppConfig, CommandRegistry, ConversationStorage, LlmBackend,
+    MessageParser, PermissionManager, ToolExecutor, ToolRegistry, register_default_commands,
 };
 use std::sync::Arc;
 

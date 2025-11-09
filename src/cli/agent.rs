@@ -1,7 +1,7 @@
 use crate::backends::backend_factory::create_backend;
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
-use crate::{console, AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor};
+use crate::{AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor, console};
 use std::path::PathBuf;
 
 pub async fn handle_agent(
@@ -45,7 +45,7 @@ pub async fn handle_agent(
         (terminal, Some(_)) => terminal,
     };
     restore_terminal(terminal)?;
-    print!("\n");
+    println!();
 
     let continue_conversation_id = if continue_last {
         let storage = ConversationStorage::with_default_path()?;

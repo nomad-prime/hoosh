@@ -1,7 +1,7 @@
-use crate::tui::layout::{ComponentDescriptor, Layout};
-use crate::tui::layout_builder::LayoutBuilder;
 use super::init_permission_dialog::InitialPermissionDialog;
 use super::init_permission_state::InitialPermissionState;
+use crate::tui::layout::{ComponentDescriptor, Layout};
+use crate::tui::layout_builder::LayoutBuilder;
 
 pub trait InitialPermissionLayout {
     fn create(app: &InitialPermissionState) -> Self;

@@ -1,5 +1,5 @@
-use crate::tui::handler_result::KeyHandlerResult;
 use super::init_permission_state::{InitialPermissionChoice, InitialPermissionState};
+use crate::tui::handler_result::KeyHandlerResult;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
 

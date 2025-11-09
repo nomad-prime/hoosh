@@ -1,11 +1,11 @@
+use super::init_permission_handler::InitialPermissionHandler;
+use super::init_permission_layout::InitialPermissionLayout;
+use super::init_permission_state::{InitialPermissionChoice, InitialPermissionState};
 use crate::permissions::storage::{PermissionRule, PermissionsFile};
 use crate::tools::ToolRegistry;
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::layout::Layout;
 use crate::tui::terminal::{HooshTerminal, resize_terminal};
-use super::init_permission_handler::InitialPermissionHandler;
-use super::init_permission_layout::InitialPermissionLayout;
-use super::init_permission_state::{InitialPermissionChoice, InitialPermissionState};
 use anyhow::Result;
 use crossterm::event;
 use std::path::PathBuf;
