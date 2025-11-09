@@ -71,7 +71,7 @@ impl Default for ContextManagerConfig {
             preserve_recent_percentage: 0.50,
             warning_threshold: 0.70,
             tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
-            sliding_window: None,
+            sliding_window: Some(SlidingWindowConfig::default()),
         }
     }
 }

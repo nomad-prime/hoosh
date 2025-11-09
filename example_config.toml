@@ -17,29 +17,32 @@ review_mode = true
 
 # Context manager configuration
 # Manages conversation context size and token usage
+# Note: Both tool_output_truncation and sliding_window are enabled by default
+# You only need to specify this section if you want to customize the default values
 [context_manager]
 max_tokens = 128000                  # Maximum tokens in context window
 compression_threshold = 0.80         # When to trigger compression (80% of max_tokens)
 preserve_recent_percentage = 0.50    # Percentage of recent messages to keep during compression
 warning_threshold = 0.70             # When to warn about token pressure (70% of max_tokens)
 
-# Tool output truncation configuration
+# Tool output truncation configuration (enabled by default)
 # Reduces token usage by truncating older tool outputs in conversation history
+# Omit this section entirely to use defaults, or customize as needed
 [context_manager.tool_output_truncation]
-max_length = 4000                    # Maximum characters per tool output
-show_truncation_notice = true        # Show "[... truncated N characters ...]" notice
-smart_truncate = false               # If true, keep head + tail instead of just head
-head_length = 3000                   # Characters to keep from start (smart_truncate only)
-tail_length = 1000                   # Characters to keep from end (smart_truncate only)
+max_length = 4000                    # Maximum characters per tool output (default: 4000)
+show_truncation_notice = true        # Show "[... truncated N characters ...]" notice (default: true)
+smart_truncate = false               # If true, keep head + tail instead of just head (default: false)
+head_length = 3000                   # Characters to keep from start (default: 3000, smart_truncate only)
+tail_length = 1000                   # Characters to keep from end (default: 1000, smart_truncate only)
 
-# Sliding window configuration
+# Sliding window configuration (enabled by default)
 # Limits the total number of messages in conversation history to prevent unbounded growth
-# This provides predictable token costs and prevents context overflow
+# Omit this section entirely to use defaults, or customize as needed
 [context_manager.sliding_window]
-window_size = 40                     # Maximum number of messages to keep
-preserve_system = true               # Always keep system messages (recommended)
-preserve_initial_task = true         # Always keep the first user message (recommended)
-min_messages_before_windowing = 50   # Don't apply window until this many messages exist
+window_size = 40                     # Maximum number of messages to keep (default: 40)
+preserve_system = true               # Always keep system messages (default: true, recommended)
+preserve_initial_task = true         # Always keep the first user message (default: true, recommended)
+min_messages_before_windowing = 50   # Don't apply window until this many messages exist (default: 50)
 
 # Backend configurations
 [backends.anthropic]
