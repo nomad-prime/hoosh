@@ -16,6 +16,24 @@ pub enum MessageLine {
     Styled(Line<'static>),
 }
 
+#[derive(Clone, Debug)]
+pub struct ActiveToolCall {
+    pub tool_call_id: String,
+    pub display_name: String,
+    pub status: ToolCallStatus,
+    pub preview: Option<String>,
+    pub result_summary: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ToolCallStatus {
+    Starting,
+    AwaitingApproval,
+    Executing,
+    Completed,
+    Error(String),
+}
+
 pub struct CompletionState {
     pub candidates: Vec<String>,
     pub selected_index: usize,
@@ -123,6 +141,7 @@ pub struct AppState {
     pub input_tokens: usize,
     pub output_tokens: usize,
     pub total_cost: f64,
+    pub active_tool_calls: Vec<ActiveToolCall>,
 }
 
 impl AppState {
@@ -158,6 +177,7 @@ impl AppState {
             input_tokens: 0,
             output_tokens: 0,
             total_cost: 0.0,
+            active_tool_calls: Vec::new(),
         }
     }
 
@@ -341,6 +361,62 @@ impl AppState {
         self.pending_messages.drain(..).collect()
     }
 
+    pub fn add_active_tool_call(&mut self, tool_call_id: String, display_name: String) {
+        self.active_tool_calls.push(ActiveToolCall {
+            tool_call_id,
+            display_name,
+            status: ToolCallStatus::Starting,
+            preview: None,
+            result_summary: None,
+        });
+    }
+
+    pub fn update_tool_call_status(&mut self, tool_call_id: &str, status: ToolCallStatus) {
+        if let Some(tool_call) = self.get_active_tool_call_mut(tool_call_id) {
+            tool_call.status = status;
+        }
+    }
+
+    pub fn set_tool_call_preview(&mut self, tool_call_id: &str, preview: String) {
+        if let Some(tool_call) = self.get_active_tool_call_mut(tool_call_id) {
+            tool_call.preview = Some(preview);
+        }
+    }
+
+    pub fn set_tool_call_result(&mut self, tool_call_id: &str, summary: String) {
+        if let Some(tool_call) = self.get_active_tool_call_mut(tool_call_id) {
+            tool_call.result_summary = Some(summary);
+        }
+    }
+
+    pub fn get_active_tool_call_mut(&mut self, tool_call_id: &str) -> Option<&mut ActiveToolCall> {
+        self.active_tool_calls
+            .iter_mut()
+            .find(|tc| tc.tool_call_id == tool_call_id)
+    }
+
+    pub fn complete_active_tool_calls(&mut self) {
+        let tool_calls = self.active_tool_calls.clone();
+
+        for tool_call in &tool_calls {
+            self.add_message(format!("\n● {}", tool_call.display_name));
+
+            if let Some(summary) = &tool_call.result_summary {
+                self.add_message(format!("  ⎿  {}", summary));
+            }
+
+            if let Some(preview) = &tool_call.preview {
+                self.add_message(format!("\n{}", preview));
+            }
+
+            if let ToolCallStatus::Error(err) = &tool_call.status {
+                self.add_message(format!("  Error: {}", err));
+            }
+        }
+
+        self.active_tool_calls.clear();
+    }
+
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
         match event {
             AgentEvent::Thinking => {
@@ -351,24 +427,36 @@ impl AppState {
             AgentEvent::AssistantThought(content) => {
                 self.add_thought(&content);
             }
-            AgentEvent::ToolCalls(tool_call_displays) => {
+            AgentEvent::ToolCalls(tool_call_info) => {
                 self.agent_state = AgentState::ExecutingTools;
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
-                for display_name in tool_call_displays {
-                    self.add_tool_call(&display_name);
+                for (tool_call_id, display_name) in tool_call_info {
+                    self.add_active_tool_call(tool_call_id, display_name);
                 }
             }
+            AgentEvent::ToolExecutionStarted { tool_call_id, .. } => {
+                self.update_tool_call_status(&tool_call_id, ToolCallStatus::Executing);
+            }
             AgentEvent::ToolPreview {
-                tool_name: _,
+                tool_call_id,
                 preview,
+                ..
             } => {
-                self.add_tool_preview(&preview);
+                self.set_tool_call_preview(&tool_call_id, preview);
             }
-            AgentEvent::ToolResult { summary, .. } => {
-                self.add_status_message(&summary);
+            AgentEvent::ToolResult {
+                tool_call_id,
+                summary,
+                ..
+            } => {
+                self.set_tool_call_result(&tool_call_id, summary);
             }
-            AgentEvent::ToolExecutionComplete => {
+            AgentEvent::ToolExecutionCompleted { tool_call_id, .. } => {
+                self.update_tool_call_status(&tool_call_id, ToolCallStatus::Completed);
+            }
+            AgentEvent::AllToolsComplete => {
+                self.complete_active_tool_calls();
                 self.agent_state = AgentState::Thinking;
             }
             AgentEvent::FinalResponse(content) => {

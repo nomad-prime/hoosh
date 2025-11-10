@@ -40,10 +40,10 @@ impl Component for StatusBar {
 
         let (status_text, status_color) = if let Some(retry_status) = &state.current_retry_status {
             let retry_spinner = retry_spinners[state.animation_frame % retry_spinners.len()];
-            (format!(" {} {}", retry_spinner, retry_status), Color::Red)
+            (format!("{} {}", retry_spinner, retry_status), Color::Red)
         } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {
             let waiting_spinner = waiting_spinners[state.animation_frame % waiting_spinners.len()];
-            (format!(" {} Your turn", waiting_spinner), Color::Yellow)
+            (format!("{} Your turn", waiting_spinner), Color::Yellow)
         } else {
             match state.agent_state {
                 AgentState::Summarizing => {
@@ -51,7 +51,7 @@ impl Component for StatusBar {
                         .animation_frame
                         % thinking_spinners[state.current_thinking_spinner].len()];
                     (
-                        format!(" {} Summarizing", spinner),
+                        format!("{} Summarizing", spinner),
                         Color::Rgb(142, 240, 204),
                     )
                 }
@@ -60,17 +60,14 @@ impl Component for StatusBar {
                     let spinner = thinking_spinners[state.current_thinking_spinner][state
                         .animation_frame
                         % thinking_spinners[state.current_thinking_spinner].len()];
-                    (
-                        format!(" {} Processing", spinner),
-                        Color::Rgb(142, 240, 204),
-                    )
+                    (format!("{} Processing", spinner), Color::Rgb(142, 240, 204))
                 }
                 AgentState::ExecutingTools => {
                     let spinner = executing_spinners[state.current_executing_spinner][state
                         .animation_frame
                         % executing_spinners[state.current_executing_spinner].len()];
                     (
-                        format!(" {} Executing tools", spinner),
+                        format!("{} Executing tools", spinner),
                         Color::Rgb(142, 240, 204),
                     )
                 }

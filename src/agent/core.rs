@@ -317,15 +317,15 @@ impl Agent {
             return Ok(TurnStatus::Complete);
         }
 
-        self.send_event(AgentEvent::ToolExecutionComplete);
+        self.send_event(AgentEvent::AllToolsComplete);
         Ok(TurnStatus::Continue)
     }
 
     fn emit_tool_call_events(&self, tool_calls: &[ToolCall]) {
-        let tool_call_displays: Vec<String> = tool_calls
+        let tool_call_info: Vec<(String, String)> = tool_calls
             .iter()
             .map(|tc| {
-                if let Some(tool) = self.tool_registry.get_tool(&tc.function.name) {
+                let display = if let Some(tool) = self.tool_registry.get_tool(&tc.function.name) {
                     if let Ok(args) = serde_json::from_str(&tc.function.arguments) {
                         tool.format_call_display(&args)
                     } else {
@@ -333,17 +333,19 @@ impl Agent {
                     }
                 } else {
                     tc.function.name.clone()
-                }
+                };
+                (tc.id.clone(), display)
             })
             .collect();
 
-        self.send_event(AgentEvent::ToolCalls(tool_call_displays));
+        self.send_event(AgentEvent::ToolCalls(tool_call_info));
     }
 
     fn emit_tool_results(&self, tool_results: &[ToolCallResponse]) {
         for tool_result in tool_results {
             let summary = self.get_tool_result_summary(tool_result);
             self.send_event(AgentEvent::ToolResult {
+                tool_call_id: tool_result.tool_call_id.clone(),
                 tool_name: tool_result.display_name.clone(),
                 summary,
             });

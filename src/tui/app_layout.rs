@@ -13,8 +13,19 @@ impl AppLayout for Layout<AppState> {
             || app.is_showing_approval_dialog()
             || app.is_completing();
 
+        let active_tool_calls_visible = !app.active_tool_calls.is_empty();
+        let active_tool_calls_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+            let mut height = 1u16;
+            if tc.result_summary.is_some() {
+                height += 1;
+            }
+            acc + height
+        });
+
         let mut builder = LayoutBuilder::new()
             .spacer(1)
+            .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
+            .spacer_if(1, active_tool_calls_visible)
             .status_bar()
             .input_field()
             .mode_indicator(!has_overlay);

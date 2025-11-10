@@ -15,6 +15,10 @@ impl<S> LayoutBuilder<S> {
         self.component(ComponentDescriptor::new(height, None))
     }
 
+    pub fn spacer_if(self, height: u16, visible: bool) -> Self {
+        self.component(ComponentDescriptor::new(height, None).with_visibility(visible))
+    }
+
     pub fn component(mut self, desc: ComponentDescriptor<S>) -> Self {
         self.components.push(desc);
         self
