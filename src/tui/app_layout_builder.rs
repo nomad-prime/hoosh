@@ -1,4 +1,5 @@
 use crate::tui::app_state::AppState;
+use crate::tui::components::active_tool_calls::ActiveToolCallsComponent;
 use crate::tui::components::approval_dialog::ApprovalDialog;
 use crate::tui::components::completion_popup::CompletionPopup;
 use crate::tui::components::input::Input;
@@ -10,6 +11,7 @@ use crate::tui::layout_builder::LayoutBuilder;
 
 pub trait AppLayoutBuilder {
     fn status_bar(self) -> Self;
+    fn active_tool_calls(self, height: u16, visible: bool) -> Self;
     fn input_field(self) -> Self;
     fn mode_indicator(self, visible: bool) -> Self;
     fn permission_dialog(self, content_lines: u16, visible: bool) -> Self;
@@ -20,6 +22,13 @@ pub trait AppLayoutBuilder {
 impl AppLayoutBuilder for LayoutBuilder<AppState> {
     fn status_bar(self) -> Self {
         self.component(ComponentDescriptor::new(1, Some(Box::new(StatusBar))))
+    }
+
+    fn active_tool_calls(self, height: u16, visible: bool) -> Self {
+        self.component(
+            ComponentDescriptor::new(height, Some(Box::new(ActiveToolCallsComponent)))
+                .with_visibility(visible),
+        )
     }
 
     fn input_field(self) -> Self {

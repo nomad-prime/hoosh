@@ -119,6 +119,7 @@ impl ToolExecutor {
             // Always show the preview in the message stream first
             if let Some(sender) = &self.event_sender {
                 let _ = sender.send(AgentEvent::ToolPreview {
+                    tool_call_id: tool_call_id.clone(),
                     tool_name: tool_name.clone(),
                     preview: preview.clone(),
                 });
@@ -135,13 +136,36 @@ impl ToolExecutor {
             }
         }
 
-        // Execute the tool
-        match tool.execute(&args).await {
-            Ok(output) => {
-                ToolCallResponse::success(tool_call_id, tool_name.clone(), display_name, output)
-            }
-            Err(e) => ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e),
+        // Emit execution started event
+        if let Some(sender) = &self.event_sender {
+            let _ = sender.send(AgentEvent::ToolExecutionStarted {
+                tool_call_id: tool_call_id.clone(),
+                tool_name: tool_name.clone(),
+            });
         }
+
+        // Execute the tool
+        let result = match tool.execute(&args).await {
+            Ok(output) => ToolCallResponse::success(
+                tool_call_id.clone(),
+                tool_name.clone(),
+                display_name,
+                output,
+            ),
+            Err(e) => {
+                ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name, e)
+            }
+        };
+
+        // Emit execution completed event
+        if let Some(sender) = &self.event_sender {
+            let _ = sender.send(AgentEvent::ToolExecutionCompleted {
+                tool_call_id: tool_call_id.clone(),
+                tool_name: tool_name.clone(),
+            });
+        }
+
+        result
     }
 
     pub async fn execute_tool_calls(&self, tool_calls: &[ToolCall]) -> Vec<ToolCallResponse> {

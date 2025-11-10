@@ -4,17 +4,26 @@ use crate::permissions::ToolPermissionDescriptor;
 pub enum AgentEvent {
     Thinking,
     AssistantThought(String),
-    ToolCalls(Vec<String>),
+    ToolCalls(Vec<(String, String)>),
     ToolPreview {
+        tool_call_id: String,
         tool_name: String,
         preview: String,
     },
     ToolResult {
-        #[allow(dead_code)]
+        tool_call_id: String,
         tool_name: String,
         summary: String,
     },
-    ToolExecutionComplete,
+    ToolExecutionStarted {
+        tool_call_id: String,
+        tool_name: String,
+    },
+    ToolExecutionCompleted {
+        tool_call_id: String,
+        tool_name: String,
+    },
+    AllToolsComplete,
     FinalResponse(String),
     Error(String),
     MaxStepsReached(usize),
