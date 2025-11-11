@@ -256,7 +256,6 @@ application including:
 - **default_backend**: The backend to use by default (e.g., "anthropic", "openai", "ollama")
 - **default_agent**: The default agent to use for conversations
 - **verbosity**: Logging verbosity level (quiet, normal, verbose, debug)
-- **review_mode**: Whether to require approval for tool calls (true/false)
 - **backends**: Backend-specific configurations
     - **api_key**: Authentication key for the backend
     - **model**: Model to use for this backend

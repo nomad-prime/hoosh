@@ -4,16 +4,13 @@
 default_backend = "anthropic"
 
 # Default agent to use when none is specified
-# Note: If this agent is not defined in the [agents] section below, 
-# a warning will be shown with available agents and the system will 
+# Note: If this agent is not defined in the [agents] section below,
+# a warning will be shown with available agents and the system will
 # fall back to the first available agent
 default_agent = "coder"
 
 # Verbosity level: "quiet", "normal", "verbose", or "debug"
 verbosity = "normal"
-
-# Review mode - whether to ask for confirmation before executing commands
-review_mode = true
 
 # Context manager configuration
 # Manages conversation context size and token usage
@@ -63,7 +60,7 @@ temperature = 0.7
 
 # Agent configurations
 # Note: If the default_agent setting above doesn't match any agent defined here,
-# a warning will be shown and the system will automatically fall back to the 
+# a warning will be shown and the system will automatically fall back to the
 # first available agent from this list
 
 [agents.coder]

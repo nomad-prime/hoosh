@@ -35,14 +35,24 @@ pub struct AppConfig {
     pub default_agent: Option<String>,
     #[serde(default)]
     pub agents: HashMap<String, AgentConfig>,
-    #[serde(default = "default_review_mode")]
-    pub review_mode: bool,
     #[serde(default)]
     pub context_manager: Option<ContextManagerConfig>,
 }
 
-fn default_review_mode() -> bool {
-    true // Default to review mode (safer)
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ProjectConfig {
+    #[serde(default)]
+    pub default_backend: Option<String>,
+    #[serde(default)]
+    pub backends: HashMap<String, BackendConfig>,
+    #[serde(default)]
+    pub verbosity: Option<String>,
+    #[serde(default)]
+    pub default_agent: Option<String>,
+    #[serde(default)]
+    pub agents: HashMap<String, AgentConfig>,
+    #[serde(default)]
+    pub context_manager: Option<ContextManagerConfig>,
 }
 
 impl Default for AppConfig {
@@ -92,7 +102,6 @@ impl Default for AppConfig {
             verbosity: None,
             default_agent: Some("hoosh_coder".to_string()),
             agents,
-            review_mode: default_review_mode(),
             context_manager: None,
         }
     }
@@ -109,6 +118,17 @@ impl AppConfig {
 
         let content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
         let mut config: Self = toml::from_str(&content).map_err(ConfigError::InvalidToml)?;
+
+        if let Ok(project_path) = Self::project_config_path() {
+            if project_path.exists() {
+                Self::validate_permissions(&project_path)?;
+                let project_content =
+                    fs::read_to_string(&project_path).map_err(ConfigError::IoError)?;
+                let project_config: ProjectConfig =
+                    toml::from_str(&project_content).map_err(ConfigError::InvalidToml)?;
+                config.merge(project_config);
+            }
+        }
 
         // Ensure default agents are always available
         config.ensure_default_agents()?;
@@ -312,5 +332,66 @@ impl AppConfig {
         path.push("hoosh");
         path.push("config.toml");
         Ok(path)
+    }
+
+    pub fn project_config_path() -> ConfigResult<PathBuf> {
+        let mut path = std::env::current_dir().map_err(ConfigError::IoError)?;
+        path.push(".hoosh");
+        path.push("config.toml");
+        Ok(path)
+    }
+
+    pub fn merge(&mut self, other: ProjectConfig) {
+        for (key, value) in other.backends {
+            self.backends.insert(key, value);
+        }
+
+        for (key, value) in other.agents {
+            self.agents.insert(key, value);
+        }
+
+        if let Some(default_backend) = other.default_backend {
+            if !default_backend.is_empty() {
+                self.default_backend = default_backend;
+            }
+        }
+
+        if other.verbosity.is_some() {
+            self.verbosity = other.verbosity;
+        }
+
+        if other.default_agent.is_some() {
+            self.default_agent = other.default_agent;
+        }
+
+        if other.context_manager.is_some() {
+            self.context_manager = other.context_manager;
+        }
+    }
+
+    pub fn ensure_project_config() -> ConfigResult<()> {
+        let project_path = Self::project_config_path()?;
+
+        if let Some(parent) = project_path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent).map_err(ConfigError::IoError)?;
+            }
+        }
+
+        if !project_path.exists() {
+            let empty_config = "# Project-specific configuration\n\
+                # This file overrides settings from ~/.config/hoosh/config.toml\n\
+                # Only specify settings you want to override here\n\n";
+            fs::write(&project_path, empty_config).map_err(ConfigError::IoError)?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let permissions = std::fs::Permissions::from_mode(0o600);
+                fs::set_permissions(&project_path, permissions).map_err(ConfigError::IoError)?;
+            }
+        }
+
+        Ok(())
     }
 }
