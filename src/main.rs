@@ -13,26 +13,28 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Config { action }) => {
+            if let Err(e) = AppConfig::ensure_project_config() {
+                eprintln!("Warning: Failed to create project config: {}", e);
+            }
             handle_config(action)?;
         }
         Some(Commands::Conversations { action }) => {
+            if let Err(e) = AppConfig::ensure_project_config() {
+                eprintln!("Warning: Failed to create project config: {}", e);
+            }
             handle_conversations(action)?;
         }
         Some(Commands::Setup) => {
-            // Don't load config before setup - let setup wizard handle it
             handle_setup().await?;
         }
         None => {
-            // Try to load config; if it doesn't exist, run setup wizard first
             let config = match AppConfig::load() {
                 Ok(config) => config,
                 Err(e) => {
-                    // Check if error is specifically about missing config file
                     if matches!(e, ConfigError::NotFound { .. }) {
                         eprintln!("No configuration found. Starting setup wizard...\n");
                         match handle_setup().await {
                             Ok(()) => {
-                                // After setup, try to load the newly created config
                                 match AppConfig::load() {
                                     Ok(cfg) => cfg,
                                     Err(load_err) => {
@@ -60,7 +62,10 @@ async fn main() -> Result<()> {
                 }
             };
 
-            // Initialize console with effective verbosity (CLI takes precedence over config)
+            if let Err(e) = AppConfig::ensure_project_config() {
+                eprintln!("Warning: Failed to create project config: {}", e);
+            }
+
             let effective_verbosity = cli.get_effective_verbosity(config.get_verbosity());
             init_console(effective_verbosity);
 
