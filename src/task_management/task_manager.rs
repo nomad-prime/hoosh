@@ -107,6 +107,64 @@ mod tests {
     use crate::{LlmBackend, PermissionManager, ToolRegistry};
     use std::sync::Arc;
     use tokio::sync::mpsc;
+    use async_trait::async_trait;
+    use crate::agent::Conversation;
+    use crate::backends::LlmResponse;
+    use anyhow::Result;
+
+    // Mock backend that delays to test timeout
+    struct DelayedMockBackend;
+
+    #[async_trait]
+    impl LlmBackend for DelayedMockBackend {
+        async fn send_message(&self, message: &str) -> Result<String> {
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            Ok(format!("Delayed response to: {}", message))
+        }
+
+        async fn send_message_with_tools(
+            &self,
+            _conversation: &Conversation,
+            _tools: &ToolRegistry,
+        ) -> Result<LlmResponse> {
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            Ok(LlmResponse::content_only("Delayed response".to_string()))
+        }
+
+        fn backend_name(&self) -> &str {
+            "delayed-mock"
+        }
+
+        fn model_name(&self) -> &str {
+            "delayed-mock-model"
+        }
+    }
+
+    // Mock backend that returns errors
+    struct ErrorMockBackend;
+
+    #[async_trait]
+    impl LlmBackend for ErrorMockBackend {
+        async fn send_message(&self, _message: &str) -> Result<String> {
+            anyhow::bail!("Simulated backend error")
+        }
+
+        async fn send_message_with_tools(
+            &self,
+            _conversation: &Conversation,
+            _tools: &ToolRegistry,
+        ) -> Result<LlmResponse> {
+            anyhow::bail!("Simulated backend error")
+        }
+
+        fn backend_name(&self) -> &str {
+            "error-mock"
+        }
+
+        fn model_name(&self) -> &str {
+            "error-mock-model"
+        }
+    }
 
     #[tokio::test]
     async fn test_task_manager_execute_simple_task() {
@@ -134,7 +192,8 @@ mod tests {
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(result.success);
-        assert_eq!(result.output, "Task completed successfully");
+        // MockBackend echoes the system message, so check it contains the task prompt
+        assert!(result.output.contains("analyze the code"));
     }
 
     #[tokio::test]
@@ -163,14 +222,16 @@ mod tests {
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(result.success);
-        assert!(result.output.contains("Found 5 files"));
+        // MockBackend echoes the system message, so check it contains the task prompt
+        assert!(result.output.contains("find all rust files"));
     }
 
     #[tokio::test]
     async fn test_task_manager_timeout() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
+        // Use DelayedMockBackend that takes 10 seconds, with timeout of 1 second
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(DelayedMockBackend);
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
@@ -192,14 +253,15 @@ mod tests {
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(!result.success);
-        assert!(result.output.contains("Task timed out") || result.output.contains("No more responses"));
+        assert!(result.output.contains("Task timed out"));
     }
 
     #[tokio::test]
     async fn test_task_manager_backend_error() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
+        // Use ErrorMockBackend that always returns errors
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(ErrorMockBackend);
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();

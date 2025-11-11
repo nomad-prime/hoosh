@@ -18,7 +18,7 @@ use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
-use crate::tools::ToolRegistry;
+use crate::tools::{TaskToolProvider, ToolRegistry};
 use crate::tui::app_loop::{ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources};
 use crate::tui::app_state::AppState;
 use crate::tui::handlers;
@@ -123,6 +123,17 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         &working_dir,
         &mut app_state,
     )?;
+
+    // Phase 2: Register TaskTool now that we have all dependencies
+    // (backend, permission_manager, and tool_registry)
+    let mut tool_registry = tool_registry;
+    let task_provider = Arc::new(TaskToolProvider::new(
+        backend_arc.clone(),
+        Arc::new(tool_registry.clone()),
+        Arc::new(permission_manager.clone()),
+    ));
+    tool_registry.add_provider(task_provider);
+    // Keep tool_registry as non-Arc since ToolExecutor::new expects ToolRegistry
 
     // Setup conversation storage and load conversation
     let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
