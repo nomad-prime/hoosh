@@ -1,23 +1,23 @@
 mod actions;
 mod app_layout;
 mod app_layout_builder;
-mod app_loop;
+pub(crate) mod app_loop;
 mod app_main;
-mod app_state;
+pub(crate) mod app_state;
 mod clipboard;
 mod component;
 pub mod components;
 mod events;
 mod handler_result;
 pub mod handlers;
-mod header;
+pub(crate) mod header;
 pub mod init_permission;
-mod input_handler;
+pub(crate) mod input_handler;
 mod layout;
 mod layout_builder;
 mod message_renderer;
 pub mod setup;
 pub mod terminal;
 
-pub use app_main::run;
+pub use app_main::run_with_session;
 pub use message_renderer::MessageRenderer;

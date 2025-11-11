@@ -11,6 +11,7 @@ pub mod history;
 pub mod parser;
 pub mod permissions;
 pub mod security;
+pub mod session;
 pub mod storage;
 pub mod task_management;
 pub mod tool_executor;
