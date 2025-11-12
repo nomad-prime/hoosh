@@ -65,19 +65,16 @@ Core Development Tools
 - Read - Read files from the filesystem (supports code, images, PDFs, Jupyter notebooks)
 - Write - Create new files or overwrite existing ones
 - Edit - Perform exact string replacements in files
-- NotebookEdit - Edit Jupyter notebook cells
-- Bash - Execute shell commands (git, npm, docker, etc.)
+- Bash - Execute shell commands (git, npm, docker, etc.) -> should add grep and find tools to readonly operations
 - BashOutput - Retrieve output from background bash shells
 - KillShell - Terminate background bash shells
 
 Search & Navigation Tools
 
-- Glob - Find files using glob patterns (e.g., **/*.js)
-- Grep - Search file contents using regex patterns (powered by ripgrep)
 - Task - Launch specialized agents for complex tasks:
     - general-purpose - Multi-step tasks and research
-    - Explore - Fast codebase exploration
-    - Plan - Planning and analysis
+    - Explore - Fast codebase exploration -> should show tokens
+    - Plan - Planning and analysis -> should show token usage
 
 Web Tools
 

@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
 use super::app_state::AppState;
@@ -13,7 +13,7 @@ use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
-use crate::console::{VerbosityLevel, console};
+use crate::console::{console, VerbosityLevel};
 use crate::context_management::{ContextManager, MessageSummarizer};
 use crate::parser::MessageParser;
 use crate::storage::ConversationStorage;
@@ -22,7 +22,7 @@ use crate::tools::ToolRegistry;
 use crate::tui::actions::{answer, execute_command};
 use crate::tui::app_layout::AppLayout;
 use crate::tui::layout::Layout;
-use crate::tui::terminal::{HooshTerminal, resize_terminal};
+use crate::tui::terminal::{resize_terminal, HooshTerminal};
 
 pub struct SystemResources {
     pub backend: Arc<dyn LlmBackend>,
@@ -199,6 +199,9 @@ fn process_handler_result(
             if let Some(task) = agent_task.take() {
                 task.abort();
                 app.agent_state = super::events::AgentState::Idle;
+                app.hide_approval_dialog();
+                app.hide_tool_permission_dialog();
+                app.clear_active_tool_calls();
                 app.add_status_message("Task cancelled by user (press Ctrl+C again to quit)\n");
             }
             app.should_cancel_task = false;
