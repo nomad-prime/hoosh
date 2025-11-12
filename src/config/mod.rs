@@ -119,15 +119,15 @@ impl AppConfig {
         let content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
         let mut config: Self = toml::from_str(&content).map_err(ConfigError::InvalidToml)?;
 
-        if let Ok(project_path) = Self::project_config_path() {
-            if project_path.exists() {
-                Self::validate_permissions(&project_path)?;
-                let project_content =
-                    fs::read_to_string(&project_path).map_err(ConfigError::IoError)?;
-                let project_config: ProjectConfig =
-                    toml::from_str(&project_content).map_err(ConfigError::InvalidToml)?;
-                config.merge(project_config);
-            }
+        if let Ok(project_path) = Self::project_config_path()
+            && project_path.exists()
+        {
+            Self::validate_permissions(&project_path)?;
+            let project_content =
+                fs::read_to_string(&project_path).map_err(ConfigError::IoError)?;
+            let project_config: ProjectConfig =
+                toml::from_str(&project_content).map_err(ConfigError::InvalidToml)?;
+            config.merge(project_config);
         }
 
         // Ensure default agents are always available
@@ -350,10 +350,10 @@ impl AppConfig {
             self.agents.insert(key, value);
         }
 
-        if let Some(default_backend) = other.default_backend {
-            if !default_backend.is_empty() {
-                self.default_backend = default_backend;
-            }
+        if let Some(default_backend) = other.default_backend
+            && !default_backend.is_empty()
+        {
+            self.default_backend = default_backend;
         }
 
         if other.verbosity.is_some() {
@@ -372,10 +372,10 @@ impl AppConfig {
     pub fn ensure_project_config() -> ConfigResult<()> {
         let project_path = Self::project_config_path()?;
 
-        if let Some(parent) = project_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).map_err(ConfigError::IoError)?;
-            }
+        if let Some(parent) = project_path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).map_err(ConfigError::IoError)?;
         }
 
         if !project_path.exists() {

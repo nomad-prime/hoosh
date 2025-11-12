@@ -34,19 +34,17 @@ async fn main() -> Result<()> {
                     if matches!(e, ConfigError::NotFound { .. }) {
                         eprintln!("No configuration found. Starting setup wizard...\n");
                         match handle_setup().await {
-                            Ok(()) => {
-                                match AppConfig::load() {
-                                    Ok(cfg) => cfg,
-                                    Err(load_err) => {
-                                        eprintln!(
-                                            "✗ Critical: Setup completed but config could not be loaded: {}",
-                                            load_err
-                                        );
-                                        eprintln!("Please check your config file and try again.");
-                                        return Err(load_err.into());
-                                    }
+                            Ok(()) => match AppConfig::load() {
+                                Ok(cfg) => cfg,
+                                Err(load_err) => {
+                                    eprintln!(
+                                        "✗ Critical: Setup completed but config could not be loaded: {}",
+                                        load_err
+                                    );
+                                    eprintln!("Please check your config file and try again.");
+                                    return Err(load_err.into());
                                 }
-                            }
+                            },
                             Err(setup_err) => {
                                 eprintln!("✗ Setup failed: {}", setup_err);
                                 return Err(setup_err);

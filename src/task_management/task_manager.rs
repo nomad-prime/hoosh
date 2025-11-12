@@ -102,15 +102,15 @@ impl TaskManager {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::Conversation;
+    use crate::backends::LlmResponse;
     use crate::backends::MockBackend;
     use crate::task_management::{TaskDefinition, TaskManager};
     use crate::{LlmBackend, PermissionManager, ToolRegistry};
+    use anyhow::Result;
+    use async_trait::async_trait;
     use std::sync::Arc;
     use tokio::sync::mpsc;
-    use async_trait::async_trait;
-    use crate::agent::Conversation;
-    use crate::backends::LlmResponse;
-    use anyhow::Result;
 
     // Mock backend that delays to test timeout
     struct DelayedMockBackend;
@@ -170,15 +170,13 @@ mod tests {
     async fn test_task_manager_execute_simple_task() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Arc<dyn LlmBackend> =
-            Arc::new(MockBackend::new());
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
 
@@ -200,15 +198,13 @@ mod tests {
     async fn test_task_manager_execute_explore_task() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Arc<dyn LlmBackend> =
-            Arc::new(MockBackend::new());
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
 
@@ -236,9 +232,8 @@ mod tests {
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
 
@@ -247,7 +242,7 @@ mod tests {
             "long running task".to_string(),
             "long task".to_string(),
         )
-            .with_timeout(1);
+        .with_timeout(1);
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());
@@ -266,9 +261,8 @@ mod tests {
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
 
@@ -289,15 +283,13 @@ mod tests {
     async fn test_task_manager_with_custom_model() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Arc<dyn LlmBackend> =
-            Arc::new(MockBackend::new());
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
 
@@ -306,7 +298,7 @@ mod tests {
             "task with custom model".to_string(),
             "custom model task".to_string(),
         )
-            .with_model("gpt-4".to_string());
+        .with_model("gpt-4".to_string());
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());
@@ -319,14 +311,12 @@ mod tests {
         use crate::tools::TaskToolProvider;
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
-        let mock_backend: Arc<dyn LlmBackend> =
-            Arc::new(MockBackend::new());
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
 
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let tool_registry = Arc::new(ToolRegistry::new());
         let task_provider = Arc::new(TaskToolProvider::new(
@@ -340,11 +330,8 @@ mod tests {
 
         assert!(registry_with_task.get_tool("task").is_some());
 
-        let task_manager = TaskManager::new(
-            mock_backend,
-            registry_with_task.clone(),
-            permission_manager,
-        );
+        let task_manager =
+            TaskManager::new(mock_backend, registry_with_task.clone(), permission_manager);
 
         let task_def = TaskDefinition::new(
             crate::task_management::AgentType::Plan,

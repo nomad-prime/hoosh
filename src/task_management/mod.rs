@@ -9,12 +9,15 @@ pub enum AgentType {
 }
 
 impl AgentType {
-    pub fn from_str(s: &str) -> Result<Self> {
+    pub fn from_name(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "plan" => Ok(AgentType::Plan),
             "explore" => Ok(AgentType::Explore),
             "general-purpose" | "general_purpose" => Ok(AgentType::GeneralPurpose),
-            _ => anyhow::bail!("Unknown agent type: {}. Valid types are: plan, explore, general-purpose", s),
+            _ => anyhow::bail!(
+                "Unknown agent type: {}. Valid types are: plan, explore, general-purpose",
+                s
+            ),
         }
     }
 
@@ -138,20 +141,20 @@ mod tests {
 
     #[test]
     fn test_agent_type_from_str() {
-        assert!(matches!(AgentType::from_str("plan"), Ok(AgentType::Plan)));
+        assert!(matches!(AgentType::from_name("plan"), Ok(AgentType::Plan)));
         assert!(matches!(
-            AgentType::from_str("explore"),
+            AgentType::from_name("explore"),
             Ok(AgentType::Explore)
         ));
         assert!(matches!(
-            AgentType::from_str("general-purpose"),
+            AgentType::from_name("general-purpose"),
             Ok(AgentType::GeneralPurpose)
         ));
         assert!(matches!(
-            AgentType::from_str("general_purpose"),
+            AgentType::from_name("general_purpose"),
             Ok(AgentType::GeneralPurpose)
         ));
-        assert!(AgentType::from_str("invalid").is_err());
+        assert!(AgentType::from_name("invalid").is_err());
     }
 
     #[test]

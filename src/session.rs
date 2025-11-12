@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -19,7 +19,9 @@ use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::{TaskToolProvider, ToolRegistry};
-use crate::tui::app_loop::{ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources};
+use crate::tui::app_loop::{
+    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
+};
 use crate::tui::app_state::AppState;
 use crate::tui::handlers;
 use crate::tui::header;
@@ -137,8 +139,11 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Setup conversation storage and load conversation
     let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
-    let (conversation_id, _conversation_title) =
-        setup_conversation(&conversation_storage, continue_conversation_id, &mut app_state)?;
+    let (conversation_id, _conversation_title) = setup_conversation(
+        &conversation_storage,
+        continue_conversation_id,
+        &mut app_state,
+    )?;
 
     // Initialize conversation
     let conversation = load_or_create_conversation(
@@ -168,7 +173,6 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     // Register command completer after session is initialized
     let command_completer = CommandCompleter::new(Arc::clone(&command_registry));
     app_state.register_completer(Box::new(command_completer));
-
 
     // Build system resources
     let system_resources = SystemResources {
@@ -225,8 +229,8 @@ fn load_history(app_state: &mut AppState) {
     }
 }
 
-async fn setup_completers(app_state: &mut AppState, working_dir: &PathBuf) -> Result<()> {
-    let file_completer = FileCompleter::new(working_dir.clone());
+async fn setup_completers(app_state: &mut AppState, working_dir: &Path) -> Result<()> {
+    let file_completer = FileCompleter::new(working_dir.to_path_buf());
     app_state.register_completer(Box::new(file_completer));
     Ok(())
 }
@@ -242,16 +246,15 @@ fn setup_permission_manager(
     event_tx: mpsc::UnboundedSender<crate::agent::AgentEvent>,
     permission_response_rx: mpsc::UnboundedReceiver<crate::agent::PermissionResponse>,
     skip_permissions: bool,
-    working_dir: &PathBuf,
+    working_dir: &Path,
     app_state: &mut AppState,
 ) -> Result<PermissionManager> {
     let permission_manager = PermissionManager::new(event_tx, permission_response_rx)
         .with_skip_permissions(skip_permissions)
-        .with_project_root(working_dir.clone())
-        .map_err(|e| {
+        .with_project_root(working_dir.to_path_buf())
+        .inspect_err(|e| {
             use crate::console::console;
             console().error(&e.to_string());
-            e
         })?;
 
     if !permission_manager.is_enforcing() {
@@ -286,11 +289,13 @@ fn setup_conversation(
         Ok((conv_id.clone(), Some(metadata.title)))
     } else {
         let conv_id = ConversationStorage::generate_conversation_id();
-        conversation_storage.create_conversation(&conv_id).map_err(|e| {
-            use crate::console::console;
-            console().error(&format!("Failed to create conversation: {}", e));
-            e
-        })?;
+        conversation_storage
+            .create_conversation(&conv_id)
+            .map_err(|e| {
+                use crate::console::console;
+                console().error(&format!("Failed to create conversation: {}", e));
+                e
+            })?;
         Ok((conv_id, None))
     }
 }

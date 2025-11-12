@@ -1,8 +1,8 @@
 use crate::backends::backend_factory::create_backend;
-use crate::session::{initialize_session, SessionConfig};
+use crate::session::{SessionConfig, initialize_session};
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
-use crate::{console, AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor};
+use crate::{AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor, console};
 use std::path::PathBuf;
 
 pub async fn handle_agent(
