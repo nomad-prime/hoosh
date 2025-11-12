@@ -468,6 +468,30 @@ impl AppState {
         self.active_tool_calls.clear();
     }
 
+    pub fn complete_single_tool_call(&mut self, tool_call_id: &str) {
+        if let Some(index) = self
+            .active_tool_calls
+            .iter()
+            .position(|tc| tc.tool_call_id == tool_call_id)
+        {
+            let tool_call = self.active_tool_calls.remove(index);
+
+            self.add_message(format!("\n● {}", tool_call.display_name));
+
+            if let Some(summary) = &tool_call.result_summary {
+                self.add_message(format!("  ⎿  {}", summary));
+            }
+
+            if let Some(preview) = &tool_call.preview {
+                self.add_message(format!("\n{}", preview));
+            }
+
+            if let ToolCallStatus::Error(err) = &tool_call.status {
+                self.add_message(format!("  Error: {}", err));
+            }
+        }
+    }
+
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
         match event {
             AgentEvent::Thinking => {
@@ -505,9 +529,11 @@ impl AppState {
             }
             AgentEvent::ToolExecutionCompleted { tool_call_id, .. } => {
                 self.update_tool_call_status(&tool_call_id, ToolCallStatus::Completed);
+                self.complete_single_tool_call(&tool_call_id);
             }
             AgentEvent::AllToolsComplete => {
-                self.complete_active_tool_calls();
+                // Individual tools are now completed as they finish
+                // This event just signals we're done executing and can start thinking
                 self.agent_state = AgentState::Thinking;
             }
             AgentEvent::FinalResponse(content) => {

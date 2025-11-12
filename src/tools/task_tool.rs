@@ -5,7 +5,7 @@ use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
 use capitalize::Capitalize;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub struct TaskTool {
@@ -112,9 +112,7 @@ impl Tool for TaskTool {
         "Launch a specialized sub-agent to handle complex tasks autonomously. \
         Available agent types:\n\
         - plan: Analyzes codebases and creates implementation plans (max 50 steps)\n\
-        - explore: Quickly searches and understands codebases (max 30 steps)\
-        sub agents should not be called in parallel. Only one sub agent at a time.
-        "
+        - explore: Quickly searches and understands codebases (max 30 steps)"
     }
 
     fn parameter_schema(&self) -> Value {
