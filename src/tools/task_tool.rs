@@ -4,7 +4,7 @@ use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub struct TaskTool {
