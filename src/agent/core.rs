@@ -300,7 +300,7 @@ impl Agent {
         let has_rejection = self.has_user_rejection(&tool_results);
         let has_permission_denied = self.has_permission_denied(&tool_results);
 
-        self.emit_tool_results(&tool_results);
+        // Note: Tool results are now emitted individually during execution in tool_executor
 
         for tool_result in tool_results {
             conversation.add_tool_result(tool_result);
@@ -339,35 +339,6 @@ impl Agent {
             .collect();
 
         self.send_event(AgentEvent::ToolCalls(tool_call_info));
-    }
-
-    fn emit_tool_results(&self, tool_results: &[ToolCallResponse]) {
-        for tool_result in tool_results {
-            let summary = self.get_tool_result_summary(tool_result);
-            self.send_event(AgentEvent::ToolResult {
-                tool_call_id: tool_result.tool_call_id.clone(),
-                tool_name: tool_result.display_name.clone(),
-                summary,
-            });
-        }
-    }
-
-    fn get_tool_result_summary(&self, tool_result: &ToolCallResponse) -> String {
-        if let Some(tool) = self.tool_registry.get_tool(&tool_result.tool_name) {
-            match &tool_result.result {
-                Ok(output) => tool.result_summary(output),
-                Err(e) => self.format_error_summary(e),
-            }
-        } else {
-            match &tool_result.result {
-                Ok(_) => "Completed".to_string(),
-                Err(e) => self.format_error_summary(e),
-            }
-        }
-    }
-
-    fn format_error_summary(&self, error: &crate::tools::error::ToolError) -> String {
-        error.user_facing_message()
     }
 
     fn has_user_rejection(&self, tool_results: &[ToolCallResponse]) -> bool {

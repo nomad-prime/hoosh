@@ -80,4 +80,15 @@ pub enum AgentEvent {
         output_tokens: usize,
         cost: Option<f64>,
     },
+    SubagentStepProgress {
+        tool_call_id: String,
+        step_number: usize,
+        action_type: String,
+        description: String,
+        timestamp: std::time::SystemTime,
+    },
+    SubagentTaskComplete {
+        tool_call_id: String,
+        total_steps: usize,
+    },
 }
