@@ -17,12 +17,22 @@ pub enum MessageLine {
 }
 
 #[derive(Clone, Debug)]
+pub struct SubagentStepSummary {
+    pub step_number: usize,
+    pub action_type: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct ActiveToolCall {
     pub tool_call_id: String,
     pub display_name: String,
     pub status: ToolCallStatus,
     pub preview: Option<String>,
     pub result_summary: Option<String>,
+    pub subagent_steps: Vec<SubagentStepSummary>,
+    pub current_step: usize,
+    pub is_subagent_task: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -32,6 +42,44 @@ pub enum ToolCallStatus {
     Executing,
     Completed,
     Error(String),
+}
+
+impl ActiveToolCall {
+    pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
+        self.subagent_steps.push(step);
+        self.current_step = self.subagent_steps.len();
+    }
+
+    pub fn get_running_summary(&self) -> String {
+        if self.subagent_steps.is_empty() {
+            return String::new();
+        }
+
+        let start = self.subagent_steps.len().saturating_sub(3);
+        let recent = &self.subagent_steps[start..];
+
+        let step_descriptions = recent
+            .iter()
+            .map(|s| {
+                if s.description.len() > 50 {
+                    format!("{}...", &s.description[..50])
+                } else {
+                    s.description.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" → ");
+
+        format!("[{}] {}", self.current_step, step_descriptions)
+    }
+
+    pub fn get_progress_indicator(&self) -> String {
+        if self.subagent_steps.is_empty() {
+            "0%".to_string()
+        } else {
+            format!("⊙ Step {}", self.current_step)
+        }
+    }
 }
 
 pub struct CompletionState {
@@ -368,6 +416,9 @@ impl AppState {
             status: ToolCallStatus::Starting,
             preview: None,
             result_summary: None,
+            subagent_steps: Vec::new(),
+            current_step: 0,
+            is_subagent_task: false,
         });
     }
 
@@ -558,6 +609,31 @@ impl AppState {
                 self.output_tokens = output_tokens;
                 if let Some(call_cost) = cost {
                     self.total_cost += call_cost;
+                }
+            }
+            AgentEvent::SubagentStepProgress {
+                tool_call_id,
+                step_number,
+                action_type,
+                description,
+                ..
+            } => {
+                if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+                    tool_call.is_subagent_task = true;
+                    let step = SubagentStepSummary {
+                        step_number,
+                        action_type,
+                        description,
+                    };
+                    tool_call.add_subagent_step(step);
+                }
+            }
+            AgentEvent::SubagentTaskComplete {
+                tool_call_id,
+                total_steps,
+            } => {
+                if let Some(_tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+                    self.add_debug_message(format!("Subagent completed: {} steps", total_steps));
                 }
             }
         }

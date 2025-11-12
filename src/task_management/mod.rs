@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 pub enum AgentType {
     Plan,
     Explore,
-    GeneralPurpose,
 }
 
 impl AgentType {
@@ -13,7 +12,6 @@ impl AgentType {
         match s.to_lowercase().as_str() {
             "plan" => Ok(AgentType::Plan),
             "explore" => Ok(AgentType::Explore),
-            "general-purpose" | "general_purpose" => Ok(AgentType::GeneralPurpose),
             _ => anyhow::bail!(
                 "Unknown agent type: {}. Valid types are: plan, explore, general-purpose",
                 s
@@ -25,7 +23,6 @@ impl AgentType {
         match self {
             AgentType::Plan => 50,
             AgentType::Explore => 30,
-            AgentType::GeneralPurpose => 100,
         }
     }
 
@@ -38,10 +35,6 @@ impl AgentType {
             AgentType::Explore => {
                 "You are a specialized exploration agent. Your role is to quickly search and understand codebases. \
                 Use file searches, code searches, and analysis to answer questions about the codebase structure and functionality."
-            }
-            AgentType::GeneralPurpose => {
-                "You are a general-purpose agent capable of handling complex multi-step tasks. \
-                You have access to all tools and can perform research, code analysis, and implementation tasks."
             }
         };
 
@@ -146,14 +139,6 @@ mod tests {
             AgentType::from_name("explore"),
             Ok(AgentType::Explore)
         ));
-        assert!(matches!(
-            AgentType::from_name("general-purpose"),
-            Ok(AgentType::GeneralPurpose)
-        ));
-        assert!(matches!(
-            AgentType::from_name("general_purpose"),
-            Ok(AgentType::GeneralPurpose)
-        ));
         assert!(AgentType::from_name("invalid").is_err());
     }
 
@@ -161,7 +146,6 @@ mod tests {
     fn test_agent_type_max_steps() {
         assert_eq!(AgentType::Plan.max_steps(), 50);
         assert_eq!(AgentType::Explore.max_steps(), 30);
-        assert_eq!(AgentType::GeneralPurpose.max_steps(), 100);
     }
 
     #[test]
@@ -173,10 +157,6 @@ mod tests {
         let explore_msg = AgentType::Explore.system_message("find files");
         assert!(explore_msg.contains("exploration agent"));
         assert!(explore_msg.contains("find files"));
-
-        let general_msg = AgentType::GeneralPurpose.system_message("complex task");
-        assert!(general_msg.contains("general-purpose agent"));
-        assert!(general_msg.contains("complex task"));
     }
 
     #[test]

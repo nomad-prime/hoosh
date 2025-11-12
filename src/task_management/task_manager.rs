@@ -267,7 +267,7 @@ mod tests {
         let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
 
         let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::GeneralPurpose,
+            crate::task_management::AgentType::Plan,
             "task that will fail".to_string(),
             "failing task".to_string(),
         );

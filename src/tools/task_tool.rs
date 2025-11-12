@@ -4,7 +4,7 @@ use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub struct TaskTool {
@@ -214,10 +214,8 @@ mod tests {
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            crate::permissions::PermissionManager::new(event_tx, response_rx)
-                .with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_tool = TaskTool::new(
             mock_backend,
