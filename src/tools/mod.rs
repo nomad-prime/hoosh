@@ -1,14 +1,33 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::mpsc;
 
 use crate::permissions::ToolPermissionDescriptor;
+
+/// Context provided to tools during execution
+/// Allows tools to access metadata about their execution and communicate with the parent agent
+#[derive(Clone)]
+pub struct ToolExecutionContext {
+    pub tool_call_id: String,
+    pub event_tx: Option<mpsc::UnboundedSender<crate::agent::AgentEvent>>,
+}
 
 /// Core trait for all tools in the hoosh system
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Execute the tool with the given arguments
     async fn execute(&self, args: &Value) -> ToolResult<String>;
+
+    /// Execute with tool execution context (optional)
+    /// Falls back to execute() if not implemented
+    async fn execute_with_context(
+        &self,
+        args: &Value,
+        _context: Option<ToolExecutionContext>,
+    ) -> ToolResult<String> {
+        self.execute(args).await
+    }
 
     /// Get the tool's name (used for identification)
     fn name(&self) -> &'static str;

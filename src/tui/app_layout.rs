@@ -22,10 +22,30 @@ impl AppLayout for Layout<AppState> {
             acc + height
         });
 
+        // Calculate subagent results visibility and height
+        let has_subagent_tasks = app.active_tool_calls.iter().any(|tc| tc.is_subagent_task);
+        let subagent_results_visible = has_subagent_tasks;
+        let subagent_results_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+            if !tc.is_subagent_task || tc.subagent_steps.is_empty() {
+                return acc;
+            }
+            const MAX_STEPS: usize = 5;
+            let total_steps = tc.subagent_steps.len();
+            let steps_to_show = total_steps.min(MAX_STEPS);
+            let mut height = steps_to_show as u16;
+
+            // Add 1 for ellipsis if there are more steps
+            if total_steps > MAX_STEPS {
+                height += 1;
+            }
+            acc + height
+        });
+
         let mut builder = LayoutBuilder::new()
             .spacer(1)
             .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
-            .spacer_if(1, active_tool_calls_visible)
+            .subagent_results(subagent_results_height, subagent_results_visible)
+            .spacer_if(1, active_tool_calls_visible || subagent_results_visible)
             .status_bar()
             .input_field()
             .mode_indicator(!has_overlay);

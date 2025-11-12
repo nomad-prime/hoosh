@@ -144,20 +144,39 @@ impl ToolExecutor {
             });
         }
 
-        // Execute the tool
-        let result = match tool.execute(&args).await {
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: tool_call_id.clone(),
+            event_tx: self.event_sender.clone(),
+        };
+
+        let result = match tool.execute_with_context(&args, Some(context)).await {
             Ok(output) => ToolCallResponse::success(
                 tool_call_id.clone(),
                 tool_name.clone(),
-                display_name,
+                display_name.clone(),
                 output,
             ),
-            Err(e) => {
-                ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name, e)
-            }
+            Err(e) => ToolCallResponse::error(
+                tool_call_id.clone(),
+                tool_name.clone(),
+                display_name.clone(),
+                e,
+            ),
         };
 
-        // Emit execution completed event
+        // Emit tool result event with summary
+        if let Some(sender) = &self.event_sender {
+            let summary = match &result.result {
+                Ok(output) => tool.result_summary(output),
+                Err(e) => format!("Error: {}", e),
+            };
+            let _ = sender.send(AgentEvent::ToolResult {
+                tool_call_id: tool_call_id.clone(),
+                tool_name: display_name.clone(),
+                summary,
+            });
+        }
+
         if let Some(sender) = &self.event_sender {
             let _ = sender.send(AgentEvent::ToolExecutionCompleted {
                 tool_call_id: tool_call_id.clone(),

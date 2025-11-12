@@ -39,6 +39,7 @@ rand = "0.8"
 arboard = "3.4"
 textwrap = "0.16"
 chrono = "0.4"
+capitalize = "0.3.4"
 
 # Use ureq instead of reqwest for simpler HTTP client that doesn't pull in ICU deps
 reqwest = { version = "0.12", features = ["json", "stream"], optional = true }

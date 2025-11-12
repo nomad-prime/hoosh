@@ -3,8 +3,9 @@ use crate::permissions::{PermissionManager, ToolPermissionBuilder, ToolPermissio
 use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
+use capitalize::Capitalize;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub struct TaskTool {
@@ -26,7 +27,11 @@ impl TaskTool {
         }
     }
 
-    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
+    async fn execute_impl(
+        &self,
+        args: &Value,
+        context: Option<crate::tools::ToolExecutionContext>,
+    ) -> ToolResult<String> {
         let args: TaskArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "task".to_string(),
@@ -45,11 +50,19 @@ impl TaskTool {
             task_def = task_def.with_model(model);
         }
 
-        let task_manager = TaskManager::new(
+        let mut task_manager = TaskManager::new(
             self.backend.clone(),
             self.tool_registry.clone(),
             self.permission_manager.clone(),
         );
+
+        if let Some(ctx) = context
+            && let Some(tx) = ctx.event_tx
+        {
+            task_manager = task_manager
+                .with_event_sender(tx)
+                .with_tool_call_id(ctx.tool_call_id);
+        }
 
         let result = task_manager
             .execute_task(task_def)
@@ -76,7 +89,15 @@ struct TaskArgs {
 #[async_trait]
 impl Tool for TaskTool {
     async fn execute(&self, args: &Value) -> ToolResult<String> {
-        self.execute_impl(args).await
+        self.execute_impl(args, None).await
+    }
+
+    async fn execute_with_context(
+        &self,
+        args: &Value,
+        context: Option<crate::tools::ToolExecutionContext>,
+    ) -> ToolResult<String> {
+        self.execute_impl(args, context).await
     }
 
     fn name(&self) -> &'static str {
@@ -91,8 +112,7 @@ impl Tool for TaskTool {
         "Launch a specialized sub-agent to handle complex tasks autonomously. \
         Available agent types:\n\
         - plan: Analyzes codebases and creates implementation plans (max 50 steps)\n\
-        - explore: Quickly searches and understands codebases (max 30 steps)\n\
-        - general-purpose: Handles complex multi-step tasks with full tool access (max 100 steps)"
+        - explore: Quickly searches and understands codebases (max 30 steps)"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -101,7 +121,7 @@ impl Tool for TaskTool {
             "properties": {
                 "subagent_type": {
                     "type": "string",
-                    "enum": ["plan", "explore", "general-purpose"],
+                    "enum": ["plan", "explore"],
                     "description": "The type of specialized agent to use"
                 },
                 "prompt": {
@@ -124,8 +144,9 @@ impl Tool for TaskTool {
     fn format_call_display(&self, args: &Value) -> String {
         if let Ok(parsed_args) = serde_json::from_value::<TaskArgs>(args.clone()) {
             format!(
-                "Task[{}]({})",
-                parsed_args.subagent_type, parsed_args.description
+                "{} ({})",
+                parsed_args.subagent_type.capitalize_first_only(),
+                parsed_args.description
             )
         } else {
             "Task(?)".to_string()
@@ -214,10 +235,8 @@ mod tests {
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            crate::permissions::PermissionManager::new(event_tx, response_rx)
-                .with_skip_permissions(true),
-        );
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
         let task_tool = TaskTool::new(
             mock_backend,
@@ -264,35 +283,6 @@ mod tests {
         let result = task_tool.execute(&args).await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("matching files"));
-    }
-
-    #[tokio::test]
-    async fn test_task_tool_execute_general_purpose() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn crate::backends::LlmBackend> =
-            Arc::new(MockBackend::new(vec![LlmResponse::content_only(
-                "Complex task completed".to_string(),
-            )]));
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            crate::permissions::PermissionManager::new(event_tx, response_rx)
-                .with_skip_permissions(true),
-        );
-
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
-
-        let args = json!({
-            "subagent_type": "general-purpose",
-            "prompt": "Perform complex analysis and refactoring",
-            "description": "Complex refactoring"
-        });
-
-        let result = task_tool.execute(&args).await;
-        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -415,7 +405,6 @@ mod tests {
         assert!(description.contains("specialized sub-agent"));
         assert!(description.contains("plan"));
         assert!(description.contains("explore"));
-        assert!(description.contains("general-purpose"));
     }
 
     #[test]
@@ -464,7 +453,7 @@ mod tests {
         });
 
         let display = task_tool.format_call_display(&args);
-        assert_eq!(display, "Task[plan](Planning task)");
+        assert_eq!(display, "Plan (Planning task)");
     }
 
     #[test]
