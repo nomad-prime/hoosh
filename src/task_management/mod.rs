@@ -12,10 +12,7 @@ impl AgentType {
         match s.to_lowercase().as_str() {
             "plan" => Ok(AgentType::Plan),
             "explore" => Ok(AgentType::Explore),
-            _ => anyhow::bail!(
-                "Unknown agent type: {}. Valid types are: plan, explore, general-purpose",
-                s
-            ),
+            _ => anyhow::bail!("Unknown agent type: {}. Valid types are: plan, explore", s),
         }
     }
 

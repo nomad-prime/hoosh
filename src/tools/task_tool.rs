@@ -4,7 +4,7 @@ use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 pub struct TaskTool {
@@ -91,8 +91,7 @@ impl Tool for TaskTool {
         "Launch a specialized sub-agent to handle complex tasks autonomously. \
         Available agent types:\n\
         - plan: Analyzes codebases and creates implementation plans (max 50 steps)\n\
-        - explore: Quickly searches and understands codebases (max 30 steps)\n\
-        - general-purpose: Handles complex multi-step tasks with full tool access (max 100 steps)"
+        - explore: Quickly searches and understands codebases (max 30 steps)"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -101,7 +100,7 @@ impl Tool for TaskTool {
             "properties": {
                 "subagent_type": {
                     "type": "string",
-                    "enum": ["plan", "explore", "general-purpose"],
+                    "enum": ["plan", "explore"],
                     "description": "The type of specialized agent to use"
                 },
                 "prompt": {
@@ -265,35 +264,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_task_tool_execute_general_purpose() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn crate::backends::LlmBackend> =
-            Arc::new(MockBackend::new(vec![LlmResponse::content_only(
-                "Complex task completed".to_string(),
-            )]));
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = Arc::new(
-            crate::permissions::PermissionManager::new(event_tx, response_rx)
-                .with_skip_permissions(true),
-        );
-
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
-
-        let args = json!({
-            "subagent_type": "general-purpose",
-            "prompt": "Perform complex analysis and refactoring",
-            "description": "Complex refactoring"
-        });
-
-        let result = task_tool.execute(&args).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
     async fn test_task_tool_invalid_agent_type() {
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
@@ -413,7 +383,6 @@ mod tests {
         assert!(description.contains("specialized sub-agent"));
         assert!(description.contains("plan"));
         assert!(description.contains("explore"));
-        assert!(description.contains("general-purpose"));
     }
 
     #[test]
