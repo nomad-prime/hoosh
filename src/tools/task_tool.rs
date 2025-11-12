@@ -3,6 +3,7 @@ use crate::permissions::{PermissionManager, ToolPermissionBuilder, ToolPermissio
 use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
+use capitalize::Capitalize;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -111,7 +112,9 @@ impl Tool for TaskTool {
         "Launch a specialized sub-agent to handle complex tasks autonomously. \
         Available agent types:\n\
         - plan: Analyzes codebases and creates implementation plans (max 50 steps)\n\
-        - explore: Quickly searches and understands codebases (max 30 steps)"
+        - explore: Quickly searches and understands codebases (max 30 steps)\
+        sub agents should not be called in parallel. Only one sub agent at a time.
+        "
     }
 
     fn parameter_schema(&self) -> Value {
@@ -143,8 +146,9 @@ impl Tool for TaskTool {
     fn format_call_display(&self, args: &Value) -> String {
         if let Ok(parsed_args) = serde_json::from_value::<TaskArgs>(args.clone()) {
             format!(
-                "Task[{}]({})",
-                parsed_args.subagent_type, parsed_args.description
+                "{} ({})",
+                parsed_args.subagent_type.capitalize_first_only(),
+                parsed_args.description
             )
         } else {
             "Task(?)".to_string()

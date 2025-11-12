@@ -1,0 +1,74 @@
+use crate::tui::app_state::AppState;
+use crate::tui::component::Component;
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::{Paragraph, Widget},
+};
+
+pub struct SubagentResultsComponent;
+
+impl Component for SubagentResultsComponent {
+    type State = AppState;
+
+    fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
+        // Only render if there are active subagent tasks
+        let subagent_tasks: Vec<_> = state
+            .active_tool_calls
+            .iter()
+            .filter(|tc| tc.is_subagent_task)
+            .collect();
+
+        if subagent_tasks.is_empty() {
+            return;
+        }
+
+        let mut lines = Vec::new();
+        const MAX_STEPS: usize = 5;
+
+        for tool_call in subagent_tasks {
+            if tool_call.subagent_steps.is_empty() {
+                continue;
+            }
+
+            let total_steps = tool_call.subagent_steps.len();
+            let has_more = total_steps > MAX_STEPS;
+
+            // Get the last N steps
+            let start = total_steps.saturating_sub(MAX_STEPS);
+            let recent_steps = &tool_call.subagent_steps[start..];
+
+            // Show each recent step
+            for (i, step) in recent_steps.iter().enumerate() {
+                let prefix = if i == 0 {
+                    Span::styled("  ⎿ ", Style::default().fg(Color::DarkGray))
+                } else {
+                    Span::styled("    ", Style::default())
+                };
+
+                lines.push(Line::from(vec![
+                    prefix,
+                    Span::styled(
+                        format!("{}", step.description),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+
+            // Show ellipsis at the bottom if there are more steps
+            if has_more {
+                lines.push(Line::from(vec![
+                    Span::styled("    ", Style::default()),
+                    Span::styled("...", Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+        }
+
+        if !lines.is_empty() {
+            let paragraph = Paragraph::new(lines);
+            paragraph.render(area, buf);
+        }
+    }
+}
