@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::agent::{Agent, Conversation};
+use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
 use crate::task_management::{TaskDefinition, TaskEvent, TaskResult};
@@ -13,6 +13,8 @@ pub struct TaskManager {
     backend: Arc<dyn LlmBackend>,
     tool_registry: Arc<ToolRegistry>,
     permission_manager: Arc<PermissionManager>,
+    event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
+    tool_call_id: Option<String>,
 }
 
 impl TaskManager {
@@ -25,7 +27,19 @@ impl TaskManager {
             backend,
             tool_registry,
             permission_manager,
+            event_tx: None,
+            tool_call_id: None,
         }
+    }
+
+    pub fn with_event_sender(mut self, tx: mpsc::UnboundedSender<AgentEvent>) -> Self {
+        self.event_tx = Some(tx);
+        self
+    }
+
+    pub fn with_tool_call_id(mut self, id: String) -> Self {
+        self.tool_call_id = Some(id);
+        self
     }
 
     pub async fn execute_task(&self, task_def: TaskDefinition) -> Result<TaskResult> {
@@ -49,8 +63,13 @@ impl TaskManager {
         let system_message = task_def.agent_type.system_message(&task_def.prompt);
         conversation.add_user_message(system_message);
 
+        let parent_event_tx = self.event_tx.clone();
+        let tool_call_id = self.tool_call_id.clone();
+
         let event_collector = tokio::spawn(async move {
             let mut collected_events = Vec::new();
+            let mut step_count = 0;
+            
             while let Some(event) = event_rx.recv().await {
                 let event_string = format!("{:?}", event);
                 collected_events.push(TaskEvent {
@@ -62,6 +81,19 @@ impl TaskManager {
                     message: event_string,
                     timestamp: std::time::SystemTime::now(),
                 });
+                
+                if let (Some(tx), Some(tcid)) = (&parent_event_tx, &tool_call_id) {
+                    if should_emit_to_parent(&event) {
+                        step_count += 1;
+                        if let Ok(progress_event) = transform_to_subagent_event(
+                            &event,
+                            tcid,
+                            step_count,
+                        ) {
+                            let _ = tx.send(progress_event);
+                        }
+                    }
+                }
             }
             collected_events
         });
@@ -79,6 +111,13 @@ impl TaskManager {
         drop(agent);
 
         let events = event_collector.await.unwrap_or_else(|_| Vec::new());
+        
+        if let (Some(tx), Some(tcid)) = (&self.event_tx, &self.tool_call_id) {
+            let _ = tx.send(AgentEvent::SubagentTaskComplete {
+                tool_call_id: tcid.clone(),
+                total_steps: events.len(),
+            });
+        }
 
         match execute_result {
             Ok(Ok(())) => {
@@ -98,6 +137,56 @@ impl TaskManager {
             Err(_) => Ok(TaskResult::failure("Task timed out".to_string()).with_events(events)),
         }
     }
+}
+
+fn should_emit_to_parent(event: &AgentEvent) -> bool {
+    matches!(
+        event,
+        AgentEvent::AssistantThought(_)
+            | AgentEvent::ToolExecutionStarted { .. }
+            | AgentEvent::ToolExecutionCompleted { .. }
+            | AgentEvent::ToolResult { .. }
+    )
+}
+
+fn transform_to_subagent_event(
+    event: &AgentEvent,
+    tool_call_id: &str,
+    step_number: usize,
+) -> Result<AgentEvent, String> {
+    let (action_type, description) = match event {
+        AgentEvent::AssistantThought(content) => {
+            let preview = if content.len() > 50 {
+                format!("{}...", &content[..50])
+            } else {
+                content.clone()
+            };
+            ("thinking", preview)
+        }
+        AgentEvent::ToolExecutionStarted { tool_name, .. } => {
+            ("tool_starting", format!("Executing {}", tool_name))
+        }
+        AgentEvent::ToolExecutionCompleted { tool_name, .. } => {
+            ("tool_completed", format!("Completed {}", tool_name))
+        }
+        AgentEvent::ToolResult { summary, .. } => {
+            let preview = if summary.len() > 50 {
+                format!("{}...", &summary[..50])
+            } else {
+                summary.clone()
+            };
+            ("tool_result", preview)
+        }
+        _ => return Err("Event not bridged".to_string()),
+    };
+
+    Ok(AgentEvent::SubagentStepProgress {
+        tool_call_id: tool_call_id.to_string(),
+        step_number,
+        action_type: action_type.to_string(),
+        description,
+        timestamp: std::time::SystemTime::now(),
+    })
 }
 
 #[cfg(test)]
@@ -341,5 +430,69 @@ mod tests {
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_task_manager_bridges_subagent_events() {
+        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
+
+        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
+        let tool_registry = Arc::new(ToolRegistry::new());
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
+
+        let (parent_tx, mut parent_rx) = mpsc::unbounded_channel();
+
+        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager)
+            .with_event_sender(parent_tx)
+            .with_tool_call_id("test-task-123".to_string());
+
+        let task_def = TaskDefinition::new(
+            crate::task_management::AgentType::Plan,
+            "test task for event bridging".to_string(),
+            "test".to_string(),
+        );
+
+        tokio::spawn(async move {
+            let _ = task_manager.execute_task(task_def).await;
+        });
+
+        let mut found_progress = false;
+        let mut found_complete = false;
+
+        while let Some(event) = parent_rx.recv().await {
+            match event {
+                crate::agent::AgentEvent::SubagentStepProgress {
+                    tool_call_id,
+                    step_number,
+                    action_type,
+                    description,
+                    ..
+                } => {
+                    assert_eq!(tool_call_id, "test-task-123");
+                    assert!(step_number > 0);
+                    assert!(!action_type.is_empty());
+                    assert!(!description.is_empty());
+                    found_progress = true;
+                }
+                crate::agent::AgentEvent::SubagentTaskComplete {
+                    tool_call_id,
+                    total_steps,
+                } => {
+                    assert_eq!(tool_call_id, "test-task-123");
+                    assert!(total_steps > 0);
+                    found_complete = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            found_progress || found_complete,
+            "Should receive subagent events"
+        );
     }
 }

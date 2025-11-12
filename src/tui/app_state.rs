@@ -628,14 +628,7 @@ impl AppState {
                     tool_call.add_subagent_step(step);
                 }
             }
-            AgentEvent::SubagentTaskComplete {
-                tool_call_id,
-                total_steps,
-            } => {
-                if let Some(_tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-                    self.add_debug_message(format!("Subagent completed: {} steps", total_steps));
-                }
-            }
+            AgentEvent::SubagentTaskComplete { .. } => {}
         }
     }
 

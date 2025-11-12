@@ -26,7 +26,13 @@ impl Component for ActiveToolCallsComponent {
                 ToolCallStatus::AwaitingApproval => {
                     Span::styled("◎", Style::default().fg(Color::Yellow))
                 }
-                ToolCallStatus::Executing => Span::styled("●", Style::default().fg(Color::Cyan)),
+                ToolCallStatus::Executing => {
+                    if tool_call.is_subagent_task && !tool_call.subagent_steps.is_empty() {
+                        Span::styled("⊙", Style::default().fg(Color::Blue))
+                    } else {
+                        Span::styled("●", Style::default().fg(Color::Cyan))
+                    }
+                }
                 ToolCallStatus::Completed => Span::styled("✓", Style::default().fg(Color::Green)),
                 ToolCallStatus::Error(_) => Span::styled("✗", Style::default().fg(Color::Red)),
             };
@@ -52,12 +58,32 @@ impl Component for ActiveToolCallsComponent {
                         Style::default().fg(Color::Red),
                     ));
                 }
+                ToolCallStatus::Executing if tool_call.is_subagent_task => {
+                    if !tool_call.subagent_steps.is_empty() {
+                        let progress = tool_call.get_progress_indicator();
+                        spans.push(Span::styled(
+                            format!(" {}", progress),
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::ITALIC),
+                        ));
+                    }
+                }
                 _ => {}
             }
 
             lines.push(Line::from(spans));
 
-            if let Some(summary) = &tool_call.result_summary {
+            if tool_call.is_subagent_task && tool_call.status == ToolCallStatus::Executing {
+                let running_summary = tool_call.get_running_summary();
+                if !running_summary.is_empty() {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled("├─ ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(running_summary, Style::default().fg(Color::Gray)),
+                    ]));
+                }
+            } else if let Some(summary) = &tool_call.result_summary {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled("⎿ ", Style::default().fg(Color::DarkGray)),

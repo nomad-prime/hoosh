@@ -26,7 +26,11 @@ impl TaskTool {
         }
     }
 
-    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
+    async fn execute_impl(
+        &self,
+        args: &Value,
+        context: Option<crate::tools::ToolExecutionContext>,
+    ) -> ToolResult<String> {
         let args: TaskArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "task".to_string(),
@@ -45,11 +49,19 @@ impl TaskTool {
             task_def = task_def.with_model(model);
         }
 
-        let task_manager = TaskManager::new(
+        let mut task_manager = TaskManager::new(
             self.backend.clone(),
             self.tool_registry.clone(),
             self.permission_manager.clone(),
         );
+
+        if let Some(ctx) = context {
+            if let Some(tx) = ctx.event_tx {
+                task_manager = task_manager
+                    .with_event_sender(tx)
+                    .with_tool_call_id(ctx.tool_call_id);
+            }
+        }
 
         let result = task_manager
             .execute_task(task_def)
@@ -76,7 +88,15 @@ struct TaskArgs {
 #[async_trait]
 impl Tool for TaskTool {
     async fn execute(&self, args: &Value) -> ToolResult<String> {
-        self.execute_impl(args).await
+        self.execute_impl(args, None).await
+    }
+
+    async fn execute_with_context(
+        &self,
+        args: &Value,
+        context: Option<crate::tools::ToolExecutionContext>,
+    ) -> ToolResult<String> {
+        self.execute_impl(args, context).await
     }
 
     fn name(&self) -> &'static str {

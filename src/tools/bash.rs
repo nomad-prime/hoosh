@@ -1,11 +1,13 @@
+use crate::permissions::BashPatternMatcher;
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::bash_blacklist::matches_pattern;
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -374,12 +376,13 @@ impl Tool for BashTool {
             )
         };
 
-        use crate::permissions::BashPatternMatcher;
-        use std::sync::Arc;
+        let target_str = target.unwrap_or("*");
+
+        let approval_prompt = format!("Can I run \"{}\"", pattern_display);
 
         ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
-            .with_approval_prompt(format!(" Can I run \"{}\"", target.unwrap_or(" ")))
+            .with_approval_prompt(approval_prompt)
             .with_persistent_approval(persistent_message)
             .with_suggested_pattern(pattern)
             .with_pattern_matcher(Arc::new(BashPatternMatcher))

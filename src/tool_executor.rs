@@ -145,7 +145,12 @@ impl ToolExecutor {
         }
 
         // Execute the tool
-        let result = match tool.execute(&args).await {
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: tool_call_id.clone(),
+            event_tx: self.event_sender.clone(),
+        };
+        
+        let result = match tool.execute_with_context(&args, Some(context)).await {
             Ok(output) => ToolCallResponse::success(
                 tool_call_id.clone(),
                 tool_name.clone(),
