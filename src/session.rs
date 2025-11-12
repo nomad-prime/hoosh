@@ -1,0 +1,378 @@
+use anyhow::Result;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::mpsc;
+
+use crate::agent::Conversation;
+use crate::agent_definition::AgentDefinitionManager;
+use crate::backends::LlmBackend;
+use crate::commands::{register_default_commands, CommandRegistry};
+use crate::completion::{CommandCompleter, FileCompleter};
+use crate::config::AppConfig;
+use crate::context_management::{
+    ContextCompressionStrategy, ContextManager, MessageSummarizer, SlidingWindowStrategy,
+    ToolOutputTruncationStrategy,
+};
+use crate::history::PromptHistory;
+use crate::parser::MessageParser;
+use crate::permissions::PermissionManager;
+use crate::storage::ConversationStorage;
+use crate::tool_executor::ToolExecutor;
+use crate::tools::{TaskToolProvider, ToolRegistry};
+use crate::tui::app_loop::{
+    ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
+};
+use crate::tui::app_state::AppState;
+use crate::tui::handlers;
+use crate::tui::header;
+use crate::tui::input_handler::InputHandler;
+
+/// Represents the fully initialized session resources needed to run the agent
+pub struct AgentSession {
+    pub app_state: AppState,
+    pub event_loop_context: EventLoopContext,
+}
+
+/// Parameters needed to initialize an agent session
+pub struct SessionConfig {
+    pub backend: Box<dyn LlmBackend>,
+    pub parser: MessageParser,
+    pub skip_permissions: bool,
+    pub tool_registry: ToolRegistry,
+    pub config: AppConfig,
+    pub continue_conversation_id: Option<String>,
+    pub working_dir: PathBuf,
+}
+
+impl SessionConfig {
+    pub fn new(
+        backend: Box<dyn LlmBackend>,
+        parser: MessageParser,
+        skip_permissions: bool,
+        tool_registry: ToolRegistry,
+        config: AppConfig,
+        continue_conversation_id: Option<String>,
+    ) -> Self {
+        let working_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self {
+            backend,
+            parser,
+            skip_permissions,
+            tool_registry,
+            config,
+            continue_conversation_id,
+            working_dir,
+        }
+    }
+
+    pub fn with_working_dir(mut self, working_dir: PathBuf) -> Self {
+        self.working_dir = working_dir;
+        self
+    }
+}
+
+/// Initialize a complete agent session with all required resources
+pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSession> {
+    let SessionConfig {
+        backend,
+        parser,
+        skip_permissions,
+        tool_registry,
+        config,
+        continue_conversation_id,
+        working_dir,
+    } = session_config;
+
+    // Initialize app state with history
+    let mut app_state = AppState::new();
+    load_history(&mut app_state);
+
+    // Setup completers
+    setup_completers(&mut app_state, &working_dir).await?;
+
+    // Setup agent manager
+    let agent_manager = Arc::new(AgentDefinitionManager::new()?);
+    let default_agent = agent_manager.get_default_agent();
+
+    // Display header
+    let working_dir_display = working_dir
+        .to_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| ".".to_string());
+
+    let backend_arc: Arc<dyn LlmBackend> = Arc::from(backend);
+    let agent_name = default_agent.as_ref().map(|a| a.name.as_str());
+    for line in header::create_header_block(
+        backend_arc.backend_name(),
+        backend_arc.model_name(),
+        &working_dir_display,
+        agent_name,
+        None,
+    ) {
+        app_state.add_styled_line(line);
+    }
+
+    // Setup channels
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let (permission_response_tx, permission_response_rx) = mpsc::unbounded_channel();
+    let (approval_response_tx, approval_response_rx) = mpsc::unbounded_channel();
+
+    // Setup permission manager
+    let permission_manager = setup_permission_manager(
+        event_tx.clone(),
+        permission_response_rx,
+        skip_permissions,
+        &working_dir,
+        &mut app_state,
+    )?;
+
+    // Phase 2: Register TaskTool now that we have all dependencies
+    // (backend, permission_manager, and tool_registry)
+    let mut tool_registry = tool_registry;
+    let task_provider = Arc::new(TaskToolProvider::new(
+        backend_arc.clone(),
+        Arc::new(tool_registry.clone()),
+        Arc::new(permission_manager.clone()),
+    ));
+    tool_registry.add_provider(task_provider);
+    // Keep tool_registry as non-Arc since ToolExecutor::new expects ToolRegistry
+
+    // Setup conversation storage and load conversation
+    let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
+    let (conversation_id, _conversation_title) = setup_conversation(
+        &conversation_storage,
+        continue_conversation_id,
+        &mut app_state,
+    )?;
+
+    // Initialize conversation
+    let conversation = load_or_create_conversation(
+        &conversation_storage,
+        &conversation_id,
+        default_agent.as_ref(),
+    )?;
+    let conversation = Arc::new(tokio::sync::Mutex::new(conversation));
+
+    app_state.add_message("\n".to_string());
+
+    // Setup tool execution
+    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager.clone())
+        .with_event_sender(event_tx.clone())
+        .with_autopilot_state(Arc::clone(&app_state.autopilot_enabled))
+        .with_approval_receiver(approval_response_rx);
+
+    // Setup input handlers
+    let input_handlers = create_input_handlers(permission_response_tx, approval_response_tx);
+
+    // Setup context management
+    let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend_arc)));
+    let context_manager = setup_context_manager(&config, summarizer.clone());
+
+    let command_registry = setup_command_registry()?;
+
+    // Register command completer after session is initialized
+    let command_completer = CommandCompleter::new(Arc::clone(&command_registry));
+    app_state.register_completer(Box::new(command_completer));
+
+    // Build system resources
+    let system_resources = SystemResources {
+        backend: backend_arc,
+        parser: Arc::new(parser),
+        tool_registry: Arc::new(tool_registry),
+        tool_executor: Arc::new(tool_executor),
+        agent_manager,
+        command_registry,
+    };
+
+    // Build conversation state
+    let conversation_state = ConversationState {
+        conversation,
+        summarizer,
+        context_manager,
+        current_agent_name: default_agent
+            .as_ref()
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| "assistant".to_string()),
+        conversation_storage,
+        conversation_id,
+    };
+
+    // Build event channels
+    let channels = EventChannels { event_rx, event_tx };
+
+    // Build runtime state
+    let runtime = RuntimeState {
+        permission_manager: Arc::new(permission_manager),
+        input_handlers,
+        working_dir: working_dir_display,
+        config,
+    };
+
+    let event_loop_context = EventLoopContext {
+        system_resources,
+        conversation_state,
+        channels,
+        runtime,
+    };
+
+    Ok(AgentSession {
+        app_state,
+        event_loop_context,
+    })
+}
+
+fn load_history(app_state: &mut AppState) {
+    if let Some(history_path) = PromptHistory::default_history_path()
+        && let Ok(history) = PromptHistory::with_file(1000, &history_path)
+    {
+        app_state.prompt_history = history;
+    }
+}
+
+async fn setup_completers(app_state: &mut AppState, working_dir: &Path) -> Result<()> {
+    let file_completer = FileCompleter::new(working_dir.to_path_buf());
+    app_state.register_completer(Box::new(file_completer));
+    Ok(())
+}
+
+fn setup_command_registry() -> Result<Arc<CommandRegistry>> {
+    let mut command_registry = CommandRegistry::new();
+    register_default_commands(&mut command_registry)?;
+    let command_registry = Arc::new(command_registry);
+    Ok(command_registry)
+}
+
+fn setup_permission_manager(
+    event_tx: mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    permission_response_rx: mpsc::UnboundedReceiver<crate::agent::PermissionResponse>,
+    skip_permissions: bool,
+    working_dir: &Path,
+    app_state: &mut AppState,
+) -> Result<PermissionManager> {
+    let permission_manager = PermissionManager::new(event_tx, permission_response_rx)
+        .with_skip_permissions(skip_permissions)
+        .with_project_root(working_dir.to_path_buf())
+        .inspect_err(|e| {
+            use crate::console::console;
+            console().error(&e.to_string());
+        })?;
+
+    if !permission_manager.is_enforcing() {
+        app_state.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
+    }
+
+    Ok(permission_manager)
+}
+
+fn setup_conversation(
+    conversation_storage: &ConversationStorage,
+    continue_conversation_id: Option<String>,
+    app_state: &mut AppState,
+) -> Result<(String, Option<String>)> {
+    if let Some(ref conv_id) = continue_conversation_id {
+        if !conversation_storage.conversation_exists(conv_id) {
+            use crate::console::console;
+            console().error(&format!("Conversation '{}' not found", conv_id));
+            std::process::exit(1);
+        }
+
+        let metadata = conversation_storage.load_metadata(conv_id).map_err(|e| {
+            use crate::console::console;
+            console().error(&format!("Failed to load conversation metadata: {}", e));
+            e
+        })?;
+
+        if !metadata.title.is_empty() {
+            app_state.add_message(format!("Continuing: {}", metadata.title));
+        }
+
+        Ok((conv_id.clone(), Some(metadata.title)))
+    } else {
+        let conv_id = ConversationStorage::generate_conversation_id();
+        conversation_storage
+            .create_conversation(&conv_id)
+            .map_err(|e| {
+                use crate::console::console;
+                console().error(&format!("Failed to create conversation: {}", e));
+                e
+            })?;
+        Ok((conv_id, None))
+    }
+}
+
+fn load_or_create_conversation(
+    conversation_storage: &ConversationStorage,
+    conversation_id: &str,
+    default_agent: Option<&crate::agent_definition::AgentDefinition>,
+) -> Result<Conversation> {
+    // Try to load existing conversation
+    if conversation_storage.conversation_exists(conversation_id) {
+        match conversation_storage.load_messages(conversation_id) {
+            Ok(messages) => {
+                let mut c = Conversation::new();
+                c.messages = messages;
+                return Ok(c);
+            }
+            Err(e) => {
+                use crate::console::console;
+                console().error(&format!("Failed to load conversation messages: {}", e));
+                return Err(e);
+            }
+        }
+    }
+
+    // Create new conversation
+    let mut conv = Conversation::new();
+    if let Some(agent) = default_agent {
+        conv.add_system_message(agent.content.clone());
+    }
+    Ok(conv)
+}
+
+fn create_input_handlers(
+    permission_response_tx: mpsc::UnboundedSender<crate::agent::PermissionResponse>,
+    approval_response_tx: mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
+) -> Vec<Box<dyn InputHandler + Send>> {
+    vec![
+        Box::new(handlers::PermissionHandler::new(permission_response_tx)),
+        Box::new(handlers::ApprovalHandler::new(approval_response_tx)),
+        Box::new(handlers::CompletionHandler::new()),
+        Box::new(handlers::QuitHandler::new()),
+        Box::new(handlers::SubmitHandler::new()),
+        Box::new(handlers::PasteHandler::new()),
+        Box::new(handlers::TextInputHandler::new()),
+    ]
+}
+
+fn setup_context_manager(
+    config: &AppConfig,
+    summarizer: Arc<MessageSummarizer>,
+) -> Arc<ContextManager> {
+    let context_manager_config = config.get_context_manager_config();
+    let token_accountant = Arc::new(crate::context_management::TokenAccountant::new());
+
+    let compression_strategy = ContextCompressionStrategy::new(
+        context_manager_config.clone(),
+        summarizer,
+        Arc::clone(&token_accountant),
+    );
+
+    let mut context_manager_builder = ContextManager::new(
+        context_manager_config.clone(),
+        Arc::clone(&token_accountant),
+    );
+
+    if let Some(truncation_config) = context_manager_config.tool_output_truncation {
+        let truncation_strategy = ToolOutputTruncationStrategy::new(truncation_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(truncation_strategy));
+    }
+
+    if let Some(sliding_window_config) = context_manager_config.sliding_window {
+        let sliding_window_strategy = SlidingWindowStrategy::new(sliding_window_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(sliding_window_strategy));
+    }
+
+    Arc::new(context_manager_builder.add_strategy(Box::new(compression_strategy)))
+}

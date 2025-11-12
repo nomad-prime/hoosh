@@ -71,11 +71,15 @@ pub mod bash_blacklist;
 pub mod error;
 pub mod file_ops;
 pub mod provider;
+pub mod task_tool;
+pub mod task_tool_provider;
 
 pub use bash::BashTool;
 pub use error::{ToolError, ToolResult};
 pub use file_ops::{EditFileTool, ListDirectoryTool, ReadFileTool, WriteFileTool};
 pub use provider::{BuiltinToolProvider, ToolProvider};
+pub use task_tool::TaskTool;
+pub use task_tool_provider::TaskToolProvider;
 
 /// Tool registry for managing available tools through providers
 #[derive(Clone)]
@@ -159,6 +163,17 @@ impl ToolRegistry {
             }
             self.providers.push(provider);
         }
+    }
+
+    pub fn without(&self, tool_name: &str) -> Self {
+        let mut new_registry = Self::new();
+        for (name, tool) in &self.tools {
+            if *name != tool_name {
+                new_registry.tools.insert(*name, tool.clone());
+            }
+        }
+        new_registry.providers = self.providers.clone();
+        new_registry
     }
 }
 
@@ -406,5 +421,34 @@ mod tests {
         // Refresh should keep the same tools
         registry.refresh();
         assert_eq!(registry.list_tools().len(), 1);
+    }
+
+    #[test]
+    fn test_tool_registry_without() {
+        let mock_tool1 = Arc::new(MockTool::new(
+            "mock_tool1",
+            "Mock tool 1",
+            "Mock response 1",
+        ));
+        let mock_tool2 = Arc::new(MockTool::new(
+            "mock_tool2",
+            "Mock tool 2",
+            "Mock response 2",
+        ));
+
+        let mut registry = ToolRegistry::new();
+        registry.register_tool(mock_tool1.clone()).unwrap();
+        registry.register_tool(mock_tool2.clone()).unwrap();
+
+        assert_eq!(registry.list_tools().len(), 2);
+        assert!(registry.get_tool("mock_tool1").is_some());
+        assert!(registry.get_tool("mock_tool2").is_some());
+
+        let filtered = registry.without("mock_tool1");
+        assert_eq!(filtered.list_tools().len(), 1);
+        assert!(filtered.get_tool("mock_tool1").is_none());
+        assert!(filtered.get_tool("mock_tool2").is_some());
+
+        assert_eq!(registry.list_tools().len(), 2);
     }
 }
