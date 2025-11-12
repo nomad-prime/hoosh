@@ -492,6 +492,10 @@ impl AppState {
         }
     }
 
+    pub fn clear_active_tool_calls(&mut self) {
+        self.active_tool_calls.clear();
+    }
+
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
         match event {
             AgentEvent::Thinking => {
