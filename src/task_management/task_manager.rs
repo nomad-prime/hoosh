@@ -69,7 +69,7 @@ impl TaskManager {
         let event_collector = tokio::spawn(async move {
             let mut collected_events = Vec::new();
             let mut step_count = 0;
-            
+
             while let Some(event) = event_rx.recv().await {
                 let event_string = format!("{:?}", event);
                 collected_events.push(TaskEvent {
@@ -81,17 +81,15 @@ impl TaskManager {
                     message: event_string,
                     timestamp: std::time::SystemTime::now(),
                 });
-                
-                if let (Some(tx), Some(tcid)) = (&parent_event_tx, &tool_call_id) {
-                    if should_emit_to_parent(&event) {
-                        step_count += 1;
-                        if let Ok(progress_event) = transform_to_subagent_event(
-                            &event,
-                            tcid,
-                            step_count,
-                        ) {
-                            let _ = tx.send(progress_event);
-                        }
+
+                if let (Some(tx), Some(tcid)) = (&parent_event_tx, &tool_call_id)
+                    && should_emit_to_parent(&event)
+                {
+                    step_count += 1;
+                    if let Ok(progress_event) =
+                        transform_to_subagent_event(&event, tcid, step_count)
+                    {
+                        let _ = tx.send(progress_event);
                     }
                 }
             }
@@ -111,7 +109,7 @@ impl TaskManager {
         drop(agent);
 
         let events = event_collector.await.unwrap_or_else(|_| Vec::new());
-        
+
         if let (Some(tx), Some(tcid)) = (&self.event_tx, &self.tool_call_id) {
             let _ = tx.send(AgentEvent::SubagentTaskComplete {
                 tool_call_id: tcid.clone(),

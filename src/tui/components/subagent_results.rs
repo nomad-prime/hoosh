@@ -51,7 +51,7 @@ impl Component for SubagentResultsComponent {
                 lines.push(Line::from(vec![
                     prefix,
                     Span::styled(
-                        format!("{}", step.description),
+                        step.description.to_string(),
                         Style::default().fg(Color::DarkGray),
                     ),
                 ]));

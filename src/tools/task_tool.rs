@@ -56,12 +56,12 @@ impl TaskTool {
             self.permission_manager.clone(),
         );
 
-        if let Some(ctx) = context {
-            if let Some(tx) = ctx.event_tx {
-                task_manager = task_manager
-                    .with_event_sender(tx)
-                    .with_tool_call_id(ctx.tool_call_id);
-            }
+        if let Some(ctx) = context
+            && let Some(tx) = ctx.event_tx
+        {
+            task_manager = task_manager
+                .with_event_sender(tx)
+                .with_tool_call_id(ctx.tool_call_id);
         }
 
         let result = task_manager
