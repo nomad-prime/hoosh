@@ -4,7 +4,7 @@ use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 pub struct TaskTool {
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::backends::LlmBackend for MockBackend {
+    impl LlmBackend for MockBackend {
         async fn send_message(&self, _message: &str) -> anyhow::Result<String> {
             Ok("Mock response".to_string())
         }
