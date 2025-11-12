@@ -453,7 +453,7 @@ mod tests {
         });
 
         let display = task_tool.format_call_display(&args);
-        assert_eq!(display, "Task[plan](Planning task)");
+        assert_eq!(display, "Plan (Planning task)");
     }
 
     #[test]
