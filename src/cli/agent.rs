@@ -1,4 +1,5 @@
 use crate::backends::backend_factory::create_backend;
+use crate::session::{SessionConfig, initialize_session};
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use crate::{AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor, console};
@@ -14,7 +15,6 @@ pub async fn handle_agent(
     let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
 
     let backend: Box<dyn LlmBackend> = create_backend(&backend_name, config)?;
-
     backend.initialize().await?;
 
     let working_dir = if !add_dirs.is_empty() {
@@ -24,7 +24,6 @@ pub async fn handle_agent(
     };
 
     let parser = MessageParser::with_working_directory(working_dir.clone());
-
     let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
     // Initialize permissions before starting the TUI
@@ -61,7 +60,8 @@ pub async fn handle_agent(
         None
     };
 
-    crate::tui::run(
+    // Initialize session with all resources
+    let session_config = SessionConfig::new(
         backend,
         parser,
         skip_permissions,
@@ -69,7 +69,12 @@ pub async fn handle_agent(
         config.clone(),
         continue_conversation_id,
     )
-    .await?;
+    .with_working_dir(working_dir);
+
+    let session = initialize_session(session_config).await?;
+
+    // Run the TUI with initialized session
+    crate::tui::run_with_session(session).await?;
 
     Ok(())
 }

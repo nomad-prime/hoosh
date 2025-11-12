@@ -1,0 +1,239 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AgentType {
+    Plan,
+    Explore,
+    GeneralPurpose,
+}
+
+impl AgentType {
+    pub fn from_name(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "plan" => Ok(AgentType::Plan),
+            "explore" => Ok(AgentType::Explore),
+            "general-purpose" | "general_purpose" => Ok(AgentType::GeneralPurpose),
+            _ => anyhow::bail!(
+                "Unknown agent type: {}. Valid types are: plan, explore, general-purpose",
+                s
+            ),
+        }
+    }
+
+    pub fn max_steps(&self) -> usize {
+        match self {
+            AgentType::Plan => 50,
+            AgentType::Explore => 30,
+            AgentType::GeneralPurpose => 100,
+        }
+    }
+
+    pub fn system_message(&self, task_prompt: &str) -> String {
+        let base = match self {
+            AgentType::Plan => {
+                "You are a specialized planning agent. Your role is to analyze codebases and create implementation plans. \
+                Focus on understanding existing patterns and proposing clear, actionable steps."
+            }
+            AgentType::Explore => {
+                "You are a specialized exploration agent. Your role is to quickly search and understand codebases. \
+                Use file searches, code searches, and analysis to answer questions about the codebase structure and functionality."
+            }
+            AgentType::GeneralPurpose => {
+                "You are a general-purpose agent capable of handling complex multi-step tasks. \
+                You have access to all tools and can perform research, code analysis, and implementation tasks."
+            }
+        };
+
+        format!("{}\n\nTask: {}", base, task_prompt)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskDefinition {
+    pub agent_type: AgentType,
+    pub prompt: String,
+    pub description: String,
+    pub timeout_seconds: Option<u64>,
+    pub model: Option<String>,
+}
+
+impl TaskDefinition {
+    pub fn new(agent_type: AgentType, prompt: String, description: String) -> Self {
+        Self {
+            agent_type,
+            prompt,
+            description,
+            timeout_seconds: Some(600),
+            model: None,
+        }
+    }
+
+    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
+        self.timeout_seconds = Some(timeout_seconds);
+        self
+    }
+
+    pub fn with_model(mut self, model: String) -> Self {
+        self.model = Some(model);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskEvent {
+    pub event_type: String,
+    pub message: String,
+    pub timestamp: std::time::SystemTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskResult {
+    pub success: bool,
+    pub output: String,
+    pub events: Vec<TaskEvent>,
+    pub token_usage: Option<TokenUsage>,
+}
+
+impl TaskResult {
+    pub fn success(output: String) -> Self {
+        Self {
+            success: true,
+            output,
+            events: Vec::new(),
+            token_usage: None,
+        }
+    }
+
+    pub fn failure(error: String) -> Self {
+        Self {
+            success: false,
+            output: error,
+            events: Vec::new(),
+            token_usage: None,
+        }
+    }
+
+    pub fn with_events(mut self, events: Vec<TaskEvent>) -> Self {
+        self.events = events;
+        self
+    }
+
+    pub fn with_token_usage(mut self, token_usage: TokenUsage) -> Self {
+        self.token_usage = Some(token_usage);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TokenUsage {
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+}
+
+pub mod task_manager;
+
+pub use task_manager::TaskManager;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_type_from_str() {
+        assert!(matches!(AgentType::from_name("plan"), Ok(AgentType::Plan)));
+        assert!(matches!(
+            AgentType::from_name("explore"),
+            Ok(AgentType::Explore)
+        ));
+        assert!(matches!(
+            AgentType::from_name("general-purpose"),
+            Ok(AgentType::GeneralPurpose)
+        ));
+        assert!(matches!(
+            AgentType::from_name("general_purpose"),
+            Ok(AgentType::GeneralPurpose)
+        ));
+        assert!(AgentType::from_name("invalid").is_err());
+    }
+
+    #[test]
+    fn test_agent_type_max_steps() {
+        assert_eq!(AgentType::Plan.max_steps(), 50);
+        assert_eq!(AgentType::Explore.max_steps(), 30);
+        assert_eq!(AgentType::GeneralPurpose.max_steps(), 100);
+    }
+
+    #[test]
+    fn test_agent_type_system_message() {
+        let plan_msg = AgentType::Plan.system_message("test task");
+        assert!(plan_msg.contains("planning agent"));
+        assert!(plan_msg.contains("test task"));
+
+        let explore_msg = AgentType::Explore.system_message("find files");
+        assert!(explore_msg.contains("exploration agent"));
+        assert!(explore_msg.contains("find files"));
+
+        let general_msg = AgentType::GeneralPurpose.system_message("complex task");
+        assert!(general_msg.contains("general-purpose agent"));
+        assert!(general_msg.contains("complex task"));
+    }
+
+    #[test]
+    fn test_task_definition_builder() {
+        let task = TaskDefinition::new(
+            AgentType::Plan,
+            "analyze code".to_string(),
+            "code analysis".to_string(),
+        );
+        assert_eq!(task.timeout_seconds, Some(600));
+        assert_eq!(task.model, None);
+
+        let task_with_timeout = task.clone().with_timeout(300);
+        assert_eq!(task_with_timeout.timeout_seconds, Some(300));
+
+        let task_with_model = task.clone().with_model("gpt-4".to_string());
+        assert_eq!(task_with_model.model, Some("gpt-4".to_string()));
+    }
+
+    #[test]
+    fn test_task_result_success() {
+        let result = TaskResult::success("output text".to_string());
+        assert!(result.success);
+        assert_eq!(result.output, "output text");
+        assert!(result.events.is_empty());
+        assert!(result.token_usage.is_none());
+    }
+
+    #[test]
+    fn test_task_result_failure() {
+        let result = TaskResult::failure("error message".to_string());
+        assert!(!result.success);
+        assert_eq!(result.output, "error message");
+        assert!(result.events.is_empty());
+    }
+
+    #[test]
+    fn test_task_result_with_events() {
+        let event = TaskEvent {
+            event_type: "test".to_string(),
+            message: "test message".to_string(),
+            timestamp: std::time::SystemTime::now(),
+        };
+        let result = TaskResult::success("output".to_string()).with_events(vec![event]);
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].event_type, "test");
+    }
+
+    #[test]
+    fn test_task_result_with_token_usage() {
+        let usage = TokenUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+        };
+        let result = TaskResult::success("output".to_string()).with_token_usage(usage);
+        assert!(result.token_usage.is_some());
+        assert_eq!(result.token_usage.as_ref().unwrap().input_tokens, 100);
+        assert_eq!(result.token_usage.as_ref().unwrap().output_tokens, 50);
+    }
+}
