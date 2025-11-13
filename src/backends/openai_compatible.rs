@@ -95,6 +95,8 @@ struct Usage {
 struct Choice {
     message: Option<ResponseMessage>,
     delta: Option<ResponseMessage>,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -272,10 +274,24 @@ impl OpenAICompatibleBackend {
             return Err(Self::http_error_to_llm_error(status, error_text));
         }
 
+        let response_text = response.text().await.map_err(|e| LlmError::Other {
+            message: format!("Failed to read response: {}", e),
+        })?;
+
         let response_data: ChatCompletionResponse =
-            response.json().await.map_err(|e| LlmError::Other {
+            serde_json::from_str(&response_text).map_err(|e| LlmError::Other {
                 message: format!("Failed to parse response: {}", e),
             })?;
+
+        // Check if response was truncated due to length limit
+        if let Some(choice) = response_data.choices.first()
+            && let Some(finish_reason) = &choice.finish_reason
+            && finish_reason == "length"
+        {
+            return Err(LlmError::RecoverableByLlm {
+                        message: "Your response was cut off because it exceeded the maximum token limit. Please provide a shorter, more concise response. If you were writing a large file or tool call, break it into smaller parts.".to_string(),
+                    });
+        }
 
         // Extract tokens - handle both old and new API formats
         let (input_tokens, output_tokens) = if let Some(usage) = response_data.usage {
@@ -403,14 +419,14 @@ impl LlmBackend for OpenAICompatibleBackend {
         self.default_executor
             .execute(|| async { self.send_message_attempt(message).await }, None)
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
+            .map_err(anyhow::Error::new)
     }
 
     async fn send_message_with_tools(
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-    ) -> Result<LlmResponse> {
+    ) -> Result<LlmResponse, LlmError> {
         self.default_executor
             .execute(
                 || async {
@@ -420,39 +436,6 @@ impl LlmBackend for OpenAICompatibleBackend {
                 None,
             )
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
-    }
-
-    async fn send_message_with_events(
-        &self,
-        message: &str,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
-    ) -> Result<String> {
-        self.default_executor
-            .execute(
-                || async { self.send_message_attempt(message).await },
-                event_tx,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
-    }
-
-    async fn send_message_with_tools_and_events(
-        &self,
-        conversation: &Conversation,
-        tools: &ToolRegistry,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
-    ) -> Result<LlmResponse> {
-        self.default_executor
-            .execute(
-                || async {
-                    self.send_message_with_tools_attempt(conversation, tools)
-                        .await
-                },
-                event_tx,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     fn backend_name(&self) -> &str {
@@ -486,5 +469,36 @@ impl LlmBackend for OpenAICompatibleBackend {
             _ => return None,
         };
         Some(pricing)
+    }
+
+    async fn send_message_with_events(
+        &self,
+        message: &str,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
+    ) -> Result<String> {
+        self.default_executor
+            .execute(
+                || async { self.send_message_attempt(message).await },
+                event_tx,
+            )
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    async fn send_message_with_tools_and_events(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
+    ) -> Result<LlmResponse, LlmError> {
+        self.default_executor
+            .execute(
+                || async {
+                    self.send_message_with_tools_attempt(conversation, tools)
+                        .await
+                },
+                event_tx,
+            )
+            .await
     }
 }

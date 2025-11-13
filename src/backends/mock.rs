@@ -1,5 +1,6 @@
 use super::{LlmBackend, LlmResponse};
 use crate::agent::Conversation;
+use crate::backends::llm_error::LlmError;
 use crate::tools::ToolRegistry;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -22,7 +23,7 @@ impl LlmBackend for MockBackend {
         &self,
         conversation: &Conversation,
         _tools: &ToolRegistry,
-    ) -> Result<LlmResponse> {
+    ) -> Result<LlmResponse, LlmError> {
         // Mock implementation - just return a simple response
         if let Some(last_message) = conversation.messages.last() {
             if let Some(ref content) = last_message.content {

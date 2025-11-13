@@ -143,7 +143,4 @@ When using the write_file tool, you MUST always provide ALL required parameters:
 - path: the file path
 - content: the actual content to write (NEVER omit this, even for markdown files)
 
-Before calling write_file, verify you have prepared the complete file content.
-Do not try to create files without content.
-
 When writing large files, split the content into multiple chunks and if needed use the edit_file tool to add content in subsequent turns

@@ -174,14 +174,25 @@ impl Agent {
         }
 
         for step in 0..self.max_steps {
-            let response = self
+            let response = match self
                 .backend
                 .send_message_with_tools_and_events(
                     conversation,
                     &self.tool_registry,
                     self.event_sender.clone(),
                 )
-                .await?;
+                .await
+            {
+                Ok(response) => response,
+                Err(e) if e.should_send_to_llm() => {
+                    // Add error as user message so LLM can adjust
+                    let error_msg = e.user_message();
+                    conversation.add_user_message(error_msg);
+                    self.persist_message(&conversation.messages[conversation.messages.len() - 1]);
+                    continue;
+                }
+                Err(e) => return Err(anyhow::Error::new(e)),
+            };
 
             match self.process_response(conversation, response, step).await? {
                 TurnStatus::Continue => continue,
@@ -372,7 +383,7 @@ mod tests {
     use super::*;
     use crate::BuiltinToolProvider;
     use crate::agent::{ToolCall, ToolFunction};
-    use crate::backends::LlmResponse;
+    use crate::backends::{LlmError, LlmResponse};
     use crate::permissions::PermissionManager;
     use async_trait::async_trait;
 
@@ -400,14 +411,15 @@ mod tests {
             &self,
             _conversation: &Conversation,
             _tools: &ToolRegistry,
-        ) -> Result<LlmResponse> {
-            let mut index = self
-                .current_index
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Failed to lock current_index: {}", e))?;
+        ) -> Result<LlmResponse, LlmError> {
+            let mut index = self.current_index.lock().map_err(|e| LlmError::Other {
+                message: format!("Failed to lock current_index: {}", e),
+            })?;
             let response = self.responses.get(*index).cloned();
             *index += 1;
-            response.ok_or_else(|| anyhow::anyhow!("No more responses"))
+            response.ok_or_else(|| LlmError::Other {
+                message: "No more responses".to_string(),
+            })
         }
 
         fn backend_name(&self) -> &'static str {
