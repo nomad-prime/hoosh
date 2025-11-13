@@ -557,10 +557,22 @@ impl AppState {
             }
             AgentEvent::ToolPermissionRequest { .. } => {}
             AgentEvent::ApprovalRequest { .. } => {}
-            AgentEvent::UserRejection => {
+            AgentEvent::UserRejection(rejected_tool_calls) => {
+                rejected_tool_calls.iter().for_each(|rtc| {
+                    self.add_tool_call(rtc);
+                    self.add_status_message("Rejected, tell me what to do instead");
+                });
+                self.clear_active_tool_calls();
+
                 self.agent_state = AgentState::Idle;
             }
-            AgentEvent::PermissionDenied => {
+            AgentEvent::PermissionDenied(rejected_tool_calls) => {
+                rejected_tool_calls.iter().for_each(|rtc| {
+                    self.add_tool_call(rtc);
+                    self.add_status_message("Permission denied, tell me what to do instead");
+                });
+                self.clear_active_tool_calls();
+
                 self.agent_state = AgentState::Idle;
             }
             AgentEvent::Exit => {}
