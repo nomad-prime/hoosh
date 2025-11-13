@@ -24,7 +24,7 @@ impl RequestExecutor {
     ) -> Result<T, LlmError>
     where
         F: FnMut() -> Fut,
-        Fut: std::future::Future<Output = Result<T, LlmError>>,
+        Fut: Future<Output = Result<T, LlmError>>,
     {
         let strategy = RetryStrategy::new(self.max_attempts, self.operation_name.clone(), event_tx);
         strategy.execute(operation).await

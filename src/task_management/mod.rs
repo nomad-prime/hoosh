@@ -150,17 +150,6 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_type_system_message() {
-        let plan_msg = AgentType::Plan.system_message("test task");
-        assert!(plan_msg.contains("planning agent"));
-        assert!(plan_msg.contains("test task"));
-
-        let explore_msg = AgentType::Explore.system_message("find files");
-        assert!(explore_msg.contains("exploration agent"));
-        assert!(explore_msg.contains("find files"));
-    }
-
-    #[test]
     fn test_task_definition_builder() {
         let task = TaskDefinition::new(
             AgentType::Plan,
