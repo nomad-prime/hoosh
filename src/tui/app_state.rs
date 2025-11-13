@@ -428,12 +428,6 @@ impl AppState {
         }
     }
 
-    pub fn set_tool_call_preview(&mut self, tool_call_id: &str, preview: String) {
-        if let Some(tool_call) = self.get_active_tool_call_mut(tool_call_id) {
-            tool_call.preview = Some(preview);
-        }
-    }
-
     pub fn set_tool_call_result(&mut self, tool_call_id: &str, summary: String) {
         if let Some(tool_call) = self.get_active_tool_call_mut(tool_call_id) {
             tool_call.result_summary = Some(summary);
@@ -456,9 +450,8 @@ impl AppState {
                 self.add_message(format!("  ⎿  {}", summary));
             }
 
-            if let Some(preview) = &tool_call.preview {
-                self.add_message(format!("\n{}", preview));
-            }
+            // Preview is now displayed immediately when ToolPreview event is received,
+            // so we don't display it again here
 
             if let ToolCallStatus::Error(err) = &tool_call.status {
                 self.add_message(format!("  Error: {}", err));
@@ -480,10 +473,6 @@ impl AppState {
 
             if let Some(summary) = &tool_call.result_summary {
                 self.add_message(format!("  ⎿  {}", summary));
-            }
-
-            if let Some(preview) = &tool_call.preview {
-                self.add_message(format!("\n{}", preview));
             }
 
             if let ToolCallStatus::Error(err) = &tool_call.status {
@@ -517,12 +506,8 @@ impl AppState {
             AgentEvent::ToolExecutionStarted { tool_call_id, .. } => {
                 self.update_tool_call_status(&tool_call_id, ToolCallStatus::Executing);
             }
-            AgentEvent::ToolPreview {
-                tool_call_id,
-                preview,
-                ..
-            } => {
-                self.set_tool_call_preview(&tool_call_id, preview);
+            AgentEvent::ToolPreview { preview, .. } => {
+                self.add_message(format!("\n{}", preview));
             }
             AgentEvent::ToolResult {
                 tool_call_id,
