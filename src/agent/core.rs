@@ -370,6 +370,7 @@ enum TurnStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BuiltinToolProvider;
     use crate::agent::{ToolCall, ToolFunction};
     use crate::backends::LlmResponse;
     use crate::permissions::PermissionManager;
@@ -431,10 +432,10 @@ mod tests {
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager =
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
         let tool_executor = Arc::new(ToolExecutor::new(
-            (*tool_registry).clone(),
-            permission_manager,
+            Arc::clone(&tool_registry),
+            Arc::clone(&permission_manager),
         ));
 
         let handler = Agent::new(mock_backend, tool_registry, tool_executor);
@@ -469,16 +470,16 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         std::fs::write(&test_file, "test content").unwrap();
 
-        let tool_registry = Arc::new(ToolExecutor::create_tool_registry_with_working_dir(
-            temp_dir.path().to_path_buf(),
-        ));
+        let tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+            BuiltinToolProvider::new(temp_dir.path().to_path_buf()),
+        )));
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager =
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
         let tool_executor = Arc::new(ToolExecutor::new(
-            (*tool_registry).clone(),
-            permission_manager,
+            Arc::clone(&tool_registry),
+            Arc::clone(&permission_manager),
         ));
 
         let handler = Agent::new(mock_backend, tool_registry, tool_executor);

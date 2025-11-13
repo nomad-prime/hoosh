@@ -2,8 +2,12 @@ use crate::backends::backend_factory::create_backend;
 use crate::session::{SessionConfig, initialize_session};
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
-use crate::{AppConfig, ConversationStorage, LlmBackend, MessageParser, ToolExecutor, console};
+use crate::{
+    AppConfig, BuiltinToolProvider, ConversationStorage, LlmBackend, MessageParser, ToolRegistry,
+    console,
+};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub async fn handle_agent(
     backend_name: Option<String>,
@@ -24,9 +28,12 @@ pub async fn handle_agent(
     };
 
     let parser = MessageParser::with_working_directory(working_dir.clone());
-    let tool_registry = ToolExecutor::create_tool_registry_with_working_dir(working_dir.clone());
 
-    // Initialize permissions before starting the TUI
+    let backend_arc = Arc::from(backend);
+
+    let tool_registry =
+        ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(working_dir.clone())));
+
     let terminal = init_terminal()?;
     let terminal = match init_permission::run(
         terminal,
@@ -62,7 +69,7 @@ pub async fn handle_agent(
 
     // Initialize session with all resources
     let session_config = SessionConfig::new(
-        backend,
+        Arc::clone(&backend_arc),
         parser,
         skip_permissions,
         tool_registry,

@@ -45,19 +45,23 @@ impl TaskManager {
     pub async fn execute_task(&self, task_def: TaskDefinition) -> Result<TaskResult> {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
 
-        let sub_agent_registry = Arc::new(self.tool_registry.without("task"));
-
+        // The tool_registry passed to TaskManager is already the subagent registry
+        // (without task tool) to prevent infinite recursion
         let tool_executor = Arc::new(
             ToolExecutor::new(
-                (*sub_agent_registry).clone(),
-                (*self.permission_manager).clone(),
+                Arc::clone(&self.tool_registry),
+                Arc::clone(&self.permission_manager),
             )
             .with_event_sender(event_tx.clone()),
         );
 
-        let agent = Agent::new(self.backend.clone(), sub_agent_registry, tool_executor)
-            .with_max_steps(task_def.agent_type.max_steps())
-            .with_event_sender(event_tx);
+        let agent = Agent::new(
+            self.backend.clone(),
+            self.tool_registry.clone(),
+            tool_executor,
+        )
+        .with_max_steps(task_def.agent_type.max_steps())
+        .with_event_sender(event_tx);
 
         let mut conversation = Conversation::new();
         let system_message = task_def.agent_type.system_message(&task_def.prompt);
@@ -394,8 +398,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_task_manager_filters_task_tool() {
-        use crate::tools::TaskToolProvider;
+    async fn test_task_manager_uses_subagent_registry() {
+        use crate::tools::SubAgentToolProvider;
         crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
         let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
@@ -405,20 +409,17 @@ mod tests {
         let permission_manager =
             Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let task_provider = Arc::new(TaskToolProvider::new(
-            mock_backend.clone(),
-            tool_registry.clone(),
-            permission_manager.clone(),
-        ));
-        let mut registry_with_task = (*tool_registry).clone();
-        registry_with_task.add_provider(task_provider);
-        let registry_with_task = Arc::new(registry_with_task);
+        // Create a subagent registry (without task tool to prevent recursion)
+        let subagent_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+            SubAgentToolProvider::new(std::path::PathBuf::from(".")),
+        )));
 
-        assert!(registry_with_task.get_tool("task").is_some());
+        // Verify task tool is NOT in subagent registry
+        assert!(subagent_registry.get_tool("task").is_none());
+        // But other tools should be present
+        assert!(subagent_registry.get_tool("read_file").is_some());
 
-        let task_manager =
-            TaskManager::new(mock_backend, registry_with_task.clone(), permission_manager);
+        let task_manager = TaskManager::new(mock_backend, subagent_registry, permission_manager);
 
         let task_def = TaskDefinition::new(
             crate::task_management::AgentType::Plan,

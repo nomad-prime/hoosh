@@ -18,7 +18,7 @@ use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
-use crate::tools::{TaskToolProvider, ToolRegistry};
+use crate::tools::ToolRegistry;
 use crate::tui::app_loop::{
     ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
 };
@@ -26,6 +26,7 @@ use crate::tui::app_state::AppState;
 use crate::tui::handlers;
 use crate::tui::header;
 use crate::tui::input_handler::InputHandler;
+use crate::{SubAgentToolProvider, TaskToolProvider};
 
 /// Represents the fully initialized session resources needed to run the agent
 pub struct AgentSession {
@@ -35,7 +36,7 @@ pub struct AgentSession {
 
 /// Parameters needed to initialize an agent session
 pub struct SessionConfig {
-    pub backend: Box<dyn LlmBackend>,
+    pub backend: Arc<dyn LlmBackend>,
     pub parser: MessageParser,
     pub skip_permissions: bool,
     pub tool_registry: ToolRegistry,
@@ -46,7 +47,7 @@ pub struct SessionConfig {
 
 impl SessionConfig {
     pub fn new(
-        backend: Box<dyn LlmBackend>,
+        backend: Arc<dyn LlmBackend>,
         parser: MessageParser,
         skip_permissions: bool,
         tool_registry: ToolRegistry,
@@ -77,7 +78,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         backend,
         parser,
         skip_permissions,
-        tool_registry,
+        mut tool_registry,
         config,
         continue_conversation_id,
         working_dir,
@@ -100,11 +101,10 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         .map(|s| s.to_string())
         .unwrap_or_else(|| ".".to_string());
 
-    let backend_arc: Arc<dyn LlmBackend> = Arc::from(backend);
     let agent_name = default_agent.as_ref().map(|a| a.name.as_str());
     for line in header::create_header_block(
-        backend_arc.backend_name(),
-        backend_arc.model_name(),
+        backend.backend_name(),
+        backend.model_name(),
         &working_dir_display,
         agent_name,
         None,
@@ -126,16 +126,17 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         &mut app_state,
     )?;
 
-    // Phase 2: Register TaskTool now that we have all dependencies
-    // (backend, permission_manager, and tool_registry)
-    let mut tool_registry = tool_registry;
-    let task_provider = Arc::new(TaskToolProvider::new(
-        backend_arc.clone(),
-        Arc::new(tool_registry.clone()),
-        Arc::new(permission_manager.clone()),
-    ));
-    tool_registry.add_provider(task_provider);
-    // Keep tool_registry as non-Arc since ToolExecutor::new expects ToolRegistry
+    let subagent_tool_registry = Arc::new(
+        ToolRegistry::new().with_provider(Arc::new(SubAgentToolProvider::new(working_dir.clone()))),
+    );
+
+    tool_registry.add_provider(Arc::new(TaskToolProvider::new(
+        Arc::clone(&backend),
+        Arc::clone(&subagent_tool_registry),
+        Arc::clone(&permission_manager),
+    )));
+
+    let tool_registry = Arc::new(tool_registry);
 
     // Setup conversation storage and load conversation
     let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
@@ -156,16 +157,17 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     app_state.add_message("\n".to_string());
 
     // Setup tool execution
-    let tool_executor = ToolExecutor::new(tool_registry.clone(), permission_manager.clone())
-        .with_event_sender(event_tx.clone())
-        .with_autopilot_state(Arc::clone(&app_state.autopilot_enabled))
-        .with_approval_receiver(approval_response_rx);
+    let tool_executor =
+        ToolExecutor::new(Arc::clone(&tool_registry), Arc::clone(&permission_manager))
+            .with_event_sender(event_tx.clone())
+            .with_autopilot_state(Arc::clone(&app_state.autopilot_enabled))
+            .with_approval_receiver(approval_response_rx);
 
     // Setup input handlers
     let input_handlers = create_input_handlers(permission_response_tx, approval_response_tx);
 
     // Setup context management
-    let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend_arc)));
+    let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
     let context_manager = setup_context_manager(&config, summarizer.clone());
 
     let command_registry = setup_command_registry()?;
@@ -176,9 +178,9 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Build system resources
     let system_resources = SystemResources {
-        backend: backend_arc,
+        backend,
         parser: Arc::new(parser),
-        tool_registry: Arc::new(tool_registry),
+        tool_registry: Arc::clone(&tool_registry),
         tool_executor: Arc::new(tool_executor),
         agent_manager,
         command_registry,
@@ -202,7 +204,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Build runtime state
     let runtime = RuntimeState {
-        permission_manager: Arc::new(permission_manager),
+        permission_manager: Arc::clone(&permission_manager),
         input_handlers,
         working_dir: working_dir_display,
         config,
@@ -248,7 +250,7 @@ fn setup_permission_manager(
     skip_permissions: bool,
     working_dir: &Path,
     app_state: &mut AppState,
-) -> Result<PermissionManager> {
+) -> Result<Arc<PermissionManager>> {
     let permission_manager = PermissionManager::new(event_tx, permission_response_rx)
         .with_skip_permissions(skip_permissions)
         .with_project_root(working_dir.to_path_buf())
@@ -261,7 +263,7 @@ fn setup_permission_manager(
         app_state.add_message("⚠️ Permission checks disabled (--skip-permissions)".to_string());
     }
 
-    Ok(permission_manager)
+    Ok(Arc::new(permission_manager))
 }
 
 fn setup_conversation(
