@@ -41,4 +41,4 @@ pub use permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 pub use security::PathValidator;
 pub use storage::{ConversationMetadata, ConversationStorage};
 pub use tool_executor::ToolExecutor;
-pub use tools::{TaskToolProvider, Tool, ToolRegistry};
+pub use tools::{BuiltinToolProvider, SubAgentToolProvider, TaskToolProvider, Tool, ToolRegistry};

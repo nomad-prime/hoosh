@@ -1,10 +1,11 @@
 use serde_json::{self, Value};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::agent::{AgentEvent, ToolCall, ToolCallResponse};
 use crate::permissions::PermissionManager;
+use crate::tools::ToolRegistry;
 use crate::tools::error::{ToolError, ToolResult};
-use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
 /// Validate arguments against a JSON schema
 /// Returns an error if validation fails
@@ -26,18 +27,20 @@ fn validate_against_schema(args: &Value, schema: &Value, tool_name: &str) -> Too
 
 /// Handles execution of tool calls
 pub struct ToolExecutor {
-    tool_registry: ToolRegistry,
-    permission_manager: PermissionManager,
+    tool_registry: Arc<ToolRegistry>,
+    permission_manager: Arc<PermissionManager>,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
-    autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    autopilot_enabled: Arc<std::sync::atomic::AtomicBool>,
     approval_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
-    approval_receiver: Option<
-        std::sync::Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<crate::agent::ApprovalResponse>>>,
-    >,
+    approval_receiver:
+        Option<Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<crate::agent::ApprovalResponse>>>>,
 }
 
 impl ToolExecutor {
-    pub fn new(tool_registry: ToolRegistry, permission_manager: PermissionManager) -> Self {
+    pub fn new(
+        tool_registry: Arc<ToolRegistry>,
+        permission_manager: Arc<PermissionManager>,
+    ) -> Self {
         Self {
             tool_registry,
             permission_manager,
@@ -271,17 +274,11 @@ impl ToolExecutor {
 
         Ok(())
     }
-
-    /// Create tools with the correct working directory
-    pub fn create_tool_registry_with_working_dir(working_dir: std::path::PathBuf) -> ToolRegistry {
-        ToolRegistry::new()
-            .with_provider(std::sync::Arc::new(BuiltinToolProvider::new(working_dir)))
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BuiltinToolProvider;
     use crate::agent::{ToolCall, ToolFunction};
     use serde_json::json;
     use tempfile::tempdir;
@@ -292,12 +289,13 @@ mod tests {
         let test_file = temp_dir.path().join("test.txt");
         tokio::fs::write(&test_file, "Hello, World!").await.unwrap();
 
-        let tool_registry =
-            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
+        let tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+            BuiltinToolProvider::new(temp_dir.path().to_path_buf()),
+        )));
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager =
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
         let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {
@@ -317,11 +315,12 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_tool() {
         let temp_dir = tempdir().unwrap();
-        let tool_registry =
-            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
+        let tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+            BuiltinToolProvider::new(temp_dir.path().to_path_buf()),
+        )));
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager = PermissionManager::new(event_tx, response_rx);
+        let permission_manager = Arc::new(PermissionManager::new(event_tx, response_rx));
         let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {
@@ -347,12 +346,13 @@ mod tests {
     #[tokio::test]
     async fn test_execute_read_file_tool_with_invalid_schema() {
         let temp_dir = tempdir().unwrap();
-        let tool_registry =
-            ToolExecutor::create_tool_registry_with_working_dir(temp_dir.path().to_path_buf());
+        let tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+            BuiltinToolProvider::new(temp_dir.path().to_path_buf()),
+        )));
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager =
-            PermissionManager::new(event_tx, response_rx).with_skip_permissions(true);
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
         let executor = ToolExecutor::new(tool_registry, permission_manager);
 
         let tool_call = ToolCall {
