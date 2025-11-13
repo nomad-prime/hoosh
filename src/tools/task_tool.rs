@@ -205,12 +205,12 @@ mod tests {
             _conversation: &Conversation,
             _tools: &ToolRegistry,
         ) -> Result<LlmResponse, crate::backends::LlmError> {
-            let mut index = self
-                .current_index
-                .lock()
-                .map_err(|e| crate::backends::LlmError::Other {
-                    message: format!("Failed to lock current_index: {}", e),
-                })?;
+            let mut index =
+                self.current_index
+                    .lock()
+                    .map_err(|e| crate::backends::LlmError::Other {
+                        message: format!("Failed to lock current_index: {}", e),
+                    })?;
             let response = self.responses.get(*index).cloned();
             *index += 1;
             response.ok_or_else(|| crate::backends::LlmError::Other {

@@ -57,9 +57,7 @@ impl LlmError {
                 let error_msg = Self::extract_error_message(message).unwrap_or(message.clone());
                 format!("Invalid request: {}", error_msg)
             }
-            LlmError::RecoverableByLlm { message } => {
-                message.clone()
-            }
+            LlmError::RecoverableByLlm { message } => message.clone(),
             LlmError::Other { message } => {
                 format!("Error: {}", message)
             }

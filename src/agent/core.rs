@@ -381,10 +381,10 @@ enum TurnStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BuiltinToolProvider;
     use crate::agent::{ToolCall, ToolFunction};
     use crate::backends::{LlmError, LlmResponse};
     use crate::permissions::PermissionManager;
-    use crate::BuiltinToolProvider;
     use async_trait::async_trait;
 
     struct MockBackend {
@@ -412,13 +412,14 @@ mod tests {
             _conversation: &Conversation,
             _tools: &ToolRegistry,
         ) -> Result<LlmResponse, LlmError> {
-            let mut index = self
-                .current_index
-                .lock()
-                .map_err(|e| LlmError::Other { message: format!("Failed to lock current_index: {}", e) })?;
+            let mut index = self.current_index.lock().map_err(|e| LlmError::Other {
+                message: format!("Failed to lock current_index: {}", e),
+            })?;
             let response = self.responses.get(*index).cloned();
             *index += 1;
-            response.ok_or_else(|| LlmError::Other { message: "No more responses".to_string() })
+            response.ok_or_else(|| LlmError::Other {
+                message: "No more responses".to_string(),
+            })
         }
 
         fn backend_name(&self) -> &'static str {

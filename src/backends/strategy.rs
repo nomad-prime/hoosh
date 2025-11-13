@@ -89,24 +89,23 @@ impl RetryStrategy {
                     delay *= 2;
                 }
                 Err(e) => {
-                    let final_message = if attempts > 0 {
-                        format!(
+                    // Only send retry event if we actually attempted retries
+                    if attempts > 0 {
+                        let final_message = format!(
                             "{} failed after {} attempts: {}",
                             self.operation_name,
                             attempts + 1,
                             e.short_message()
-                        )
-                    } else {
-                        e.user_message()
-                    };
+                        );
 
-                    self.send_event(AgentEvent::RetryEvent {
-                        operation_name: self.operation_name.clone(),
-                        attempt: attempts + 1,
-                        max_attempts: self.max_attempts,
-                        message: final_message,
-                        is_success: false,
-                    });
+                        self.send_event(AgentEvent::RetryEvent {
+                            operation_name: self.operation_name.clone(),
+                            attempt: attempts + 1,
+                            max_attempts: self.max_attempts,
+                            message: final_message,
+                            is_success: false,
+                        });
+                    }
 
                     return Err(e);
                 }
@@ -172,7 +171,8 @@ mod tests {
         while let Ok(event) = event_rx.try_recv() {
             events.push(event);
         }
-        assert_eq!(events.len(), 1); // Only error event
+        // No retry events should be sent for non-retryable errors on first attempt
+        assert_eq!(events.len(), 0);
     }
 
     #[tokio::test]

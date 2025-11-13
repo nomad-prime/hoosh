@@ -274,11 +274,9 @@ impl OpenAICompatibleBackend {
             return Err(Self::http_error_to_llm_error(status, error_text));
         }
 
-
         let response_text = response.text().await.map_err(|e| LlmError::Other {
             message: format!("Failed to read response: {}", e),
         })?;
-
 
         let response_data: ChatCompletionResponse =
             serde_json::from_str(&response_text).map_err(|e| LlmError::Other {
@@ -286,14 +284,13 @@ impl OpenAICompatibleBackend {
             })?;
 
         // Check if response was truncated due to length limit
-        if let Some(choice) = response_data.choices.first() {
-            if let Some(finish_reason) = &choice.finish_reason {
-                if finish_reason == "length" {
-                    return Err(LlmError::RecoverableByLlm {
+        if let Some(choice) = response_data.choices.first()
+            && let Some(finish_reason) = &choice.finish_reason
+            && finish_reason == "length"
+        {
+            return Err(LlmError::RecoverableByLlm {
                         message: "Your response was cut off because it exceeded the maximum token limit. Please provide a shorter, more concise response. If you were writing a large file or tool call, break it into smaller parts.".to_string(),
                     });
-                }
-            }
         }
 
         // Extract tokens - handle both old and new API formats
@@ -422,7 +419,7 @@ impl LlmBackend for OpenAICompatibleBackend {
         self.default_executor
             .execute(|| async { self.send_message_attempt(message).await }, None)
             .await
-            .map_err(|e| anyhow::Error::new(e))
+            .map_err(anyhow::Error::new)
     }
 
     async fn send_message_with_tools(
@@ -485,7 +482,7 @@ impl LlmBackend for OpenAICompatibleBackend {
                 event_tx,
             )
             .await
-            .map_err(|e| anyhow::Error::new(e))
+            .map_err(anyhow::Error::new)
     }
 
     async fn send_message_with_tools_and_events(

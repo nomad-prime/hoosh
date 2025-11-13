@@ -435,7 +435,7 @@ impl LlmBackend for AnthropicBackend {
         self.default_executor
             .execute(|| async { self.send_message_attempt(message).await }, None)
             .await
-            .map_err(|e| anyhow::Error::new(e))
+            .map_err(anyhow::Error::new)
     }
 
     async fn send_message_with_tools(
@@ -465,7 +465,7 @@ impl LlmBackend for AnthropicBackend {
                 event_tx,
             )
             .await
-            .map_err(|e| anyhow::Error::new(e))
+            .map_err(anyhow::Error::new)
     }
 
     async fn send_message_with_tools_and_events(
