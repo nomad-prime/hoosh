@@ -32,7 +32,7 @@ impl RetryStrategy {
     pub async fn execute<F, Fut, T>(&self, mut operation: F) -> Result<T, LlmError>
     where
         F: FnMut() -> Fut,
-        Fut: std::future::Future<Output = Result<T, LlmError>>,
+        Fut: Future<Output = Result<T, LlmError>>,
     {
         let mut attempts = 0;
         let mut delay = Duration::from_secs(1);
@@ -49,14 +49,14 @@ impl RetryStrategy {
                         self.send_event(AgentEvent::RetryEvent {
                             operation_name: self.operation_name.clone(),
                             attempt: attempts + 1,
-                            max_attempts: self.max_attempts + 1,
+                            max_attempts: self.max_attempts,
                             message: success_message,
                             is_success: true,
                         });
                     }
                     return Ok(result);
                 }
-                Err(e) if e.is_retryable() && attempts < self.max_attempts => {
+                Err(e) if e.is_retryable() && attempts + 1 < self.max_attempts => {
                     attempts += 1;
 
                     let actual_delay = if let LlmError::RateLimit {
@@ -72,7 +72,7 @@ impl RetryStrategy {
                     let retry_message = format!(
                         "Attempt {}/{} failed: {}. Retrying in {:?}...",
                         attempts,
-                        self.max_attempts + 1,
+                        self.max_attempts,
                         e.short_message(),
                         actual_delay
                     );
@@ -80,7 +80,7 @@ impl RetryStrategy {
                     self.send_event(AgentEvent::RetryEvent {
                         operation_name: self.operation_name.clone(),
                         attempt: attempts,
-                        max_attempts: self.max_attempts + 1,
+                        max_attempts: self.max_attempts,
                         message: retry_message,
                         is_success: false,
                     });
@@ -103,7 +103,7 @@ impl RetryStrategy {
                     self.send_event(AgentEvent::RetryEvent {
                         operation_name: self.operation_name.clone(),
                         attempt: attempts + 1,
-                        max_attempts: self.max_attempts + 1,
+                        max_attempts: self.max_attempts,
                         message: final_message,
                         is_success: false,
                     });
@@ -143,6 +143,7 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
+        assert_eq!(attempt_count.load(Ordering::SeqCst), 3); // Verify 3 total attempts
 
         let mut events = Vec::new();
         while let Ok(event) = event_rx.try_recv() {
@@ -172,5 +173,34 @@ mod tests {
             events.push(event);
         }
         assert_eq!(events.len(), 1); // Only error event
+    }
+
+    #[tokio::test]
+    async fn test_retry_strategy_respects_max_attempts() {
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let attempt_count = AtomicU32::new(0);
+
+        let strategy = RetryStrategy::new(3, "test_op".to_string(), Some(event_tx));
+
+        let result = strategy
+            .execute(|| async {
+                attempt_count.fetch_add(1, Ordering::SeqCst);
+                Err::<String, _>(LlmError::RateLimit {
+                    retry_after: None,
+                    message: "rate limited".to_string(),
+                })
+            })
+            .await;
+
+        assert!(result.is_err());
+        // With max_attempts = 3, should only attempt exactly 3 times
+        assert_eq!(attempt_count.load(Ordering::SeqCst), 3);
+
+        let mut events = Vec::new();
+        while let Ok(event) = event_rx.try_recv() {
+            events.push(event);
+        }
+        // 2 retry events + 1 final failure event
+        assert_eq!(events.len(), 3);
     }
 }

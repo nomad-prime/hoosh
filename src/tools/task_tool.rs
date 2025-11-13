@@ -204,14 +204,18 @@ mod tests {
             &self,
             _conversation: &Conversation,
             _tools: &ToolRegistry,
-        ) -> anyhow::Result<LlmResponse> {
+        ) -> Result<LlmResponse, crate::backends::LlmError> {
             let mut index = self
                 .current_index
                 .lock()
-                .map_err(|e| anyhow::anyhow!("Failed to lock current_index: {}", e))?;
+                .map_err(|e| crate::backends::LlmError::Other {
+                    message: format!("Failed to lock current_index: {}", e),
+                })?;
             let response = self.responses.get(*index).cloned();
             *index += 1;
-            response.ok_or_else(|| anyhow::anyhow!("No more responses"))
+            response.ok_or_else(|| crate::backends::LlmError::Other {
+                message: "No more responses".to_string(),
+            })
         }
 
         fn backend_name(&self) -> &'static str {

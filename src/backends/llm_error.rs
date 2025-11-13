@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone)]
 pub enum LlmError {
     RateLimit {
@@ -15,6 +17,9 @@ pub enum LlmError {
         message: String,
     },
     InvalidRequest {
+        message: String,
+    },
+    RecoverableByLlm {
         message: String,
     },
     Other {
@@ -52,6 +57,9 @@ impl LlmError {
                 let error_msg = Self::extract_error_message(message).unwrap_or(message.clone());
                 format!("Invalid request: {}", error_msg)
             }
+            LlmError::RecoverableByLlm { message } => {
+                message.clone()
+            }
             LlmError::Other { message } => {
                 format!("Error: {}", message)
             }
@@ -76,7 +84,20 @@ impl LlmError {
             LlmError::AuthenticationError { .. } => "Authentication error".to_string(),
             LlmError::NetworkError { .. } => "Network error".to_string(),
             LlmError::InvalidRequest { .. } => "Invalid request".to_string(),
+            LlmError::RecoverableByLlm { .. } => "Response truncated".to_string(),
             LlmError::Other { .. } => "Error occurred".to_string(),
         }
     }
+
+    pub fn should_send_to_llm(&self) -> bool {
+        matches!(self, LlmError::RecoverableByLlm { .. })
+    }
 }
+
+impl fmt::Display for LlmError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.user_message())
+    }
+}
+
+impl std::error::Error for LlmError {}

@@ -217,7 +217,7 @@ mod tests {
             &self,
             _conversation: &Conversation,
             _tools: &ToolRegistry,
-        ) -> Result<LlmResponse> {
+        ) -> Result<LlmResponse, crate::backends::LlmError> {
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             Ok(LlmResponse::content_only("Delayed response".to_string()))
         }
@@ -244,8 +244,10 @@ mod tests {
             &self,
             _conversation: &Conversation,
             _tools: &ToolRegistry,
-        ) -> Result<LlmResponse> {
-            anyhow::bail!("Simulated backend error")
+        ) -> Result<LlmResponse, crate::backends::LlmError> {
+            Err(crate::backends::LlmError::Other {
+                message: "Simulated backend error".to_string(),
+            })
         }
 
         fn backend_name(&self) -> &str {

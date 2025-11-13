@@ -61,7 +61,7 @@ pub trait LlmBackend: Send + Sync {
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-    ) -> Result<LlmResponse>;
+    ) -> Result<LlmResponse, LlmError>;
 
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
@@ -88,7 +88,7 @@ pub trait LlmBackend: Send + Sync {
         conversation: &Conversation,
         tools: &ToolRegistry,
         event_tx: Option<UnboundedSender<AgentEvent>>,
-    ) -> Result<LlmResponse> {
+    ) -> Result<LlmResponse, LlmError> {
         let _ = event_tx;
         self.send_message_with_tools(conversation, tools).await
     }

@@ -435,14 +435,14 @@ impl LlmBackend for AnthropicBackend {
         self.default_executor
             .execute(|| async { self.send_message_attempt(message).await }, None)
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
+            .map_err(|e| anyhow::Error::new(e))
     }
 
     async fn send_message_with_tools(
         &self,
         conversation: &Conversation,
         tools: &ToolRegistry,
-    ) -> Result<LlmResponse> {
+    ) -> Result<LlmResponse, LlmError> {
         self.default_executor
             .execute(
                 || async {
@@ -452,7 +452,6 @@ impl LlmBackend for AnthropicBackend {
                 None,
             )
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     async fn send_message_with_events(
@@ -466,7 +465,7 @@ impl LlmBackend for AnthropicBackend {
                 event_tx,
             )
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
+            .map_err(|e| anyhow::Error::new(e))
     }
 
     async fn send_message_with_tools_and_events(
@@ -474,7 +473,7 @@ impl LlmBackend for AnthropicBackend {
         conversation: &Conversation,
         tools: &ToolRegistry,
         event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
-    ) -> Result<LlmResponse> {
+    ) -> Result<LlmResponse, LlmError> {
         self.default_executor
             .execute(
                 || async {
@@ -484,7 +483,6 @@ impl LlmBackend for AnthropicBackend {
                 event_tx,
             )
             .await
-            .map_err(|e| anyhow::anyhow!(e.user_message()))
     }
 
     fn backend_name(&self) -> &str {
