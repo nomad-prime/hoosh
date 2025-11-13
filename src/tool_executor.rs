@@ -115,11 +115,8 @@ impl ToolExecutor {
 
         // Generate and emit preview if available
         if let Some(preview) = tool.generate_preview(&args).await {
-            // Always show the preview in the message stream first
             if let Some(sender) = &self.event_sender {
                 let _ = sender.send(AgentEvent::ToolPreview {
-                    tool_call_id: tool_call_id.clone(),
-                    tool_name: tool_name.clone(),
                     preview: preview.clone(),
                 });
             }

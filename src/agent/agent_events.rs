@@ -6,8 +6,6 @@ pub enum AgentEvent {
     AssistantThought(String),
     ToolCalls(Vec<(String, String)>),
     ToolPreview {
-        tool_call_id: String,
-        tool_name: String,
         preview: String,
     },
     ToolResult {
