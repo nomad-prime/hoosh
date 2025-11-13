@@ -81,16 +81,6 @@ impl ToolError {
         matches!(self, ToolError::PermissionDenied { .. })
     }
 
-    pub fn user_facing_message(&self) -> String {
-        match self {
-            ToolError::UserRejected { .. } => "Rejected, tell me what to do instead".to_string(),
-            ToolError::PermissionDenied { .. } => {
-                "Permission denied, tell me what to do instead".to_string()
-            }
-            _ => format!("Error: {}", self),
-        }
-    }
-
     pub fn llm_message(&self) -> String {
         match self {
             ToolError::PermissionDenied { tool } => {

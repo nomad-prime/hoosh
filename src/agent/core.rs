@@ -297,23 +297,24 @@ impl Agent {
         let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
 
         // Phase 3: Check for rejections and permission denials
-        let has_rejection = self.has_user_rejection(&tool_results);
-        let has_permission_denied = self.has_permission_denied(&tool_results);
-
-        // Note: Tool results are now emitted individually during execution in tool_executor
+        let rejected_tool_call_names = self.rejected_tool_call_names(&tool_results);
+        let permission_denied_tool_call_names =
+            self.permission_denied_tool_call_names(&tool_results);
 
         for tool_result in tool_results {
             conversation.add_tool_result(tool_result);
             self.persist_message(&conversation.messages[conversation.messages.len() - 1]);
         }
 
-        if has_rejection {
-            self.send_event(AgentEvent::UserRejection);
+        if !rejected_tool_call_names.is_empty() {
+            self.send_event(AgentEvent::UserRejection(rejected_tool_call_names));
             return Ok(TurnStatus::Complete);
         }
 
-        if has_permission_denied {
-            self.send_event(AgentEvent::PermissionDenied);
+        if !permission_denied_tool_call_names.is_empty() {
+            self.send_event(AgentEvent::PermissionDenied(
+                permission_denied_tool_call_names,
+            ));
             return Ok(TurnStatus::Complete);
         }
 
@@ -341,14 +342,23 @@ impl Agent {
         self.send_event(AgentEvent::ToolCalls(tool_call_info));
     }
 
-    fn has_user_rejection(&self, tool_results: &[ToolCallResponse]) -> bool {
-        tool_results.iter().any(|result| result.is_rejected())
+    fn rejected_tool_call_names(&self, tool_call_responses: &[ToolCallResponse]) -> Vec<String> {
+        tool_call_responses
+            .iter()
+            .filter(|result| result.is_rejected())
+            .map(|result| result.display_name.clone())
+            .collect()
     }
 
-    fn has_permission_denied(&self, tool_results: &[ToolCallResponse]) -> bool {
-        tool_results
+    fn permission_denied_tool_call_names(
+        &self,
+        tool_call_responses: &[ToolCallResponse],
+    ) -> Vec<String> {
+        tool_call_responses
             .iter()
-            .any(|result| result.is_permission_denied())
+            .filter(|result| result.is_permission_denied())
+            .map(|result| result.display_name.clone())
+            .collect()
     }
 }
 

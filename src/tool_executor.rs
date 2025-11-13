@@ -70,7 +70,6 @@ impl ToolExecutor {
         self
     }
 
-    /// Execute a single tool call
     pub async fn execute_tool_call(&self, tool_call: &ToolCall) -> ToolCallResponse {
         let tool_name = &tool_call.function.name;
         let tool_call_id = tool_call.id.clone();
