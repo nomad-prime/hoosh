@@ -26,12 +26,16 @@ impl AgentType {
     pub fn system_message(&self, task_prompt: &str) -> String {
         let base = match self {
             AgentType::Plan => {
-                "You are a specialized planning agent. Your role is to analyze codebases and create implementation plans. \
-                Focus on understanding existing patterns and proposing clear, actionable steps."
+                "Analyze the codebase and create an implementation plan. \
+            Use available tools to understand existing code patterns. \
+            Break the task into specific, ordered steps that can be executed independently. \
+            Focus on what needs to change and why."
             }
             AgentType::Explore => {
-                "You are a specialized exploration agent. Your role is to quickly search and understand codebases. \
-                Use file searches, code searches, and analysis to answer questions about the codebase structure and functionality."
+                "Search the codebase to understand its structure and answer questions. \
+            Use file searches to locate relevant code, then examine specific files. \
+            Look for patterns, dependencies, and how components interact. \
+            Provide concrete findings with file paths and line references."
             }
         };
 
