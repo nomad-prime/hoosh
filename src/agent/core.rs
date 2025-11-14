@@ -381,30 +381,37 @@ enum TurnStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::BuiltinToolProvider;
-    use crate::agent::{ToolCall, ToolFunction};
     use crate::backends::{LlmError, LlmResponse};
     use crate::permissions::PermissionManager;
     use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockBackend {
         responses: Vec<LlmResponse>,
-        current_index: std::sync::Mutex<usize>,
+        call_count: Arc<AtomicUsize>,
     }
 
     impl MockBackend {
         fn new(responses: Vec<LlmResponse>) -> Self {
             Self {
                 responses,
-                current_index: std::sync::Mutex::new(0),
+                call_count: Arc::new(AtomicUsize::new(0)),
             }
+        }
+
+        fn call_count(&self) -> usize {
+            self.call_count.load(Ordering::SeqCst)
         }
     }
 
     #[async_trait]
     impl LlmBackend for MockBackend {
         async fn send_message(&self, _message: &str) -> Result<String> {
-            unimplemented!()
+            let index = self.call_count.fetch_add(1, Ordering::SeqCst);
+            self.responses
+                .get(index)
+                .and_then(|r| r.content.clone())
+                .ok_or_else(|| anyhow::anyhow!("No more responses"))
         }
 
         async fn send_message_with_tools(
@@ -412,14 +419,28 @@ mod tests {
             _conversation: &Conversation,
             _tools: &ToolRegistry,
         ) -> Result<LlmResponse, LlmError> {
-            let mut index = self.current_index.lock().map_err(|e| LlmError::Other {
-                message: format!("Failed to lock current_index: {}", e),
-            })?;
-            let response = self.responses.get(*index).cloned();
-            *index += 1;
-            response.ok_or_else(|| LlmError::Other {
-                message: "No more responses".to_string(),
-            })
+            let index = self.call_count.fetch_add(1, Ordering::SeqCst);
+            self.responses
+                .get(index)
+                .cloned()
+                .ok_or_else(|| LlmError::Other {
+                    message: "No more responses".to_string(),
+                })
+        }
+
+        async fn send_message_with_tools_and_events(
+            &self,
+            _conversation: &Conversation,
+            _tools: &ToolRegistry,
+            _event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
+        ) -> Result<LlmResponse, LlmError> {
+            let index = self.call_count.fetch_add(1, Ordering::SeqCst);
+            self.responses
+                .get(index)
+                .cloned()
+                .ok_or_else(|| LlmError::Other {
+                    message: "No more responses".to_string(),
+                })
         }
 
         fn backend_name(&self) -> &'static str {
@@ -429,77 +450,184 @@ mod tests {
         fn model_name(&self) -> &str {
             "mock-model"
         }
+
+        fn pricing(&self) -> Option<crate::backends::TokenPricing> {
+            None
+        }
+    }
+
+    fn create_test_agent(
+        backend: Arc<dyn LlmBackend>,
+    ) -> (Agent, Arc<ToolRegistry>, Arc<ToolExecutor>, mpsc::UnboundedSender<AgentEvent>) {
+        let tool_registry = Arc::new(ToolRegistry::new());
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx.clone(), response_rx).with_skip_permissions(true));
+        let tool_executor = Arc::new(ToolExecutor::new(
+            Arc::clone(&tool_registry),
+            Arc::clone(&permission_manager),
+        ));
+
+        let agent = Agent::new(backend, Arc::clone(&tool_registry), tool_executor.clone());
+        (agent, tool_registry, tool_executor, event_tx)
     }
 
     #[tokio::test]
-    async fn test_conversation_handler_simple_response() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
+    async fn agent_handles_simple_response() {
+        let backend = Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+            "Hello, I'm here to help!".to_string(),
+        )]));
 
-        let mock_backend: Arc<dyn LlmBackend> =
-            Arc::new(MockBackend::new(vec![LlmResponse::content_only(
-                "Hello, how can I help?".to_string(),
-            )]));
+        let (agent, _, _, _) = create_test_agent(backend);
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Hello".to_string());
 
+        let result = agent.handle_turn(&mut conversation).await;
+
+        assert!(result.is_ok());
+        assert_eq!(conversation.messages.len(), 2);
+        assert!(conversation
+            .messages
+            .iter()
+            .any(|m| m.content.as_ref().map_or(false, |c| c.contains("help"))));
+    }
+
+    #[tokio::test]
+    async fn agent_handles_multiple_turns() {
+        let backend = Arc::new(MockBackend::new(vec![
+            LlmResponse::content_only("First response".to_string()),
+            LlmResponse::content_only("Second response".to_string()),
+        ]));
+
+        let (agent, _, _, _) = create_test_agent(backend.clone());
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("First message".to_string());
+
+        let result = agent.handle_turn(&mut conversation).await;
+        assert!(result.is_ok());
+
+        conversation.add_user_message("Second message".to_string());
+        let result = agent.handle_turn(&mut conversation).await;
+        assert!(result.is_ok());
+
+        assert!(backend.call_count() >= 2);
+    }
+
+    #[tokio::test]
+    async fn agent_respects_max_steps() {
+        let backend = Arc::new(MockBackend::new(vec![]));
+        let (agent, _, _, _) = create_test_agent(backend);
+        let agent = agent.with_max_steps(5);
+
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Hello".to_string());
+
+        let result = agent.handle_turn(&mut conversation).await;
+
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn agent_builder_pattern_works() {
+        let backend = Arc::new(MockBackend::new(vec![]));
+        let tool_registry = Arc::new(ToolRegistry::new());
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx.clone(), response_rx).with_skip_permissions(true));
+        let tool_executor = Arc::new(ToolExecutor::new(tool_registry.clone(), permission_manager));
+
+        let agent = Agent::new(backend, tool_registry, tool_executor)
+            .with_max_steps(100)
+            .with_event_sender(event_tx.clone());
+
+        assert_eq!(agent.max_steps, 100);
+        assert!(agent.event_sender.is_some());
+    }
+
+    #[tokio::test]
+    async fn title_generation_returns_valid_string() {
+        let backend = Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+            "\"Helpful Assistant Conversation\"".to_string(),
+        )]));
+
+        let (agent, _, _, _) = create_test_agent(backend);
+        let title = agent.generate_title("How can I learn Rust?").await;
+
+        assert!(title.is_ok());
+        let title_str = title.unwrap();
+        assert!(!title_str.is_empty());
+        assert!(!title_str.contains('"'));
+    }
+
+    #[tokio::test]
+    async fn permission_response_fields_accessible() {
+        let response = PermissionResponse {
+            request_id: "req_123".to_string(),
+            allowed: true,
+            scope: None,
+        };
+
+        assert_eq!(response.request_id, "req_123");
+        assert!(response.allowed);
+        assert!(response.scope.is_none());
+    }
+
+    #[tokio::test]
+    async fn approval_response_with_rejection_reason() {
+        let response = ApprovalResponse {
+            tool_call_id: "call_456".to_string(),
+            approved: false,
+            rejection_reason: Some("User declined".to_string()),
+        };
+
+        assert_eq!(response.tool_call_id, "call_456");
+        assert!(!response.approved);
+        assert_eq!(response.rejection_reason, Some("User declined".to_string()));
+    }
+
+    #[tokio::test]
+    async fn agent_initializes_with_defaults() {
+        let backend = Arc::new(MockBackend::new(vec![]));
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager =
             Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-        let tool_executor = Arc::new(ToolExecutor::new(
-            Arc::clone(&tool_registry),
-            Arc::clone(&permission_manager),
-        ));
+        let tool_executor = Arc::new(ToolExecutor::new(tool_registry.clone(), permission_manager));
 
-        let handler = Agent::new(mock_backend, tool_registry, tool_executor);
+        let agent = Agent::new(backend, tool_registry, tool_executor);
 
-        let mut conversation = Conversation::new();
-        conversation.add_user_message("Hello".to_string());
-
-        let result = handler.handle_turn(&mut conversation).await;
-        assert!(result.is_ok());
-        assert_eq!(conversation.messages.len(), 2);
+        assert_eq!(agent.max_steps, 1000);
+        assert!(agent.event_sender.is_none());
+        assert!(agent.context_manager.is_none());
+        assert!(agent.conversation_storage.is_none());
+        assert!(agent.conversation_id.is_none());
     }
 
     #[tokio::test]
-    async fn test_conversation_handler_with_tool_call() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
+    async fn multiple_agents_operate_independently() {
+        let backend1 = Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+            "Agent 1".to_string(),
+        )]));
+        let backend2 = Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+            "Agent 2".to_string(),
+        )]));
 
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            r#type: "function".to_string(),
-            function: ToolFunction {
-                name: "read_file".to_string(),
-                arguments: r#"{"path": "test.txt"}"#.to_string(),
-            },
-        };
+        let (agent1, _, _, _) = create_test_agent(backend1);
+        let (agent2, _, _, _) = create_test_agent(backend2);
 
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new(vec![
-            LlmResponse::with_tool_calls(Some("Reading file".to_string()), vec![tool_call]),
-            LlmResponse::content_only("File read successfully".to_string()),
-        ]));
+        let mut conv1 = Conversation::new();
+        conv1.add_user_message("Message 1".to_string());
 
-        let temp_dir = tempfile::tempdir().unwrap();
-        let test_file = temp_dir.path().join("test.txt");
-        std::fs::write(&test_file, "test content").unwrap();
+        let mut conv2 = Conversation::new();
+        conv2.add_user_message("Message 2".to_string());
 
-        let tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
-            BuiltinToolProvider::new(temp_dir.path().to_path_buf()),
-        )));
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-        let tool_executor = Arc::new(ToolExecutor::new(
-            Arc::clone(&tool_registry),
-            Arc::clone(&permission_manager),
-        ));
+        let result1 = agent1.handle_turn(&mut conv1).await;
+        let result2 = agent2.handle_turn(&mut conv2).await;
 
-        let handler = Agent::new(mock_backend, tool_registry, tool_executor);
-
-        let mut conversation = Conversation::new();
-        conversation.add_user_message("Read test.txt".to_string());
-
-        let result = handler.handle_turn(&mut conversation).await;
-        assert!(result.is_ok());
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
     }
 }

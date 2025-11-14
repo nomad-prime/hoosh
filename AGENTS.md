@@ -135,6 +135,66 @@ mod tests {
 }
 ```
 
+#### Test Organization
+
+Tests should be grouped in modules at the bottom of their respective files. Use descriptive test names that describe **what behavior is being verified**, not implementation details.
+
+Good test names:
+- `agent_handles_simple_response()` - Tests core behavior
+- `title_generation_returns_valid_string()` - Tests public contract
+- `multiple_agents_operate_independently()` - Tests use case
+
+Bad test names:
+- `test_internal_state()` - Tests implementation details
+- `backend_call_count_increases()` - Tests internal mechanics instead of behavior
+
+#### Mock Objects
+
+Create realistic mocks that simulate actual dependencies:
+
+```rust
+struct MockBackend {
+    responses: Vec<LlmResponse>,
+    call_count: Arc<AtomicUsize>,
+}
+
+impl MockBackend {
+    fn new(responses: Vec<LlmResponse>) -> Self {
+        Self {
+            responses,
+            call_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmBackend for MockBackend {
+    async fn send_message(&self, _message: &str) -> Result<String> {
+        let index = self.call_count.fetch_add(1, Ordering::SeqCst);
+        self.responses.get(index)
+            .cloned()
+            .ok_or_else(|| /* error */)
+    }
+    // ... other trait methods
+}
+```
+
+#### Builder Pattern in Tests
+
+Use builder pattern with test setup to make tests more readable:
+
+```rust
+fn create_test_agent(backend: Arc<dyn LlmBackend>) 
+    -> (Agent, Arc<ToolRegistry>, Arc<ToolExecutor>) {
+    let tool_registry = Arc::new(ToolRegistry::new());
+    let (event_tx, _) = mpsc::unbounded_channel();
+    let tool_executor = Arc::new(ToolExecutor::new(tool_registry.clone()));
+    
+    let agent = Agent::new(backend, tool_registry.clone(), tool_executor.clone());
+    (agent, tool_registry, tool_executor)
+}
+```
+
 ### Async Patterns
 
 - Use `tokio::main` for async main function
