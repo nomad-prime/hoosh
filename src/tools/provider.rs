@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::tools::bash_blacklist::BlacklistFile;
-use crate::tools::{BashTool, EditFileTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool, WriteFileTool};
+use crate::tools::{
+    BashTool, EditFileTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool, WriteFileTool,
+};
 
 /// Trait for tool providers that can register tools dynamically
 pub trait ToolProvider: Send + Sync {

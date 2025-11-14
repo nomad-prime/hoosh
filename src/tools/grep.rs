@@ -305,12 +305,11 @@ impl Tool for GrepTool {
     }
 
     async fn execute(&self, args: &Value) -> ToolResult<String> {
-        let args: GrepArgs = serde_json::from_value(args.clone()).map_err(|e| {
-            ToolError::InvalidArguments {
+        let args: GrepArgs =
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "grep".to_string(),
                 message: format!("Invalid grep arguments: {}", e),
-            }
-        })?;
+            })?;
 
         let mut cmd = self.build_command(&args)?;
 
@@ -493,7 +492,13 @@ mod tests {
         assert!(props.is_some());
         let required = schema.get("required");
         assert!(required.is_some());
-        assert!(required.unwrap().as_array().unwrap().contains(&"pattern".into()));
+        assert!(
+            required
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .contains(&"pattern".into())
+        );
     }
 
     #[tokio::test]
