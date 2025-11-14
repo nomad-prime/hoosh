@@ -95,10 +95,8 @@ impl MarkdownRenderer {
                         // Get the current list's counter
                         if let Some(counter_opt) = list_stack.last_mut() {
                             if let Some(counter) = counter_opt {
-                                current_line_spans.push(Span::raw(format!(
-                                    "{}{}. ",
-                                    indent, counter
-                                )));
+                                current_line_spans
+                                    .push(Span::raw(format!("{}{}. ", indent, counter)));
                                 *counter += 1;
                             } else {
                                 current_line_spans.push(Span::raw(format!("{}• ", indent)));
@@ -114,10 +112,8 @@ impl MarkdownRenderer {
                         if !current_line_spans.is_empty() {
                             lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
-                        current_line_spans.push(Span::styled(
-                            "│ ",
-                            Style::default().fg(Color::DarkGray),
-                        ));
+                        current_line_spans
+                            .push(Span::styled("│ ", Style::default().fg(Color::DarkGray)));
                     }
                     Tag::Link { .. } => {
                         // Links are handled by their text content
@@ -240,10 +236,8 @@ impl MarkdownRenderer {
                 }
                 Event::TaskListMarker(checked) => {
                     let marker = if checked { "[✓] " } else { "[ ] " };
-                    current_line_spans.push(Span::styled(
-                        marker,
-                        Style::default().fg(Color::Green),
-                    ));
+                    current_line_spans
+                        .push(Span::styled(marker, Style::default().fg(Color::Green)));
                 }
                 _ => {}
             }
@@ -302,11 +296,8 @@ impl MarkdownRenderer {
             )];
 
             for (style, text) in highlighted {
-                let fg_color = Color::Rgb(
-                    style.foreground.r,
-                    style.foreground.g,
-                    style.foreground.b,
-                );
+                let fg_color =
+                    Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
                 spans.push(Span::styled(
                     text.to_string(),
                     Style::default().fg(fg_color).bg(code_bg),
@@ -342,9 +333,7 @@ impl MarkdownRenderer {
             HeadingLevel::H5 => Style::default()
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),
-            HeadingLevel::H6 => Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
+            HeadingLevel::H6 => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         }
     }
 
@@ -395,8 +384,10 @@ mod tests {
         assert!(lines.len() > 4);
 
         // Check that there are some empty lines (spacing)
-        let empty_lines = lines.iter().filter(|l| l.spans.is_empty() ||
-            l.spans.iter().all(|s| s.content.trim().is_empty())).count();
+        let empty_lines = lines
+            .iter()
+            .filter(|l| l.spans.is_empty() || l.spans.iter().all(|s| s.content.trim().is_empty()))
+            .count();
         assert!(empty_lines > 0);
     }
 
