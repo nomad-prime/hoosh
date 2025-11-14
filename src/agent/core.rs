@@ -138,7 +138,10 @@ impl Agent {
                     conversation.add_user_message(error_msg);
                     continue;
                 }
-                Err(e) => return Err(anyhow::Error::new(e)),
+                Err(e) => {
+                    self.send_event(AgentEvent::Error(e.user_message()));
+                    return Err(anyhow::Error::new(e));
+                }
             };
 
             match self.process_response(conversation, response, step).await? {

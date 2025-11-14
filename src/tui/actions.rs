@@ -73,9 +73,11 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
 
         let mut conv = conversation.lock().await;
         let agent = Agent::new(backend, tool_registry, tool_executor)
-            .with_event_sender(event_tx)
+            .with_event_sender(event_tx.clone())
             .with_context_manager(context_manager);
 
-        let _ = agent.handle_turn(&mut conv).await;
+        if let Err(e) = agent.handle_turn(&mut conv).await {
+            let _ = event_tx.send(AgentEvent::Error(e.to_string()));
+        }
     })
 }
