@@ -326,8 +326,9 @@ impl Tool for BashTool {
         if let Ok(parsed_args) = serde_json::from_value::<BashArgs>(args.clone()) {
             // Show a preview of the command (truncate if too long)
             let cmd = &parsed_args.command;
-            if cmd.len() > 50 {
-                format!("Bash({}...)", &cmd[..50])
+            if cmd.chars().count() > 50 {
+                let truncated: String = cmd.chars().take(50).collect();
+                format!("Bash({}...)", truncated)
             } else {
                 format!("Bash({})", cmd)
             }
@@ -343,8 +344,9 @@ impl Tool for BashTool {
             if let Some(stdout) = result.split("STDOUT:\n").nth(1) {
                 let output_line = stdout.lines().next().unwrap_or("");
                 if !output_line.is_empty() && !output_line.starts_with("Exit code:") {
-                    if output_line.len() > 50 {
-                        return format!("{}...", &output_line[..50]);
+                    if output_line.chars().count() > 50 {
+                        let truncated: String = output_line.chars().take(50).collect();
+                        return format!("{}...", truncated);
                     }
                     return output_line.to_string();
                 }
