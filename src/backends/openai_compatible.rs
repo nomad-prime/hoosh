@@ -502,3 +502,7 @@ impl LlmBackend for OpenAICompatibleBackend {
             .await
     }
 }
+
+#[cfg(test)]
+#[path = "openai_compatible_tests.rs"]
+mod tests;

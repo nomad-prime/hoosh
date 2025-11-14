@@ -221,17 +221,6 @@ async fn test_session_load_existing_conversation() { }
 
 ## Recommended Test Implementation Plan
 
-### Phase 1: Quick Wins (1-2 days, +15-20% coverage)
-Start with these for immediate impact:
-
-1. **`tui/app_state.rs`** - State initialization and transitions (6-8 tests)
-2. **`config/mod.rs`** - Config parsing and validation (5-7 tests)
-3. **`session.rs`** - Session initialization (4-6 tests)
-
-**Expected coverage gain:** +10-15%
-
----
-
 ### Phase 2: Backend APIs (2-3 days, +20-25% coverage)
 Each backend needs comprehensive testing:
 

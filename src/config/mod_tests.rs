@@ -262,40 +262,50 @@ fn get_verbosity_returns_normal_by_default() {
 
 #[test]
 fn get_verbosity_parses_quiet() {
-    let mut config = AppConfig::default();
-    config.verbosity = Some("quiet".to_string());
+    let config = AppConfig {
+        verbosity: Some("quiet".to_string()),
+        ..Default::default()
+    };
 
     assert_eq!(config.get_verbosity(), VerbosityLevel::Quiet);
 }
 
 #[test]
 fn get_verbosity_parses_normal() {
-    let mut config = AppConfig::default();
-    config.verbosity = Some("normal".to_string());
+    let config = AppConfig {
+        verbosity: Some("normal".to_string()),
+        ..Default::default()
+    };
 
     assert_eq!(config.get_verbosity(), VerbosityLevel::Normal);
 }
 
 #[test]
 fn get_verbosity_parses_verbose() {
-    let mut config = AppConfig::default();
-    config.verbosity = Some("verbose".to_string());
+    let config = AppConfig {
+        verbosity: Some("verbose".to_string()),
+        ..Default::default()
+    };
 
     assert_eq!(config.get_verbosity(), VerbosityLevel::Verbose);
 }
 
 #[test]
 fn get_verbosity_parses_debug() {
-    let mut config = AppConfig::default();
-    config.verbosity = Some("debug".to_string());
+    let config = AppConfig {
+        verbosity: Some("debug".to_string()),
+        ..Default::default()
+    };
 
     assert_eq!(config.get_verbosity(), VerbosityLevel::Debug);
 }
 
 #[test]
 fn get_verbosity_fallback_on_invalid() {
-    let mut config = AppConfig::default();
-    config.verbosity = Some("invalid".to_string());
+    let config = AppConfig {
+        verbosity: Some("invalid".to_string()),
+        ..Default::default()
+    };
 
     assert_eq!(config.get_verbosity(), VerbosityLevel::Normal);
 }
@@ -405,11 +415,15 @@ fn merge_overwrites_agents() {
 
 #[test]
 fn merge_updates_default_backend() {
-    let mut config = AppConfig::default();
-    config.default_backend = "old_backend".to_string();
+    let mut config = AppConfig {
+        default_backend: "old_backend".to_string(),
+        ..Default::default()
+    };
 
-    let mut project_config = ProjectConfig::default();
-    project_config.default_backend = Some("new_backend".to_string());
+    let project_config = ProjectConfig {
+        default_backend: Some("new_backend".to_string()),
+        ..Default::default()
+    };
 
     config.merge(project_config);
 
@@ -418,11 +432,15 @@ fn merge_updates_default_backend() {
 
 #[test]
 fn merge_ignores_empty_default_backend() {
-    let mut config = AppConfig::default();
-    config.default_backend = "old_backend".to_string();
+    let mut config = AppConfig {
+        default_backend: "old_backend".to_string(),
+        ..Default::default()
+    };
 
-    let mut project_config = ProjectConfig::default();
-    project_config.default_backend = Some("".to_string());
+    let project_config = ProjectConfig {
+        default_backend: Some("".to_string()),
+        ..Default::default()
+    };
 
     config.merge(project_config);
 
@@ -431,11 +449,15 @@ fn merge_ignores_empty_default_backend() {
 
 #[test]
 fn merge_updates_verbosity() {
-    let mut config = AppConfig::default();
-    config.verbosity = Some("quiet".to_string());
+    let mut config = AppConfig {
+        verbosity: Some("quiet".to_string()),
+        ..Default::default()
+    };
 
-    let mut project_config = ProjectConfig::default();
-    project_config.verbosity = Some("debug".to_string());
+    let project_config = ProjectConfig {
+        verbosity: Some("debug".to_string()),
+        ..Default::default()
+    };
 
     config.merge(project_config);
 
@@ -444,11 +466,15 @@ fn merge_updates_verbosity() {
 
 #[test]
 fn merge_updates_default_agent() {
-    let mut config = AppConfig::default();
-    config.default_agent = Some("old_agent".to_string());
+    let mut config = AppConfig {
+        default_agent: Some("old_agent".to_string()),
+        ..Default::default()
+    };
 
-    let mut project_config = ProjectConfig::default();
-    project_config.default_agent = Some("new_agent".to_string());
+    let project_config = ProjectConfig {
+        default_agent: Some("new_agent".to_string()),
+        ..Default::default()
+    };
 
     config.merge(project_config);
 
@@ -572,9 +598,11 @@ fn deserialize_agent_config_with_defaults() {
 
 #[test]
 fn serialize_app_config_to_toml() {
-    let mut config = AppConfig::default();
-    config.default_backend = "openai".to_string();
-    config.verbosity = Some("verbose".to_string());
+    let config = AppConfig {
+        default_backend: "openai".to_string(),
+        verbosity: Some("verbose".to_string()),
+        ..Default::default()
+    };
 
     let toml = toml::to_string(&config).unwrap();
 
