@@ -318,10 +318,14 @@ impl Tool for GrepTool {
         })?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ToolError::ExecutionFailed {
-                message: format!("ripgrep failed: {}", stderr),
-            });
+            // Exit code 1 from ripgrep means no matches found, which is not an error
+            // Exit code 2+ indicates actual errors
+            if output.status.code() != Some(1) {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(ToolError::ExecutionFailed {
+                    message: format!("ripgrep failed: {}", stderr),
+                });
+            }
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
