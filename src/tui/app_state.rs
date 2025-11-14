@@ -679,6 +679,9 @@ impl AppState {
     }
 
     pub fn add_final_response(&mut self, content: &str) {
+        // Add blank line before response
+        self.add_message("".to_string());
+
         let msg_line = MessageLine::Markdown(content.to_string());
         self.messages.push_back(msg_line.clone());
         if self.messages.len() > self.max_messages {
