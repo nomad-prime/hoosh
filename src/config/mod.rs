@@ -6,6 +6,9 @@ use std::{collections::HashMap, fs, path::PathBuf};
 pub mod error;
 pub use error::{ConfigError, ConfigResult};
 
+#[cfg(test)]
+mod mod_tests;
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BackendConfig {
     pub api_key: Option<String>,

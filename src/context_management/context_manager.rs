@@ -11,7 +11,7 @@ pub trait ContextManagementStrategy: Send + Sync {
     async fn apply(&self, conversation: &mut Conversation) -> Result<()>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolOutputTruncationConfig {
     pub max_length: usize,
     pub show_truncation_notice: bool,
@@ -32,7 +32,7 @@ impl Default for ToolOutputTruncationConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SlidingWindowConfig {
     pub window_size: usize,
     pub preserve_system: bool,
@@ -51,7 +51,7 @@ impl Default for SlidingWindowConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContextManagerConfig {
     pub max_tokens: usize,
     pub compression_threshold: f32,
