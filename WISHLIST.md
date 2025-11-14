@@ -7,6 +7,9 @@ keeps tool calls there -> important for parallel tools calls
 (especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
 then I keep it above status bar
 
+### add custom commands
+like clippy etc that can be sent back to llm
+
 #### Running Todos
 
 currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
