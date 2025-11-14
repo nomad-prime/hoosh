@@ -15,6 +15,7 @@ pub mod init_permission;
 pub(crate) mod input_handler;
 mod layout;
 mod layout_builder;
+pub mod markdown;
 mod message_renderer;
 pub mod setup;
 pub mod terminal;

@@ -14,6 +14,7 @@ use tui_textarea::TextArea;
 pub enum MessageLine {
     Plain(String),
     Styled(Line<'static>),
+    Markdown(String),
 }
 
 #[derive(Clone, Debug)]
@@ -678,12 +679,12 @@ impl AppState {
     }
 
     pub fn add_final_response(&mut self, content: &str) {
-        let indented_content = content
-            .lines()
-            .map(|line| format!("  {}", line))
-            .collect::<Vec<_>>()
-            .join("\n");
-        self.add_message(indented_content);
+        let msg_line = MessageLine::Markdown(content.to_string());
+        self.messages.push_back(msg_line.clone());
+        if self.messages.len() > self.max_messages {
+            self.messages.pop_front();
+        }
+        self.pending_messages.push_back(msg_line);
     }
 
     pub fn add_user_input(&mut self, input: &str) {

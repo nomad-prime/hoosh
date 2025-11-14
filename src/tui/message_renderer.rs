@@ -1,4 +1,5 @@
 use super::app_state::{AppState, MessageLine};
+use super::markdown::MarkdownRenderer;
 use crate::tui::terminal::HooshTerminal;
 use anyhow::Result;
 use ratatui::text::{Line, Text};
@@ -17,14 +18,17 @@ use ratatui::widgets::{Paragraph, Widget};
 /// let renderer = MessageRenderer::new();
 /// // renderer.render_pending_messages(app, &mut terminal)?;
 /// ```
-pub struct MessageRenderer;
+pub struct MessageRenderer {
+    markdown_renderer: MarkdownRenderer,
+}
 
 impl MessageRenderer {
     pub fn new() -> Self {
-        Self
+        Self {
+            markdown_renderer: MarkdownRenderer::new(),
+        }
     }
 
-    /// Renders all pending messages from app into the terminal
     pub fn render_pending_messages(
         &self,
         app: &mut AppState,
@@ -43,7 +47,6 @@ impl MessageRenderer {
         Ok(())
     }
 
-    /// Renders a single message based on its type
     fn render_single_message(
         &self,
         message: MessageLine,
@@ -53,10 +56,12 @@ impl MessageRenderer {
         match message {
             MessageLine::Plain(text) => self.render_plain_message(text, terminal_width, terminal),
             MessageLine::Styled(line) => self.render_styled_message(line, terminal),
+            MessageLine::Markdown(markdown) => {
+                self.render_markdown_message(markdown, terminal_width, terminal)
+            }
         }
     }
 
-    /// Renders plain text message with wrapping
     fn render_plain_message(
         &self,
         text: String,
@@ -73,7 +78,6 @@ impl MessageRenderer {
         Ok(())
     }
 
-    /// Renders pre-styled message
     fn render_styled_message(
         &self,
         line: Line<'static>,
@@ -94,8 +98,22 @@ impl MessageRenderer {
         Ok(())
     }
 
-    /// Wraps plain text for display within terminal width
-    /// Preserves indentation for continuation lines
+    fn render_markdown_message(
+        &self,
+        markdown: String,
+        _terminal_width: usize,
+        terminal: &mut HooshTerminal,
+    ) -> Result<()> {
+        let rendered_lines = self.markdown_renderer.render(&markdown);
+        let line_count = rendered_lines.len() as u16;
+
+        terminal.insert_before(line_count, |buf| {
+            Paragraph::new(Text::from(rendered_lines)).render(buf.area, buf);
+        })?;
+
+        Ok(())
+    }
+
     fn wrap_plain_text(&self, text: &str, terminal_width: usize) -> Vec<Line<'static>> {
         let mut wrapped_lines = Vec::new();
 
@@ -117,7 +135,6 @@ impl MessageRenderer {
         wrapped_lines
     }
 
-    /// Wraps a single line, handling indentation
     fn wrap_single_line(&self, line: &str, max_width: usize) -> Vec<Line<'static>> {
         // Detect indentation
         let indent_len = line.len() - line.trim_start().len();
