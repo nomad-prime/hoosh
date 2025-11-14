@@ -213,9 +213,11 @@ impl Conversation {
         self.metadata.title = title.clone();
         self.metadata.update();
 
-        if let Some(storage) = &self.storage && let Err(e) = storage.save_metadata(&self.metadata) {
-                console().error(&format!("Warning: Failed to persist title update: {}", e))
-            }
+        if let Some(storage) = &self.storage
+            && let Err(e) = storage.save_metadata(&self.metadata)
+        {
+            console().error(&format!("Warning: Failed to persist title update: {}", e))
+        }
     }
 
     pub fn id(&self) -> &str {

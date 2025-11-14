@@ -1,9 +1,9 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
+use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use glob::Pattern;
 use walkdir::WalkDir;
 
 #[derive(Debug, Deserialize)]
@@ -59,7 +59,8 @@ impl GlobTool {
             let path_str = path.to_string_lossy().to_string();
 
             if pattern.matches(&path_str) {
-                let modified = entry.metadata()
+                let modified = entry
+                    .metadata()
                     .ok()
                     .and_then(|m| m.modified().ok())
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -73,13 +74,11 @@ impl GlobTool {
         }
 
         // Sort by modification time (most recent first)
-        matches.sort_by(|a, b| {
-            match (b.modified, a.modified) {
-                (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            }
+        matches.sort_by(|a, b| match (b.modified, a.modified) {
+            (Some(b_time), Some(a_time)) => b_time.cmp(&a_time),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
         });
 
         Ok(matches)
@@ -118,8 +117,8 @@ impl Tool for GlobTool {
     }
 
     async fn execute(&self, args: &Value) -> ToolResult<String> {
-        let args: GlobArgs = serde_json::from_value(args.clone())
-            .map_err(|e| ToolError::InvalidArguments {
+        let args: GlobArgs =
+            serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "glob".to_string(),
                 message: format!("Invalid glob arguments: {}", e),
             })?;
@@ -156,11 +155,7 @@ impl Tool for GlobTool {
     fn result_summary(&self, result: &str) -> String {
         if let Ok(glob_result) = serde_json::from_str::<GlobResult>(result) {
             let count = glob_result.total_count;
-            format!(
-                "Found {} file{}",
-                count,
-                if count == 1 { "" } else { "s" }
-            )
+            format!("Found {} file{}", count, if count == 1 { "" } else { "s" })
         } else {
             "Search completed".to_string()
         }

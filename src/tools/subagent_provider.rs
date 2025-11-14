@@ -2,7 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::tools::bash_blacklist::BlacklistFile;
-use crate::tools::{BashTool, EditFileTool, GlobTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool, ToolProvider, WriteFileTool};
+use crate::tools::{
+    BashTool, EditFileTool, GlobTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool,
+    ToolProvider, WriteFileTool,
+};
 
 /// Tool provider for sub-agents that provides all standard tools except the Task tool.
 /// This prevents infinite recursion where sub-agents spawn more sub-agents.

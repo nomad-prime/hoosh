@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::tools::bash_blacklist::BlacklistFile;
 use crate::tools::{
-    BashTool, EditFileTool, GlobTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool, WriteFileTool,
+    BashTool, EditFileTool, GlobTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool,
+    WriteFileTool,
 };
 
 /// Trait for tool providers that can register tools dynamically
