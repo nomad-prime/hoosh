@@ -726,3 +726,7 @@ impl Default for AppState {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "app_state_tests.rs"]
+mod tests;
