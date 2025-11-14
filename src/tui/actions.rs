@@ -62,12 +62,6 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
     let tool_executor = Arc::clone(&event_loop_context.system_resources.tool_executor);
     let event_tx = event_loop_context.channels.event_tx.clone();
     let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
-    let conversation_storage =
-        Arc::clone(&event_loop_context.conversation_state.conversation_storage);
-    let conversation_id = event_loop_context
-        .conversation_state
-        .conversation_id
-        .clone();
 
     tokio::spawn(async move {
         let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
@@ -75,18 +69,12 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
         {
             let mut conv = conversation.lock().await;
             conv.add_user_message(expanded_input.clone());
-
-            let user_message = &conv.messages[conv.messages.len() - 1];
-            if let Err(e) = conversation_storage.append_message(&conversation_id, user_message) {
-                eprintln!("Warning: Failed to persist user message: {}", e);
-            }
         }
 
         let mut conv = conversation.lock().await;
         let agent = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx)
-            .with_context_manager(context_manager)
-            .with_conversation_storage(conversation_storage, conversation_id);
+            .with_context_manager(context_manager);
 
         let _ = agent.handle_turn(&mut conv).await;
     })

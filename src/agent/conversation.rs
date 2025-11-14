@@ -1,6 +1,9 @@
-use serde::{Deserialize, Serialize};
-
+use crate::console;
+use crate::storage::{ConversationMetadata, ConversationStorage};
 use crate::tools::error::ToolError;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
@@ -96,36 +99,84 @@ impl ToolCallResponse {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct Conversation {
+    pub metadata: ConversationMetadata,
     pub messages: Vec<ConversationMessage>,
+    storage: Option<Arc<ConversationStorage>>,
 }
 
 impl Conversation {
+    /// Create a new in-memory conversation without persistence
+    /// Useful for testing or temporary conversations
     pub fn new() -> Self {
+        let id = format!(
+            "temp_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        );
         Self {
+            metadata: ConversationMetadata::new(id),
             messages: Vec::new(),
+            storage: None,
+        }
+    }
+
+    /// Create a new conversation with persistent storage
+    /// This will automatically persist all messages as they're added
+    pub fn with_storage(id: String, storage: Arc<ConversationStorage>) -> Result<Self> {
+        let metadata = storage.create_conversation(&id)?;
+        Ok(Self {
+            metadata,
+            messages: Vec::new(),
+            storage: Some(storage),
+        })
+    }
+
+    /// Load an existing conversation from storage
+    pub fn load(id: &str, storage: Arc<ConversationStorage>) -> Result<Self> {
+        let metadata = storage.load_metadata(id)?;
+        let messages = storage.load_messages(id)?;
+        Ok(Self {
+            metadata,
+            messages,
+            storage: Some(storage),
+        })
+    }
+
+    /// Create an in-memory conversation with a specific ID
+    /// Useful for testing with predictable IDs
+    pub fn new_with_id(id: String) -> Self {
+        Self {
+            metadata: ConversationMetadata::new(id),
+            messages: Vec::new(),
+            storage: None,
         }
     }
 
     pub fn add_system_message(&mut self, content: String) {
-        self.messages.push(ConversationMessage {
+        let message = ConversationMessage {
             role: "system".to_string(),
             content: Some(content),
             tool_calls: None,
             tool_call_id: None,
             name: None,
-        });
+        };
+        self.messages.push(message.clone());
+        self.persist_message(&message);
     }
 
     pub fn add_user_message(&mut self, content: String) {
-        self.messages.push(ConversationMessage {
+        let message = ConversationMessage {
             role: "user".to_string(),
             content: Some(content),
             tool_calls: None,
             tool_call_id: None,
             name: None,
-        });
+        };
+        self.messages.push(message.clone());
+        self.persist_message(&message);
     }
 
     pub fn add_assistant_message(
@@ -133,17 +184,21 @@ impl Conversation {
         content: Option<String>,
         tool_calls: Option<Vec<ToolCall>>,
     ) {
-        self.messages.push(ConversationMessage {
+        let message = ConversationMessage {
             role: "assistant".to_string(),
             content,
             tool_calls,
             tool_call_id: None,
             name: None,
-        });
+        };
+        self.messages.push(message.clone());
+        self.persist_message(&message);
     }
 
     pub fn add_tool_result(&mut self, tool_result: ToolCallResponse) {
-        self.messages.push(tool_result.to_message());
+        let message = tool_result.to_message();
+        self.messages.push(message.clone());
+        self.persist_message(&message);
     }
 
     pub fn clear(&mut self) {
@@ -152,6 +207,34 @@ impl Conversation {
 
     pub fn get_messages_for_api(&self) -> &Vec<ConversationMessage> {
         &self.messages
+    }
+
+    pub fn set_title(&mut self, title: String) {
+        self.metadata.title = title.clone();
+        self.metadata.update();
+
+        if let Some(storage) = &self.storage && let Err(e) = storage.save_metadata(&self.metadata) {
+                console().error(&format!("Warning: Failed to persist title update: {}", e))
+            }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.metadata.id
+    }
+
+    pub fn title(&self) -> &str {
+        &self.metadata.title
+    }
+
+    fn persist_message(&mut self, message: &ConversationMessage) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.append_message(&self.metadata.id, message) {
+                eprintln!("Warning: Failed to persist message: {}", e);
+            } else {
+                self.metadata.message_count = self.messages.len();
+                self.metadata.update();
+            }
+        }
     }
 
     pub fn has_pending_tool_calls(&self) -> bool {
@@ -246,7 +329,8 @@ impl Conversation {
                 tool_call_id: Some(tool_call.id),
                 name: None,
             };
-            self.messages.push(synthetic_result);
+            self.messages.push(synthetic_result.clone());
+            self.persist_message(&synthetic_result);
         }
 
         // Put user message back if we removed it
@@ -314,6 +398,16 @@ impl Conversation {
 impl Default for Conversation {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Clone for Conversation {
+    fn clone(&self) -> Self {
+        Self {
+            metadata: self.metadata.clone(),
+            messages: self.messages.clone(),
+            storage: self.storage.clone(),
+        }
     }
 }
 
