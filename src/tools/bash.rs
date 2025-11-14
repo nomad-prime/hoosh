@@ -4,7 +4,7 @@ use crate::tools::bash_blacklist::matches_pattern;
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -298,7 +298,9 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &'static str {
-        "Execute bash commands safely with timeout and security restrictions."
+        "Execute bash commands safely with timeout and security restrictions. \
+        You are already in the project directory - do not cd into it.
+        Only use cd if you need to access files in a different directory."
     }
 
     fn parameter_schema(&self) -> Value {
