@@ -148,7 +148,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Initialize conversation
     let conversation = load_or_create_conversation(
-        &conversation_storage,
+        Arc::clone(&conversation_storage),
         &conversation_id,
         default_agent.as_ref(),
     )?;
@@ -303,28 +303,24 @@ fn setup_conversation(
 }
 
 fn load_or_create_conversation(
-    conversation_storage: &ConversationStorage,
+    conversation_storage: Arc<ConversationStorage>,
     conversation_id: &str,
     default_agent: Option<&crate::agent_definition::AgentDefinition>,
 ) -> Result<Conversation> {
     // Try to load existing conversation
     if conversation_storage.conversation_exists(conversation_id) {
-        match conversation_storage.load_messages(conversation_id) {
-            Ok(messages) => {
-                let mut c = Conversation::new();
-                c.messages = messages;
-                return Ok(c);
-            }
+        match Conversation::load(conversation_id, conversation_storage) {
+            Ok(conv) => return Ok(conv),
             Err(e) => {
                 use crate::console::console;
-                console().error(&format!("Failed to load conversation messages: {}", e));
+                console().error(&format!("Failed to load conversation: {}", e));
                 return Err(e);
             }
         }
     }
 
-    // Create new conversation
-    let mut conv = Conversation::new();
+    // Create new conversation with storage
+    let mut conv = Conversation::with_storage(conversation_id.to_string(), conversation_storage)?;
     if let Some(agent) = default_agent {
         conv.add_system_message(agent.content.clone());
     }

@@ -3,11 +3,10 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::agent::agent_events::AgentEvent;
-use crate::agent::{Conversation, ConversationMessage, ToolCall, ToolCallResponse};
+use crate::agent::{Conversation, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
-use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -32,8 +31,6 @@ pub struct Agent {
     max_steps: usize,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     context_manager: Option<Arc<ContextManager>>,
-    conversation_storage: Option<Arc<ConversationStorage>>,
-    conversation_id: Option<String>,
 }
 
 impl Agent {
@@ -49,8 +46,6 @@ impl Agent {
             max_steps: 1000,
             event_sender: None,
             context_manager: None,
-            conversation_storage: None,
-            conversation_id: None,
         }
     }
 
@@ -69,20 +64,6 @@ impl Agent {
         self
     }
 
-    pub fn with_conversation_storage(
-        mut self,
-        storage: Arc<ConversationStorage>,
-        conversation_id: String,
-    ) -> Self {
-        self.conversation_storage = Some(storage);
-        self.conversation_id = Some(conversation_id);
-        self
-    }
-
-    pub fn persist_user_message(&self, message: &ConversationMessage) {
-        self.persist_message(message);
-    }
-
     pub async fn generate_title(&self, first_user_message: &str) -> Result<String> {
         let prompt = format!(
             "Generate a short title (5-8 words) for a conversation starting with: {}",
@@ -95,20 +76,8 @@ impl Agent {
         Ok(title)
     }
 
-    pub fn update_conversation_title(&self, title: String) -> Result<()> {
-        if let (Some(storage), Some(conversation_id)) =
-            (&self.conversation_storage, &self.conversation_id)
-        {
-            storage.update_title(conversation_id, title)?;
-        }
-        Ok(())
-    }
-
-    async fn ensure_title(&self, conversation: &Conversation) {
-        if let (Some(storage), Some(conversation_id)) =
-            (&self.conversation_storage, &self.conversation_id)
-            && let Ok(metadata) = storage.load_metadata(conversation_id)
-            && metadata.title.is_empty()
+    async fn ensure_title(&self, conversation: &mut Conversation) {
+        if conversation.title().is_empty()
             && let Some(first_user_msg) = conversation
                 .messages
                 .iter()
@@ -117,21 +86,16 @@ impl Agent {
         {
             match self.generate_title(first_user_msg).await {
                 Ok(title) => {
-                    if let Err(e) = storage.update_title(conversation_id, title.clone()) {
-                        self.send_event(AgentEvent::DebugMessage(format!(
-                            "Warning: Failed to update title: {}",
-                            e
-                        )));
-                    } else {
-                        self.send_event(AgentEvent::DebugMessage(format!(
-                            "Started: {} ({})",
-                            title, conversation_id
-                        )));
-                    }
+                    conversation.set_title(title.clone());
+                    self.send_event(AgentEvent::DebugMessage(format!(
+                        "Started: {} ({})",
+                        title,
+                        conversation.id()
+                    )));
                 }
                 Err(e) => {
                     self.send_event(AgentEvent::DebugMessage(format!(
-                        "Warning: Failed to update title: {}",
+                        "Warning: Failed to generate title: {}",
                         e
                     )));
                 }
@@ -145,27 +109,11 @@ impl Agent {
         }
     }
 
-    fn persist_message(&self, message: &ConversationMessage) {
-        if let (Some(storage), Some(conversation_id)) =
-            (&self.conversation_storage, &self.conversation_id)
-            && let Err(e) = storage.append_message(conversation_id, message)
-        {
-            eprintln!("Warning: Failed to persist message: {}", e);
-        }
-    }
-
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(AgentEvent::Thinking);
 
         // Repair any incomplete tool calls from previous interrupted sessions
-        let pre_repair_count = conversation.messages.len();
-        if conversation.repair_incomplete_tool_calls() {
-            // Persist the synthetic tool results that were just added
-            let post_repair_count = conversation.messages.len();
-            for i in pre_repair_count..post_repair_count {
-                self.persist_message(&conversation.messages[i]);
-            }
-        }
+        conversation.repair_incomplete_tool_calls();
 
         // Apply context compression if configured
         if let Some(context_manager) = &self.context_manager {
@@ -188,7 +136,6 @@ impl Agent {
                     // Add error as user message so LLM can adjust
                     let error_msg = e.user_message();
                     conversation.add_user_message(error_msg);
-                    self.persist_message(&conversation.messages[conversation.messages.len() - 1]);
                     continue;
                 }
                 Err(e) => return Err(anyhow::Error::new(e)),
@@ -276,7 +223,6 @@ impl Agent {
         if let Some(content) = response.content {
             self.send_event(AgentEvent::FinalResponse(content.clone()));
             conversation.add_assistant_message(Some(content), None);
-            self.persist_message(&conversation.messages[conversation.messages.len() - 1]);
             return Ok(TurnStatus::Complete);
         }
 
@@ -296,7 +242,6 @@ impl Agent {
             .ok_or_else(|| anyhow::anyhow!("Expected tool calls but none found"))?;
 
         conversation.add_assistant_message(response.content.clone(), Some(tool_calls.clone()));
-        self.persist_message(&conversation.messages[conversation.messages.len() - 1]);
 
         // Phase 1: Emit tool call events
         if let Some(ref content) = response.content {
@@ -314,7 +259,6 @@ impl Agent {
 
         for tool_result in tool_results {
             conversation.add_tool_result(tool_result);
-            self.persist_message(&conversation.messages[conversation.messages.len() - 1]);
         }
 
         if !rejected_tool_call_names.is_empty() {
