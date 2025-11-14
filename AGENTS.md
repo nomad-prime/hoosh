@@ -135,18 +135,54 @@ mod tests {
 }
 ```
 
+#### Test Coverage Guidelines
+
+When adding tests to complex components, focus on real-world use cases:
+
+**Happy Path Tests:**
+- Simple response handling
+- Multiple conversation turns
+- Builder pattern configuration
+
+**Tool Execution Tests:**
+- Agent handles responses with tool calls
+- Tool calls are properly executed
+- Results added to conversation
+
+**Error Handling Tests:**
+- Missing response content
+- Backend errors propagate correctly
+- Invalid tool call responses
+
+**State & Events Tests:**
+- Event emission during operation
+- Token usage tracking
+- Context manager integration
+- Multiple agents operate independently
+```
+
 #### Test Organization
 
-Tests should be grouped in modules at the bottom of their respective files. Use descriptive test names that describe **what behavior is being verified**, not implementation details.
+For complex modules, use a separate test file to keep tests organized:
+
+```rust
+// In src/component/core.rs
+#[cfg(test)]
+#[path = "core_expanded_tests.rs"]
+mod tests;
+```
+
+Use descriptive test names that describe **what behavior is being verified**, not implementation details.
 
 Good test names:
 - `agent_handles_simple_response()` - Tests core behavior
-- `title_generation_returns_valid_string()` - Tests public contract
+- `title_generation_returns_valid_string()` - Tests public contract  
 - `multiple_agents_operate_independently()` - Tests use case
+- `agent_handles_tool_calls_with_execution()` - Tests real workflow
 
 Bad test names:
 - `test_internal_state()` - Tests implementation details
-- `backend_call_count_increases()` - Tests internal mechanics instead of behavior
+- `backend_call_count_increases()` - Tests internal mechanicsanics instead of behavior
 
 #### Mock Objects
 
