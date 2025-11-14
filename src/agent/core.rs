@@ -458,12 +458,18 @@ mod tests {
 
     fn create_test_agent(
         backend: Arc<dyn LlmBackend>,
-    ) -> (Agent, Arc<ToolRegistry>, Arc<ToolExecutor>, mpsc::UnboundedSender<AgentEvent>) {
+    ) -> (
+        Agent,
+        Arc<ToolRegistry>,
+        Arc<ToolExecutor>,
+        mpsc::UnboundedSender<AgentEvent>,
+    ) {
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx.clone(), response_rx).with_skip_permissions(true));
+        let permission_manager = Arc::new(
+            PermissionManager::new(event_tx.clone(), response_rx).with_skip_permissions(true),
+        );
         let tool_executor = Arc::new(ToolExecutor::new(
             Arc::clone(&tool_registry),
             Arc::clone(&permission_manager),
@@ -487,10 +493,12 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(conversation.messages.len(), 2);
-        assert!(conversation
-            .messages
-            .iter()
-            .any(|m| m.content.as_ref().map_or(false, |c| c.contains("help"))));
+        assert!(
+            conversation
+                .messages
+                .iter()
+                .any(|m| m.content.as_ref().is_some_and(|c| c.contains("help")))
+        );
     }
 
     #[tokio::test]
@@ -534,8 +542,9 @@ mod tests {
         let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx.clone(), response_rx).with_skip_permissions(true));
+        let permission_manager = Arc::new(
+            PermissionManager::new(event_tx.clone(), response_rx).with_skip_permissions(true),
+        );
         let tool_executor = Arc::new(ToolExecutor::new(tool_registry.clone(), permission_manager));
 
         let agent = Agent::new(backend, tool_registry, tool_executor)
