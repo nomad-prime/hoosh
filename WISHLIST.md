@@ -62,10 +62,6 @@ have llm give forks as to possible implementations, user chooses the way
 
 Core Development Tools
 
-- Read - Read files from the filesystem (supports code, images, PDFs, Jupyter notebooks)
-- Write - Create new files or overwrite existing ones
-- Edit - Perform exact string replacements in files
-- Bash - Execute shell commands (git, npm, docker, etc.) -> should add grep and find tools to readonly operations
 - BashOutput - Retrieve output from background bash shells
 - KillShell - Terminate background bash shells
 
