@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::tools::bash_blacklist::BlacklistFile;
 use crate::tools::{
-    BashTool, EditFileTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool, WriteFileTool,
+    BashTool, EditFileTool, GlobTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool, WriteFileTool,
 };
 
 /// Trait for tool providers that can register tools dynamically
@@ -53,6 +53,7 @@ impl ToolProvider for BuiltinToolProvider {
                 BashTool::with_working_directory(self.working_directory.clone())
                     .with_blacklist(blacklist_patterns),
             ),
+            Arc::new(GlobTool::new()),
             Arc::new(GrepTool::new()),
         ]
     }
@@ -71,7 +72,7 @@ mod tests {
         let provider = BuiltinToolProvider::new(PathBuf::from("."));
         let tools = provider.provide_tools();
 
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 7);
 
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"read_file"));
@@ -79,6 +80,7 @@ mod tests {
         assert!(tool_names.contains(&"edit_file"));
         assert!(tool_names.contains(&"list_directory"));
         assert!(tool_names.contains(&"bash"));
+        assert!(tool_names.contains(&"glob"));
         assert!(tool_names.contains(&"grep"));
     }
 
