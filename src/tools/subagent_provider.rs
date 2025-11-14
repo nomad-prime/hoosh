@@ -66,9 +66,9 @@ mod tests {
         let provider = SubAgentToolProvider::new(PathBuf::from("."));
         let tools = provider.provide_tools();
 
-        // Should provide 5 tools: read_file, write_file, edit_file, list_directory, bash
+        // Should provide 7 tools: read_file, write_file, edit_file, list_directory, bash
         // Notably missing: task tool
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 7);
 
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"read_file"));
@@ -76,6 +76,8 @@ mod tests {
         assert!(tool_names.contains(&"edit_file"));
         assert!(tool_names.contains(&"list_directory"));
         assert!(tool_names.contains(&"bash"));
+        assert!(tool_names.contains(&"grep"));
+        assert!(tool_names.contains(&"glob"));
 
         // Verify task tool is NOT included
         assert!(!tool_names.contains(&"task"));
