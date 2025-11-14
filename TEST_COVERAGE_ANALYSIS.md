@@ -225,9 +225,8 @@ async fn test_session_load_existing_conversation() { }
 Each backend needs comprehensive testing:
 
 1. **`backends/anthropic.rs`** (10-12 tests)
-2. **`backends/openai_compatible.rs`** (10-12 tests)
-3. **`backends/together_ai.rs`** (8-10 tests)
-4. **`backends/ollama.rs`** (8-10 tests)
+2. **`backends/together_ai.rs`** (8-10 tests)
+3. **`backends/ollama.rs`** (8-10 tests)
 
 **Expected coverage gain:** +15-20%
 

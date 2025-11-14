@@ -4,4 +4,6 @@ token usage keeps adding up, truncation might not work correctly, or rather the 
 
 ### What Happens when LLM Backend Errors out
 
-do we set the correct turn and proper agent event?
+do we set the correct turn and proper agent event? and do we handle the turn properly for errors?
+
+I should try this with proper proxy

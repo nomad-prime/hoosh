@@ -7,6 +7,9 @@ keeps tool calls there -> important for parallel tools calls
 (especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
 then I keep it above status bar
 
+### Parallel tool runs
+currently tools are ran serially, lets have them parallel
+
 ### add custom commands
 like clippy etc that can be sent back to llm
 
