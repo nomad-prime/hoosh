@@ -70,11 +70,11 @@ impl RetryStrategy {
                     };
 
                     let retry_message = format!(
-                        "Attempt {}/{} failed: {}. Retrying in {:?}...",
-                        attempts,
-                        self.max_attempts,
+                        "{}. Retrying in {:?}... (Attempt {}/{})",
                         e.short_message(),
-                        actual_delay
+                        actual_delay,
+                        attempts,
+                        self.max_attempts
                     );
 
                     self.send_event(AgentEvent::RetryEvent {

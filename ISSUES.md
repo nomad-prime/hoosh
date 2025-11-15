@@ -7,3 +7,7 @@ token usage keeps adding up, truncation might not work correctly, or rather the 
 do we set the correct turn and proper agent event? and do we handle the turn properly for errors?
 
 I should try this with proper proxy
+
+### Subagents
+
+Subagents should only show visually the tool calls, not agents repsonses and thinking

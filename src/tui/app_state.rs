@@ -455,7 +455,7 @@ impl AppState {
             // so we don't display it again here
 
             if let ToolCallStatus::Error(err) = &tool_call.status {
-                self.add_message(format!("  Error: {}", err));
+                self.add_error(err);
             }
         }
 
@@ -477,7 +477,7 @@ impl AppState {
             }
 
             if let ToolCallStatus::Error(err) = &tool_call.status {
-                self.add_message(format!("  Error: {}", err));
+                self.add_error(err);
             }
         }
     }
@@ -675,7 +675,13 @@ impl AppState {
     }
 
     pub fn add_error(&mut self, error: &str) {
-        self.add_message(format!("  Error: {}", error));
+        let styled_line = Line::from(Span::styled(
+            format!("  ⎿  {}", error),
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::ITALIC),
+        ));
+        self.add_styled_line(styled_line);
     }
 
     pub fn add_final_response(&mut self, content: &str) {
