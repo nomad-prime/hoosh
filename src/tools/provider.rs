@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::tools::bash_blacklist::BlacklistFile;
 use crate::tools::{
     BashTool, EditFileTool, GlobTool, GrepTool, ListDirectoryTool, ReadFileTool, Tool,
     WriteFileTool,
@@ -29,14 +28,6 @@ impl BuiltinToolProvider {
 
 impl ToolProvider for BuiltinToolProvider {
     fn provide_tools(&self) -> Vec<Arc<dyn Tool>> {
-        // Create .hoosh/bash_blacklist.json if it doesn't exist
-        if let Err(e) = BlacklistFile::create_default_if_missing(&self.working_directory) {
-            eprintln!("Warning: Failed to create bash blacklist file: {}", e);
-        }
-
-        // Load blacklist patterns
-        let blacklist_patterns = BlacklistFile::load_safe(&self.working_directory);
-
         vec![
             Arc::new(ReadFileTool::with_working_directory(
                 self.working_directory.clone(),
@@ -50,10 +41,7 @@ impl ToolProvider for BuiltinToolProvider {
             Arc::new(ListDirectoryTool::with_working_directory(
                 self.working_directory.clone(),
             )),
-            Arc::new(
-                BashTool::with_working_directory(self.working_directory.clone())
-                    .with_blacklist(blacklist_patterns),
-            ),
+            Arc::new(BashTool::with_working_directory(self.working_directory.clone())),
             Arc::new(GlobTool::new()),
             Arc::new(GrepTool::new()),
         ]

