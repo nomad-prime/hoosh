@@ -76,8 +76,7 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
             .with_event_sender(event_tx.clone())
             .with_context_manager(context_manager);
 
-        if let Err(e) = agent.handle_turn(&mut conv).await {
-            let _ = event_tx.send(AgentEvent::Error(e.to_string()));
-        }
+        // Error is already sent as AgentEvent::Error from within handle_turn
+        let _ = agent.handle_turn(&mut conv).await;
     })
 }
