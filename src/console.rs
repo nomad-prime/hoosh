@@ -112,8 +112,7 @@ pub fn init_console(verbosity: VerbosityLevel) {
 
 pub fn console() -> Arc<Console> {
     GLOBAL_CONSOLE
-        .get()
-        .expect("Console not initialized - call init_console() first")
+        .get_or_init(|| Arc::new(Console::default()))
         .clone()
 }
 
