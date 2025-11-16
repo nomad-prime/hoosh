@@ -4,12 +4,20 @@ use hoosh::cli::{handle_agent, handle_config, handle_conversations, handle_setup
 use hoosh::{
     cli::{Cli, Commands},
     config::{AppConfig, ConfigError},
-    console::init_console,
+    console::{VerbosityLevel, init_console},
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // For non-interactive commands (Config, Conversations), initialize console with default verbosity
+    if matches!(
+        cli.command,
+        Some(Commands::Config { .. }) | Some(Commands::Conversations { .. })
+    ) {
+        init_console(cli.get_effective_verbosity(VerbosityLevel::Normal));
+    }
 
     match cli.command {
         Some(Commands::Config { action }) => {
