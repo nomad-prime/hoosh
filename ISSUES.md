@@ -15,3 +15,7 @@ Subagents should only show visually the tool calls, not agents repsonses and thi
 ### Compression
 
 broken
+
+### Permission.json
+
+if hoosh is running, a change on permissions file is overwritten

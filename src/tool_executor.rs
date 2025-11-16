@@ -258,6 +258,11 @@ impl ToolExecutor {
         // Let the tool describe its own permission requirements
         let descriptor = tool.describe_permission(target);
 
+        // Auto-approve read-only operations
+        if descriptor.is_read_only() {
+            return Ok(());
+        }
+
         let allowed = self
             .permission_manager
             .check_tool_permission(&descriptor)

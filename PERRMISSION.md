@@ -1,279 +1,239 @@
-# Ticket: Add Command Risk Classification to Bash Tool
+Got it! Then just give me a clean ticket for fixing the pattern matching security issue:
+
+# Ticket: Fix Bash Pattern Matching Security Bypass
 
 ## Summary
-Implement a whitelist-based command risk classification system for the bash tool to automatically approve safe read-only commands without prompting the user, matching Claude Code's behavior.
+Fix critical security vulnerability in `BashPatternMatcher` where approving a multi-command pipeline incorrectly allows individual dangerous commands to execute without approval.
 
-## Background
-Currently, Hoosh asks for permission on every bash command execution. Claude Code has a more intelligent system that:
-- Automatically runs safe read-only commands (like `find`, `ls`, `grep`)
-- Only prompts for commands that could modify the system or files
-- Properly handles command chains (e.g., `cat file | grep pattern` is safe, `find | xargs sed` needs approval)
+## Problem
 
-## Goals
-1. Implement command risk classification that identifies safe vs needs-review commands
-2. Auto-approve commands where all base commands are whitelisted
-3. Maintain existing permission system for non-whitelisted commands
-4. Keep the architecture clean and testable
-
-## Technical Approach
-
-### 1. Create `bash/classifier.rs`
+The current `BashPatternMatcher` uses OR logic for multi-command patterns. When a user approves a pipeline like `find . | head -3 | xargs sed`, the pattern `find:*|head:*|xargs:*|sed:*` is stored. However, this pattern incorrectly matches `sed` alone:
 
 ```rust
-/// Risk level for bash commands based on their potential for system modification
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommandRisk {
-    /// All commands in the chain are whitelisted read-only operations
-    Safe,
-    /// At least one command is not whitelisted and needs user approval
-    NeedsReview,
+// User approves: find . | head -3 | xargs sed
+// Pattern stored: "find:*|head:*|xargs:*|sed:*"
+
+// Later, LLM executes:
+matcher.matches("find:*|head:*|xargs:*|sed:*", "sed -i 's/secret/leaked/' config.txt")
+// Returns: true ❌ WRONG! Should require approval again.
+```
+
+**Root cause:** In `pattern_matcher.rs`, line with `.any()`:
+
+```rust
+if pattern.contains('|') {
+    return pattern
+        .split('|')
+        .any(|p| self.matches_single(p.trim(), target));  // ❌ OR logic
+}
+```
+
+This treats the `|` as OR when it should mean "ALL commands must be present" (AND logic).
+
+## Solution
+
+Change pattern matching to require ALL commands in a multi-command pattern to be present in the target.
+
+**File: `src/permissions/pattern_matcher.rs`**
+
+Replace the `BashPatternMatcher` implementation:
+
+```rust
+use crate::tools::bash::BashCommandParser;
+
+pub struct BashPatternMatcher;
+
+impl PatternMatcher for BashPatternMatcher {
+    fn matches(&self, pattern: &str, target: &str) -> bool {
+        if pattern == "*" {
+            return true;
+        }
+
+        // Multi-command patterns require ALL commands present
+        if pattern.contains('|') {
+            return self.matches_multicommand(pattern, target);
+        }
+
+        self.matches_single(pattern, target)
+    }
 }
 
-pub struct BashCommandClassifier;
-
-impl BashCommandClassifier {
-    /// Classify a bash command based on the base commands it contains
-    ///
-    /// Examples:
-    /// - `find . -name "*.rs"` -> Safe
-    /// - `cat file | grep error` -> Safe
-    /// - `find | xargs sed` -> NeedsReview (sed not whitelisted)
-    /// - `cargo build` -> NeedsReview (cargo not whitelisted)
-    pub fn classify(command: &str) -> CommandRisk {
-        use crate::tools::bash::BashCommandParser;
+impl BashPatternMatcher {
+    /// Match multi-command pattern - ALL commands must be present
+    fn matches_multicommand(&self, pattern: &str, target: &str) -> bool {
+        // Extract command names from pattern (strip :* suffix)
+        let pattern_commands: Vec<&str> = pattern
+            .split('|')
+            .map(|p| p.trim().trim_end_matches(":*").trim_end_matches('*'))
+            .filter(|s| !s.is_empty())
+            .collect();
         
-        let base_commands = BashCommandParser::extract_base_commands(command);
+        // Extract commands from target
+        let target_commands = BashCommandParser::extract_base_commands(target);
         
-        // If ALL commands are whitelisted, it's safe
-        if base_commands.iter().all(|c| Self::is_whitelisted(c)) {
-            CommandRisk::Safe
-        } else {
-            CommandRisk::NeedsReview
-        }
+        // ALL pattern commands must exist in target
+        pattern_commands.iter().all(|pattern_cmd| {
+            target_commands.iter().any(|target_cmd| target_cmd == pattern_cmd)
+        })
     }
     
-    /// Check if a command is on the whitelist of safe read-only operations
-    fn is_whitelisted(cmd: &str) -> bool {
-        matches!(
-            cmd,
-            // File/directory reading
-            "ls" | "pwd" | "cat" | "head" | "tail" | "less" | "more"
-            | "find" | "tree" | "stat" | "file"
-            
-            // Text processing (read-only)
-            | "grep" | "egrep" | "fgrep" 
-            | "wc" | "sort" | "uniq" | "diff"
-            
-            // System info
-            | "echo" | "which" | "type"
-            | "whoami" | "hostname" | "date"
-        )
-    }
-}
-```
-
-### 2. Update `bash/mod.rs`
-
-Add the new module:
-```rust
-mod parser;
-mod tool;
-mod classifier;
-
-pub use parser::BashCommandParser;
-pub use tool::BashTool;
-pub use classifier::{BashCommandClassifier, CommandRisk};
-```
-
-### 3. Update `bash/tool.rs`
-
-Modify `describe_permission` to mark safe commands:
-
-```rust
-fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
-    use super::{BashCommandParser, BashCommandClassifier};
-
-    let target_str = target.unwrap_or("*");
-
-    // Check if command is entirely safe
-    if BashCommandClassifier::classify(target_str) == CommandRisk::Safe {
-        // Mark as read-only so it can be auto-approved
-        return ToolPermissionBuilder::new(self, target_str)
-            .into_read_only()
-            .with_approval_title(" Bash Command ")
-            .with_approval_prompt(format!("Can I run \"{}\"", target_str))
-            .with_persistent_approval("don't ask me again for bash in this project".to_string())
-            .with_suggested_pattern("*".to_string())
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
-            .build()
-            .expect("Failed to build BashTool permission descriptor")
-    }
-
-    // Existing logic for commands that need approval
-    let base_commands = BashCommandParser::extract_base_commands(target_str);
-    let suggested_pattern = BashCommandParser::suggest_pattern(&base_commands);
-
-    // ... rest of existing code unchanged
-}
-```
-
-### 4. Add Tests in `bash/classifier.rs`
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_safe_single_command() {
-        assert_eq!(BashCommandClassifier::classify("ls -la"), CommandRisk::Safe);
-        assert_eq!(BashCommandClassifier::classify("find . -name '*.rs'"), CommandRisk::Safe);
-        assert_eq!(BashCommandClassifier::classify("cat README.md"), CommandRisk::Safe);
-    }
-
-    #[test]
-    fn test_safe_pipeline() {
-        assert_eq!(
-            BashCommandClassifier::classify("cat file.txt | grep error"),
-            CommandRisk::Safe
-        );
-        assert_eq!(
-            BashCommandClassifier::classify("find . -name '*.md' | head -3"),
-            CommandRisk::Safe
-        );
-        assert_eq!(
-            BashCommandClassifier::classify("cat Cargo.toml | grep version | wc -l"),
-            CommandRisk::Safe
-        );
-    }
-
-    #[test]
-    fn test_needs_review_single_command() {
-        assert_eq!(BashCommandClassifier::classify("cargo build"), CommandRisk::NeedsReview);
-        assert_eq!(BashCommandClassifier::classify("sed -i 's/test/TEST/g' file.txt"), CommandRisk::NeedsReview);
-        assert_eq!(BashCommandClassifier::classify("rm file.txt"), CommandRisk::NeedsReview);
-    }
-
-    #[test]
-    fn test_needs_review_mixed_pipeline() {
-        assert_eq!(
-            BashCommandClassifier::classify("find . -name '*.md' | xargs sed -i 's/test/TEST/g'"),
-            CommandRisk::NeedsReview
-        );
-        assert_eq!(
-            BashCommandClassifier::classify("cat file.txt | sed 's/foo/bar/'"),
-            CommandRisk::NeedsReview
-        );
-    }
-
-    #[test]
-    fn test_needs_review_complex_chain() {
-        assert_eq!(
-            BashCommandClassifier::classify("cargo build && cargo test"),
-            CommandRisk::NeedsReview
-        );
-        assert_eq!(
-            BashCommandClassifier::classify("ls -la; cargo build; echo done"),
-            CommandRisk::NeedsReview
-        );
-    }
-
-    #[test]
-    fn test_whitelist_coverage() {
-        // Ensure all whitelisted commands are recognized
-        let safe_commands = vec![
-            "ls", "pwd", "cat", "head", "tail", "find", "grep",
-            "wc", "sort", "echo", "which", "date"
-        ];
-        
-        for cmd in safe_commands {
-            assert!(BashCommandClassifier::is_whitelisted(cmd));
-            assert_eq!(BashCommandClassifier::classify(cmd), CommandRisk::Safe);
+    fn matches_single(&self, pattern: &str, target: &str) -> bool {
+        if pattern == "*" {
+            return true;
+        }
+        if let Some(prefix) = pattern.strip_suffix(":*") {
+            target.starts_with(prefix)
+        } else {
+            pattern == target
         }
     }
 }
 ```
 
-## Integration Points
+## Tests
 
-The permission checking code (likely in your conversation loop or permission manager) should check for read-only commands and auto-approve:
+Add these tests to the existing `tests` module in `pattern_matcher.rs`:
 
 ```rust
-// Wherever you check permissions
-let descriptor = tool.describe_permission(Some(target));
-
-// Auto-approve safe read-only commands
-if descriptor.is_read_only() {
-    return Ok(true);  // Auto-approve
+#[test]
+fn test_multicommand_requires_all_commands() {
+    let matcher = BashPatternMatcher;
+    let pattern = "find:*|head:*|xargs:*|sed:*";
+    
+    // Should match when ALL commands present
+    assert!(matcher.matches(
+        pattern,
+        "find . -name '*.md' | head -3 | xargs sed -i 's/test/TEST/g'"
+    ));
+    
+    // Should NOT match when only subset present
+    assert!(!matcher.matches(pattern, "sed -i 's/test/TEST/g' file.txt"));
+    assert!(!matcher.matches(pattern, "find . -name '*.md'"));
+    assert!(!matcher.matches(pattern, "find . | head -3"));
+    assert!(!matcher.matches(pattern, "xargs sed -i 's/foo/bar/'"));
+    assert!(!matcher.matches(pattern, "head -3 | xargs sed -i 's/a/b/'"));
 }
 
-// Otherwise, go through normal permission flow
-// ... existing permission check logic
+#[test]
+fn test_security_bypass_prevented() {
+    let matcher = BashPatternMatcher;
+    
+    // User approved pipeline, should NOT allow solo dangerous command
+    let approved_pipeline = "find:*|head:*|xargs:*|sed:*";
+    let dangerous_solo = "sed -i 's/password=old/password=leaked/' config.txt";
+    
+    assert!(!matcher.matches(approved_pipeline, dangerous_solo));
+}
+
+#[test]
+fn test_three_command_pipeline() {
+    let matcher = BashPatternMatcher;
+    let pattern = "cat:*|grep:*|head:*";
+    
+    // All three present - match
+    assert!(matcher.matches(pattern, "cat Cargo.toml | grep version | head -1"));
+    
+    // Only two present - no match
+    assert!(!matcher.matches(pattern, "cat Cargo.toml | grep version"));
+    
+    // Only one present - no match
+    assert!(!matcher.matches(pattern, "grep version"));
+}
+
+#[test]
+fn test_order_independence() {
+    let matcher = BashPatternMatcher;
+    let pattern = "cat:*|grep:*|wc:*";
+    
+    // Order in target doesn't matter
+    assert!(matcher.matches(pattern, "cat file.txt | grep error | wc -l"));
+    assert!(matcher.matches(pattern, "wc -l file.txt | cat | grep something"));
+}
+
+#[test]
+fn test_single_command_patterns_unchanged() {
+    let matcher = BashPatternMatcher;
+    
+    // Single command patterns should work as before
+    assert!(matcher.matches("cargo:*", "cargo build"));
+    assert!(matcher.matches("cargo:*", "cargo test --release"));
+    assert!(!matcher.matches("cargo:*", "npm build"));
+    
+    assert!(matcher.matches("sed:*", "sed -i 's/a/b/' file.txt"));
+    assert!(matcher.matches("sed:*", "sed 's/foo/bar/'"));
+}
+
+#[test]
+fn test_wildcard_unchanged() {
+    let matcher = BashPatternMatcher;
+    assert!(matcher.matches("*", "any command"));
+    assert!(matcher.matches("*", "sed dangerous stuff"));
+    assert!(matcher.matches("*", ""));
+}
 ```
 
-## Testing Plan
+Update existing test that is now broken:
 
-1. **Unit tests** - Test the classifier with various command combinations (added above)
-2. **Integration test** - Test that safe commands don't trigger permission dialogs
-3. **Manual testing** - Try the examples from Claude Code:
-    - `find . -name "*.md" -type f` should not ask
-    - `find . -name "*.md" | head -3 | xargs sed` should ask
-    - `cat Cargo.toml | grep version` should not ask
+```rust
+#[test]
+fn test_bash_pattern_matcher_compound() {
+    let matcher = BashPatternMatcher;
+    
+    // Pattern with multiple commands requires ALL to be present
+    assert!(matcher.matches("cargo:*|npm:*", "cargo build && npm install"));
+    assert!(!matcher.matches("cargo:*|npm:*", "cargo build"));  // Changed: now requires both
+    assert!(!matcher.matches("cargo:*|npm:*", "npm install"));  // Changed: now requires both
+    assert!(!matcher.matches("cargo:*|npm:*", "rustc --version"));
+}
+
+#[test]
+fn test_bash_pattern_matcher_compound_with_spaces() {
+    let matcher = BashPatternMatcher;
+    let pattern = "cat:* | grep:* | wc:*";
+    
+    // All three must be present
+    assert!(matcher.matches(pattern, "cat file.txt | grep pattern | wc -l"));
+    assert!(!matcher.matches(pattern, "cat file.txt"));  // Changed
+    assert!(!matcher.matches(pattern, "grep pattern"));  // Changed
+    assert!(!matcher.matches(pattern, "rm file.txt"));
+}
+
+#[test]
+fn test_bash_pattern_matcher_compound_three_commands() {
+    let matcher = BashPatternMatcher;
+    let pattern = "cat:*|grep:*|head:*";
+    
+    // All three must be present
+    assert!(matcher.matches(pattern, "cat Cargo.toml | grep version | head -1"));
+    assert!(!matcher.matches(pattern, "cat Cargo.toml"));  // Changed
+    assert!(!matcher.matches(pattern, "grep -E pattern"));  // Changed
+    assert!(!matcher.matches(pattern, "head -3"));  // Changed
+    assert!(!matcher.matches(pattern, "tail -n 5"));
+}
+```
+
+## Manual Testing
+
+1. Start hoosh in a test project
+2. Ask LLM to run: `find . -name "*.md" | head -3 | xargs sed -i.bak 's/test/TEST/g'`
+3. Choose option 2 (approve and don't ask again)
+4. Verify pattern `find:*|head:*|xargs:*|sed:*` is stored in `.hoosh/permissions.json`
+5. Ask LLM to run: `sed -i 's/foo/bar/' some_file.txt`
+6. **Expected:** Permission dialog appears (security fix working)
+7. **Before fix:** Would execute without asking (security bypass)
 
 ## Success Criteria
 
-- [ ] Safe read-only commands execute without permission prompts
-- [ ] Commands with any non-whitelisted component still require approval
-- [ ] All tests pass
-- [ ] No regression in existing permission system behavior
-- [ ] Code follows style guide (trait-based, well-tested, minimal dependencies)
+- [ ] All new tests pass
+- [ ] All existing tests pass (after updating the 3 broken ones)
+- [ ] Manual testing confirms security fix works
+- [ ] `cargo clippy` clean
+- [ ] `cargo fmt` applied
 
+## Notes
 
-### Quick Fix after
+This is a breaking change in pattern matching semantics:
+- **Before:** `find:*|sed:*` matched if ANY command present (OR)
+- **After:** `find:*|sed:*` matches only if ALL commands present (AND)
 
-also when I start the project I write these into permissions.json, if read is not allowed, opening the project is not possible anyway, so we should not really add them to permission file and keep it lean
-
-so this initial permission write after init_permission
-
-```json
-{
-  "version": 1,
-  "allow": [
-    {
-      "operation": "read_file",
-      "pattern": "*"
-    },
-    {
-      "operation": "list_directory",
-      "pattern": "*"
-    },
-    {
-      "operation": "write_file",
-      "pattern": "*"
-    },
-    {
-      "operation": "edit_file",
-      "pattern": "*"
-    },
-    {
-      "operation": "task",
-      "pattern": "*"
-    },
-    {
-      "operation": "glob",
-      "pattern": "*"
-    }
-  ],
-  "deny": []
-}
-```
-
-should be 
-
-```json
-{
-  "version": 1,
-  "allow": [],
-  "deny": []
-}
-```
+Since you're not in production yet, no migration needed. Users will just need to re-approve some patterns after this fix.
