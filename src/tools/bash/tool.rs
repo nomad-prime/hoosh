@@ -122,114 +122,6 @@ impl BashTool {
         }
     }
 
-    /// Extract bash permission pattern from a command
-    /// Smart pattern extraction:
-    /// - If command has subcommand (non-flag): "cargo clippy:*"
-    /// - If command only has flags: "cargo --version:*"
-    /// - Single word command: "echo:*"
-    /// - Stops at shell operators (&&, ||, ;, |, >, <) to prevent dangerous patterns
-    fn extract_bash_pattern(command: &str) -> String {
-        // Simple quote-aware tokenization
-        let parts: Vec<&str> = Self::tokenize_command(command);
-
-        if parts.is_empty() {
-            return "*".to_string();
-        }
-
-        // Filter out shell operators - only use parts before first operator
-        let shell_operators = ["&&", "||", ";", "|", ">", "<", ">>", "<<"];
-        let safe_parts: Vec<String> = parts
-            .iter()
-            .take_while(|part| !shell_operators.contains(part))
-            .map(|part| {
-                // Also strip shell operators that might be attached to the token
-                // e.g., "/tmp;" -> "/tmp"
-                let mut cleaned = part.to_string();
-                for op in &shell_operators {
-                    if let Some(pos) = cleaned.find(op) {
-                        cleaned.truncate(pos);
-                        break;
-                    }
-                }
-                cleaned
-            })
-            .filter(|part| !part.is_empty())
-            .collect();
-
-        if safe_parts.is_empty() {
-            return "*".to_string();
-        }
-
-        // Take first word (the command)
-        let base_command = &safe_parts[0];
-
-        // Check for subcommand (second word that doesn't start with -)
-        if safe_parts.len() >= 2 {
-            let second_word = &safe_parts[1];
-            if !second_word.starts_with('-') && !shell_operators.contains(&second_word.as_str()) {
-                // Has subcommand: "cargo clippy:*"
-                return format!("{} {}:*", base_command, second_word);
-            } else if !shell_operators.contains(&second_word.as_str()) {
-                // No subcommand, has flag: "cargo --version:*"
-                return format!("{} {}:*", base_command, second_word);
-            }
-        }
-
-        // Single word command: "echo:*"
-        format!("{}:*", base_command)
-    }
-
-    /// Simple tokenization that respects quotes
-    /// Splits by whitespace but treats quoted strings as single tokens
-    fn tokenize_command(command: &str) -> Vec<&str> {
-        let mut tokens = Vec::new();
-        let mut current_start = 0;
-        let mut in_quotes = false;
-        let mut quote_char = '\0';
-
-        for (i, ch) in command.char_indices() {
-            match ch {
-                '"' | '\'' if !in_quotes => {
-                    // Start of quoted section - if we have accumulated text, save it
-                    if i > current_start {
-                        let token = command[current_start..i].trim();
-                        if !token.is_empty() {
-                            tokens.push(token);
-                        }
-                    }
-                    in_quotes = true;
-                    quote_char = ch;
-                    current_start = i;
-                }
-                '"' | '\'' if in_quotes && ch == quote_char => {
-                    // End of quoted section - skip the quoted part entirely
-                    in_quotes = false;
-                    current_start = i + 1;
-                }
-                ' ' | '\t' if !in_quotes => {
-                    // Whitespace outside quotes - token boundary
-                    if i > current_start {
-                        let token = command[current_start..i].trim();
-                        if !token.is_empty() {
-                            tokens.push(token);
-                        }
-                    }
-                    current_start = i + 1;
-                }
-                _ => {}
-            }
-        }
-
-        // Add final token if any
-        if current_start < command.len() && !in_quotes {
-            let token = command[current_start..].trim();
-            if !token.is_empty() {
-                tokens.push(token);
-            }
-        }
-
-        tokens
-    }
 }
 
 #[derive(Deserialize)]
@@ -317,37 +209,52 @@ impl Tool for BashTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
-        let target_str = target.unwrap_or("*");
-        let pattern = if target_str != "*" {
-            Self::extract_bash_pattern(target_str)
-        } else {
-            "*".to_string()
-        };
+        use super::BashCommandParser;
 
-        // Create a human-readable pattern description
-        // Remove the trailing :* for display
-        let pattern_display = pattern.trim_end_matches(":*").trim_end_matches('*');
-        let persistent_message = if pattern_display.is_empty() {
-            "don't ask me again for bash in this project".to_string()
-        } else {
-            format!(
-                "don't ask me again for \"{}\" commands in this project",
-                pattern_display
+        let target_str = target.unwrap_or("*");
+
+        let base_commands = BashCommandParser::extract_base_commands(target_str);
+        let suggested_pattern = BashCommandParser::suggest_pattern(&base_commands);
+
+        let (approval_prompt, persistent_message) = if suggested_pattern.contains('|') {
+            let commands: Vec<&str> = suggested_pattern
+                .split('|')
+                .map(|s| s.trim_end_matches(":*"))
+                .collect();
+            let display = commands.join(", ");
+            (
+                format!("Can I run \"{}\"", display),
+                format!(
+                    "don't ask me again for \"{}\" commands in this project",
+                    display
+                ),
             )
+        } else {
+            let pattern_display = suggested_pattern
+                .trim_end_matches(":*")
+                .trim_end_matches('*');
+            if pattern_display.is_empty() {
+                (
+                    format!("Can I run \"{}\"", target_str),
+                    "don't ask me again for bash in this project".to_string(),
+                )
+            } else {
+                (
+                    format!("Can I run \"{}\"", pattern_display),
+                    format!(
+                        "don't ask me again for \"{}\" commands in this project",
+                        pattern_display
+                    ),
+                )
+            }
         };
-
-        let target_str = target.unwrap_or("*");
-
-        let approval_prompt = format!("Can I run \"{}\"", pattern_display);
 
         ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
             .with_approval_prompt(approval_prompt)
             .with_persistent_approval(persistent_message)
-            .with_suggested_pattern(pattern)
+            .with_suggested_pattern(suggested_pattern)
             .with_pattern_matcher(Arc::new(BashPatternMatcher))
-            // Bash is neither purely read-only nor destructive by default
-            // It requires explicit approval for each command
             .build()
             .expect("Failed to build BashTool permission descriptor")
     }
@@ -399,119 +306,5 @@ mod tests {
         let result = tool.execute(&args).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Timeout"));
-    }
-
-
-    #[test]
-    fn test_extract_bash_pattern() {
-        // Test with command + subcommand
-        assert_eq!(
-            BashTool::extract_bash_pattern("cargo clippy --all-features --all-targets"),
-            "cargo clippy:*"
-        );
-
-        // Test with npm run
-        assert_eq!(BashTool::extract_bash_pattern("npm run test"), "npm run:*");
-
-        // Test with git command
-        assert_eq!(
-            BashTool::extract_bash_pattern("git commit -m \"message\""),
-            "git commit:*"
-        );
-
-        // Test with command that has only flags (should include first flag)
-        assert_eq!(BashTool::extract_bash_pattern("ls -la"), "ls -la:*");
-        assert_eq!(
-            BashTool::extract_bash_pattern("cargo --version"),
-            "cargo --version:*"
-        );
-
-        // Test with python script
-        assert_eq!(
-            BashTool::extract_bash_pattern("python script.py --arg value"),
-            "python script.py:*"
-        );
-
-        // Test with custom tool
-        assert_eq!(
-            BashTool::extract_bash_pattern("./custom-tool arg1 arg2"),
-            "./custom-tool arg1:*"
-        );
-
-        // Test with make
-        assert_eq!(BashTool::extract_bash_pattern("make test"), "make test:*");
-
-        // Test with single word command
-        assert_eq!(BashTool::extract_bash_pattern("pwd"), "pwd:*");
-
-        // Test with empty string
-        assert_eq!(BashTool::extract_bash_pattern(""), "*");
-
-        // Test with docker compose
-        assert_eq!(
-            BashTool::extract_bash_pattern("docker compose up -d"),
-            "docker compose:*"
-        );
-
-        // Test with quoted strings (should skip quoted parts)
-        assert_eq!(
-            BashTool::extract_bash_pattern("echo \"Hello! Bash tool is working correctly.\""),
-            "echo:*"
-        );
-
-        // Test with echo and arguments
-        assert_eq!(BashTool::extract_bash_pattern("echo test"), "echo test:*");
-    }
-
-    #[test]
-    fn test_extract_bash_pattern_shell_operators() {
-        // Test with && operator - should only take first command
-        assert_eq!(
-            BashTool::extract_bash_pattern("echo test && ls"),
-            "echo test:*"
-        );
-
-        // Test with && operator without args
-        assert_eq!(BashTool::extract_bash_pattern("echo && ls"), "echo:*");
-
-        // Test with || operator
-        assert_eq!(
-            BashTool::extract_bash_pattern("cargo build || echo failed"),
-            "cargo build:*"
-        );
-
-        // Test with semicolon
-        assert_eq!(
-            BashTool::extract_bash_pattern("cd /tmp; ls -la"),
-            "cd /tmp:*"
-        );
-
-        // Test with pipe operator
-        assert_eq!(
-            BashTool::extract_bash_pattern("ls -la | grep foo"),
-            "ls -la:*"
-        );
-
-        // Test with redirect operators
-        assert_eq!(
-            BashTool::extract_bash_pattern("echo test > file.txt"),
-            "echo test:*"
-        );
-        assert_eq!(BashTool::extract_bash_pattern("cat < input.txt"), "cat:*");
-
-        // Test with >> (append)
-        assert_eq!(
-            BashTool::extract_bash_pattern("echo test >> file.txt"),
-            "echo test:*"
-        );
-
-        // Test with operator at start (edge case)
-        assert_eq!(BashTool::extract_bash_pattern("&& ls"), "*");
-
-        // Test with multiple operators
-        assert_eq!(
-            BashTool::extract_bash_pattern("echo test && ls | grep foo"),
-            "echo test:*"
-        );
     }
 }

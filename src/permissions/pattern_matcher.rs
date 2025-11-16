@@ -6,15 +6,26 @@ pub trait PatternMatcher: Send + Sync {
     fn matches(&self, pattern: &str, target: &str) -> bool;
 }
 
-/// Pattern matcher for bash commands
-/// Supports:
-/// - "*" matches everything
-/// - "command:*" matches commands starting with "command"
-/// - "exact command" matches exactly
 pub struct BashPatternMatcher;
 
 impl PatternMatcher for BashPatternMatcher {
     fn matches(&self, pattern: &str, target: &str) -> bool {
+        if pattern == "*" {
+            return true;
+        }
+
+        if pattern.contains('|') {
+            return pattern
+                .split('|')
+                .any(|p| self.matches_single(p.trim(), target));
+        }
+
+        self.matches_single(pattern, target)
+    }
+}
+
+impl BashPatternMatcher {
+    fn matches_single(&self, pattern: &str, target: &str) -> bool {
         if pattern == "*" {
             return true;
         }
@@ -62,6 +73,33 @@ mod tests {
         let matcher = BashPatternMatcher;
         assert!(matcher.matches("echo hello", "echo hello"));
         assert!(!matcher.matches("echo hello", "echo world"));
+    }
+
+    #[test]
+    fn test_bash_pattern_matcher_compound() {
+        let matcher = BashPatternMatcher;
+        assert!(matcher.matches("cargo:*|npm:*", "cargo build"));
+        assert!(matcher.matches("cargo:*|npm:*", "npm install"));
+        assert!(!matcher.matches("cargo:*|npm:*", "rustc --version"));
+    }
+
+    #[test]
+    fn test_bash_pattern_matcher_compound_with_spaces() {
+        let matcher = BashPatternMatcher;
+        assert!(matcher.matches("cat:* | grep:* | wc:*", "cat file.txt"));
+        assert!(matcher.matches("cat:* | grep:* | wc:*", "grep pattern"));
+        assert!(matcher.matches("cat:* | grep:* | wc:*", "wc -l output.txt"));
+        assert!(!matcher.matches("cat:* | grep:* | wc:*", "rm file.txt"));
+    }
+
+    #[test]
+    fn test_bash_pattern_matcher_compound_three_commands() {
+        let matcher = BashPatternMatcher;
+        let pattern = "cat:*|grep:*|head:*";
+        assert!(matcher.matches(pattern, "cat Cargo.toml"));
+        assert!(matcher.matches(pattern, "grep -E pattern"));
+        assert!(matcher.matches(pattern, "head -3"));
+        assert!(!matcher.matches(pattern, "tail -n 5"));
     }
 
     #[test]
