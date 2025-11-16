@@ -21,10 +21,10 @@ impl BashCommandParser {
 
             for segment in Self::split_on_operators(trimmed) {
                 for cmd in segment.split('|') {
-                    if let Some(base) = Self::extract_single_base_command(cmd.trim()) {
-                        if !commands.contains(&base) {
-                            commands.push(base);
-                        }
+                    if let Some(base) = Self::extract_single_base_command(cmd.trim())
+                        && !commands.contains(&base)
+                    {
+                        commands.push(base);
                     }
                 }
             }
@@ -61,8 +61,7 @@ impl BashCommandParser {
     /// "cargo build --release" -> Some("cargo")
     /// "  ls -la  " -> Some("ls")
     fn extract_single_base_command(cmd: &str) -> Option<String> {
-        cmd.trim()
-            .split_whitespace()
+        cmd.split_whitespace()
             .next()
             .filter(|s| !s.is_empty())
             .map(String::from)
@@ -152,10 +151,8 @@ mod tests {
 
     #[test]
     fn test_suggest_pattern_multiple_same() {
-        let pattern = BashCommandParser::suggest_pattern(&[
-            "cargo".to_string(),
-            "cargo".to_string(),
-        ]);
+        let pattern =
+            BashCommandParser::suggest_pattern(&["cargo".to_string(), "cargo".to_string()]);
         assert_eq!(pattern, "cargo:*");
     }
 
@@ -185,13 +182,7 @@ mod tests {
             BashCommandParser::extract_single_base_command("  ls -la  "),
             Some("ls".to_string())
         );
-        assert_eq!(
-            BashCommandParser::extract_single_base_command(""),
-            None
-        );
-        assert_eq!(
-            BashCommandParser::extract_single_base_command("   "),
-            None
-        );
+        assert_eq!(BashCommandParser::extract_single_base_command(""), None);
+        assert_eq!(BashCommandParser::extract_single_base_command("   "), None);
     }
 }

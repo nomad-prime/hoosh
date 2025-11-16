@@ -121,7 +121,6 @@ impl BashTool {
             }),
         }
     }
-
 }
 
 #[derive(Deserialize)]
@@ -209,9 +208,21 @@ impl Tool for BashTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
-        use super::BashCommandParser;
+        use super::{BashCommandClassifier, BashCommandParser, CommandRisk};
 
         let target_str = target.unwrap_or("*");
+
+        if BashCommandClassifier::classify(target_str) == CommandRisk::Safe {
+            return ToolPermissionBuilder::new(self, target_str)
+                .into_read_only()
+                .with_approval_title(" Bash Command ")
+                .with_approval_prompt(format!("Can I run \"{}\"", target_str))
+                .with_persistent_approval("don't ask me again for bash in this project".to_string())
+                .with_suggested_pattern("*".to_string())
+                .with_pattern_matcher(Arc::new(BashPatternMatcher))
+                .build()
+                .expect("Failed to build BashTool permission descriptor");
+        }
 
         let base_commands = BashCommandParser::extract_base_commands(target_str);
         let suggested_pattern = BashCommandParser::suggest_pattern(&base_commands);
@@ -281,7 +292,6 @@ mod tests {
         assert!(result.contains("Hello, World!"));
         assert!(result.contains("Exit code: 0"));
     }
-
 
     #[tokio::test]
     async fn test_bash_tool_failed_command() {
