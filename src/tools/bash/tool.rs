@@ -3,7 +3,7 @@ use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -210,7 +210,7 @@ impl Tool for BashTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
-        use super::{BashCommandClassifier, BashCommandParser, CommandRisk};
+        use super::{BashCommandClassifier, BashCommandPatternRegistry, CommandRisk};
 
         let target_str = target.unwrap_or("*");
 
@@ -227,39 +227,16 @@ impl Tool for BashTool {
                 .expect("Failed to build BashTool permission descriptor");
         }
 
-        let base_commands = BashCommandParser::extract_base_commands(target_str);
-        let suggested_pattern = BashCommandParser::suggest_pattern(&base_commands);
-
-        let persistent_message = if suggested_pattern.contains('|') {
-            let commands: Vec<&str> = suggested_pattern
-                .split('|')
-                .map(|s| s.trim_end_matches(":*"))
-                .collect();
-            let display = commands.join(", ");
-            format!(
-                "don't ask me again for pipe combination of \"{}\" commands in this project",
-                display
-            )
-        } else {
-            let pattern_display = suggested_pattern
-                .trim_end_matches(":*")
-                .trim_end_matches('*');
-            if pattern_display.is_empty() {
-                "don't ask me again for bash in this project".to_string()
-            } else {
-                format!(
-                    "don't ask me again for \"{}\" commands in this project",
-                    pattern_display
-                )
-            }
-        };
+        // Use the pattern registry to analyze the command
+        let registry = BashCommandPatternRegistry::new();
+        let pattern_result = registry.analyze_command(target_str);
 
         ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
             .with_approval_prompt("Can I run this bash command?".to_string())
             .with_command_preview(target_str.to_string())
-            .with_persistent_approval(persistent_message)
-            .with_suggested_pattern(suggested_pattern)
+            .with_persistent_approval(pattern_result.persistent_message)
+            .with_suggested_pattern(pattern_result.pattern)
             .with_pattern_matcher(Arc::new(BashPatternMatcher))
             .build()
             .expect("Failed to build BashTool permission descriptor")
