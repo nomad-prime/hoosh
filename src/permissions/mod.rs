@@ -14,13 +14,6 @@ pub use crate::permissions::pattern_matcher::{
 };
 pub use crate::permissions::tool_permission::{ToolPermissionBuilder, ToolPermissionDescriptor};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PermissionLevel {
-    Allow,
-    Ask,
-    Deny,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionScope {
     Specific(String),
@@ -36,7 +29,6 @@ pub struct PermissionsInfo {
 #[derive(Clone)]
 pub struct PermissionManager {
     skip_permissions: bool,
-    default_permission: PermissionLevel,
     event_sender: mpsc::UnboundedSender<crate::agent::AgentEvent>,
     response_receiver: Arc<Mutex<mpsc::UnboundedReceiver<crate::agent::PermissionResponse>>>,
     request_counter: Arc<AtomicU64>,
@@ -51,7 +43,6 @@ impl PermissionManager {
     ) -> Self {
         Self {
             skip_permissions: false,
-            default_permission: PermissionLevel::Ask,
             event_sender,
             response_receiver: Arc::new(Mutex::new(response_receiver)),
             request_counter: Arc::new(AtomicU64::new(0)),
@@ -129,17 +120,8 @@ impl PermissionManager {
         self
     }
 
-    pub fn with_default_permission(mut self, level: PermissionLevel) -> Self {
-        self.default_permission = level;
-        self
-    }
-
     pub fn skip_permissions(&self) -> bool {
         self.skip_permissions
-    }
-
-    pub fn default_permission(&self) -> PermissionLevel {
-        self.default_permission
     }
 
     pub fn get_permissions_info(&self) -> PermissionsInfo {
@@ -181,11 +163,7 @@ impl PermissionManager {
             return Ok(persistent_decision);
         }
 
-        let (allowed, scope) = match self.default_permission {
-            PermissionLevel::Allow => (true, None),
-            PermissionLevel::Deny => (false, None),
-            PermissionLevel::Ask => self.ask_user_tool_permission(descriptor).await?,
-        };
+        let (allowed, scope) = self.ask_user_tool_permission(descriptor).await?;
 
         if let Some(ref scope) = scope {
             let _ = self.add_tool_permission_rule(descriptor, scope, allowed);
@@ -240,8 +218,8 @@ impl PermissionManager {
 
 impl Default for PermissionManager {
     fn default() -> Self {
-        let (event_tx, _) = tokio::sync::mpsc::unbounded_channel();
-        let (_, response_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
         Self::new(event_tx, response_rx)
     }
 }
@@ -269,37 +247,10 @@ mod tests {
     }
 
     #[test]
-    fn test_permission_manager_new() {
-        let manager = create_test_manager();
-        assert!(!manager.skip_permissions());
-        assert_eq!(manager.default_permission(), PermissionLevel::Ask);
-        assert!(manager.is_enforcing());
-    }
-
-    #[test]
     fn test_permission_manager_with_skip_permissions() {
         let manager = create_test_manager().with_skip_permissions(true);
         assert!(manager.skip_permissions());
         assert!(!manager.is_enforcing());
-    }
-
-    #[test]
-    fn test_permission_manager_with_default_permission() {
-        let manager_allow = create_test_manager().with_default_permission(PermissionLevel::Allow);
-        assert_eq!(manager_allow.default_permission(), PermissionLevel::Allow);
-
-        let manager_deny = create_test_manager().with_default_permission(PermissionLevel::Deny);
-        assert_eq!(manager_deny.default_permission(), PermissionLevel::Deny);
-
-        let manager_ask = create_test_manager().with_default_permission(PermissionLevel::Ask);
-        assert_eq!(manager_ask.default_permission(), PermissionLevel::Ask);
-    }
-
-    #[test]
-    fn test_permission_manager_default() {
-        let manager = PermissionManager::default();
-        assert!(!manager.skip_permissions());
-        assert_eq!(manager.default_permission(), PermissionLevel::Ask);
     }
 
     #[tokio::test]
@@ -437,14 +388,6 @@ mod tests {
         let result = manager.check_persistent_tool_permission(&descriptor);
         assert!(result.is_some());
         assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_permission_level_variants() {
-        assert_eq!(PermissionLevel::Allow, PermissionLevel::Allow);
-        assert_eq!(PermissionLevel::Ask, PermissionLevel::Ask);
-        assert_eq!(PermissionLevel::Deny, PermissionLevel::Deny);
-        assert_ne!(PermissionLevel::Allow, PermissionLevel::Deny);
     }
 
     #[test]

@@ -84,27 +84,13 @@ fn save_permission_choice(
 
     match choice {
         InitialPermissionChoice::ReadOnly => {
-            // Add permissions for all read-only tools from the registry
-            for (tool_name, _) in tool_registry.list_tools() {
-                if let Some(tool) = tool_registry.get_tool(tool_name) {
-                    let descriptor = tool.describe_permission(None);
-                    if descriptor.is_read_only() {
-                        perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
-                    }
-                }
-            }
             perms_file.save_permissions(project_root)?;
         }
         InitialPermissionChoice::EnableWriteEdit => {
-            // Add permissions for read-only and write-safe tools from the registry
             for (tool_name, _) in tool_registry.list_tools() {
                 if let Some(tool) = tool_registry.get_tool(tool_name) {
                     let descriptor = tool.describe_permission(None);
-                    // Include read-only tools and destructive/write-safe tools
-                    if descriptor.is_read_only()
-                        || descriptor.is_destructive()
-                        || descriptor.is_write_safe()
-                    {
+                    if descriptor.is_destructive() || descriptor.is_write_safe() {
                         perms_file.add_permission(PermissionRule::ops_rule(tool_name, "*"), true);
                     }
                 }

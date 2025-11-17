@@ -11,3 +11,11 @@ I should try this with proper proxy
 ### Subagents
 
 Subagents should only show visually the tool calls, not agents repsonses and thinking
+
+### Compression
+
+broken
+
+### Permission.json
+
+if hoosh is running, a change on permissions file is overwritten
