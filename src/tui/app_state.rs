@@ -4,8 +4,9 @@ use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
+use crate::tui::palette;
 use rand::Rng;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use std::collections::VecDeque;
 use tui_textarea::TextArea;
@@ -387,7 +388,7 @@ impl AppState {
         let styled_line = Line::from(Span::styled(
             format!("  [DEBUG] {}", message),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(palette::WARNING)
                 .add_modifier(Modifier::ITALIC),
         ));
         self.add_styled_line(styled_line);
@@ -678,7 +679,7 @@ impl AppState {
         let styled_line = Line::from(Span::styled(
             format!("  ⎿  {}", error),
             Style::default()
-                .fg(Color::Red)
+                .fg(palette::DESTRUCTIVE)
                 .add_modifier(Modifier::ITALIC),
         ));
         self.add_styled_line(styled_line);
@@ -708,7 +709,7 @@ impl AppState {
         let styled_line = Line::from(Span::styled(
             format!("  ⎿  {}", message),
             Style::default()
-                .fg(Color::Red)
+                .fg(palette::DESTRUCTIVE)
                 .add_modifier(Modifier::ITALIC),
         ));
         self.add_styled_line(styled_line);

@@ -5,4 +5,4 @@ mod init_permission_loop;
 mod init_permission_state;
 
 pub use init_permission_loop::run;
-pub use init_permission_state::InitialPermissionChoice;
+pub use init_permission_state::{InitialPermissionChoice, InitialPermissionDialogResult};

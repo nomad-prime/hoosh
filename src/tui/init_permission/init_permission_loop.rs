@@ -1,6 +1,8 @@
 use super::init_permission_handler::InitialPermissionHandler;
 use super::init_permission_layout::InitialPermissionLayout;
-use super::init_permission_state::{InitialPermissionChoice, InitialPermissionState};
+use super::init_permission_state::{
+    InitialPermissionChoice, InitialPermissionDialogResult, InitialPermissionState,
+};
 use crate::permissions::storage::{PermissionRule, PermissionsFile};
 use crate::tools::ToolRegistry;
 use crate::tui::handler_result::KeyHandlerResult;
@@ -16,30 +18,33 @@ pub async fn run(
     project_root: PathBuf,
     tool_registry: &ToolRegistry,
     skip_permissions: bool,
-) -> Result<(HooshTerminal, Option<InitialPermissionChoice>)> {
+) -> Result<(HooshTerminal, InitialPermissionDialogResult)> {
     // Check if we should show the initial permission dialog
     let permissions_path = PermissionsFile::get_permissions_path(&project_root);
     let should_show_initial_dialog = !skip_permissions && !permissions_path.exists();
 
     if !should_show_initial_dialog {
-        return Ok((terminal, None));
+        return Ok((
+            terminal,
+            InitialPermissionDialogResult::SkippedPermissionsExist,
+        ));
     }
 
     let mut app = InitialPermissionState::new(project_root.clone());
 
-    let (terminal, choice) = run_dialog_loop(terminal, &mut app).await;
+    let (terminal, result) = run_dialog_loop(terminal, &mut app).await;
 
-    if let Some(ref choice) = choice {
+    if let InitialPermissionDialogResult::Choice(ref choice) = result {
         save_permission_choice(choice, &project_root, tool_registry)?;
     }
 
-    Ok((terminal, choice))
+    Ok((terminal, result))
 }
 
 async fn run_dialog_loop(
     mut terminal: HooshTerminal,
     app: &mut InitialPermissionState,
-) -> (HooshTerminal, Option<InitialPermissionChoice>) {
+) -> (HooshTerminal, InitialPermissionDialogResult) {
     let (response_tx, mut response_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut handler = InitialPermissionHandler::new(response_tx);
 
@@ -58,19 +63,19 @@ async fn run_dialog_loop(
             let event = event::read().expect("could not read event");
             let handler_result = handler.handle_event(&event, app).await;
             if matches!(handler_result, KeyHandlerResult::ShouldQuit) {
-                if let Ok(choice) = response_rx.try_recv() {
-                    return (terminal, choice);
+                if let Ok(result) = response_rx.try_recv() {
+                    return (terminal, result);
                 }
-                return (terminal, None);
+                return (terminal, InitialPermissionDialogResult::Cancelled);
             }
         }
 
-        if let Ok(choice) = response_rx.try_recv() {
-            return (terminal, choice);
+        if let Ok(result) = response_rx.try_recv() {
+            return (terminal, result);
         }
 
         if app.should_quit {
-            return (terminal, None);
+            return (terminal, InitialPermissionDialogResult::Cancelled);
         }
     }
 }

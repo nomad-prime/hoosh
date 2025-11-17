@@ -6,6 +6,8 @@ use syntect::highlighting::{Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
+use crate::tui::palette;
+
 pub struct MarkdownRenderer {
     syntax_set: SyntaxSet,
     theme: Theme,
@@ -112,8 +114,10 @@ impl MarkdownRenderer {
                         if !current_line_spans.is_empty() {
                             lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
-                        current_line_spans
-                            .push(Span::styled("│ ", Style::default().fg(Color::DarkGray)));
+                        current_line_spans.push(Span::styled(
+                            "│ ",
+                            Style::default().fg(palette::MARKDOWN_QUOTE),
+                        ));
                     }
                     Tag::Link { .. } => {
                         // Links are handled by their text content
@@ -195,8 +199,8 @@ impl MarkdownRenderer {
                 }
                 Event::Code(code) => {
                     let style = Style::default()
-                        .fg(Color::Cyan)
-                        .bg(Color::Rgb(40, 44, 52))
+                        .fg(palette::MARKDOWN_CODE_FG)
+                        .bg(palette::MARKDOWN_CODE_BG)
                         .add_modifier(Modifier::BOLD);
                     current_line_spans.push(Span::styled(format!("`{}`", code), style));
                 }
@@ -212,32 +216,34 @@ impl MarkdownRenderer {
                     }
                     lines.push(Line::styled(
                         "─".repeat(80),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(palette::MARKDOWN_RULE),
                     ));
                     lines.push(Line::from(""));
                 }
                 Event::Html(html) => {
                     current_line_spans.push(Span::styled(
                         html.to_string(),
-                        Style::default().fg(Color::Gray),
+                        Style::default().fg(palette::MARKDOWN_HTML),
                     ));
                 }
                 Event::InlineHtml(html) => {
                     current_line_spans.push(Span::styled(
                         html.to_string(),
-                        Style::default().fg(Color::Gray),
+                        Style::default().fg(palette::MARKDOWN_HTML),
                     ));
                 }
                 Event::FootnoteReference(name) => {
                     current_line_spans.push(Span::styled(
                         format!("[^{}]", name),
-                        Style::default().fg(Color::Blue),
+                        Style::default().fg(palette::MARKDOWN_LINK),
                     ));
                 }
                 Event::TaskListMarker(checked) => {
                     let marker = if checked { "[✓] " } else { "[ ] " };
-                    current_line_spans
-                        .push(Span::styled(marker, Style::default().fg(Color::Green)));
+                    current_line_spans.push(Span::styled(
+                        marker,
+                        Style::default().fg(palette::MARKDOWN_TASK_MARKER),
+                    ));
                 }
                 _ => {}
             }
@@ -273,7 +279,7 @@ impl MarkdownRenderer {
         };
 
         let mut highlighter = HighlightLines::new(syntax, &self.theme);
-        let code_bg = Color::Rgb(40, 44, 52);
+        let code_bg = palette::MARKDOWN_CODE_BG;
 
         let header = if !language.is_empty() {
             format!("┌─ {} ", language)
@@ -282,7 +288,7 @@ impl MarkdownRenderer {
         };
         lines.push(Line::styled(
             header,
-            Style::default().fg(Color::DarkGray).bg(code_bg),
+            Style::default().fg(palette::MARKDOWN_QUOTE).bg(code_bg),
         ));
 
         for (line_num, line) in LinesWithEndings::from(code).enumerate() {
@@ -292,7 +298,7 @@ impl MarkdownRenderer {
 
             let mut spans = vec![Span::styled(
                 format!("│ {:3} ", line_num + 1),
-                Style::default().fg(Color::DarkGray).bg(code_bg),
+                Style::default().fg(palette::MARKDOWN_QUOTE).bg(code_bg),
             )];
 
             for (style, text) in highlighted {
@@ -309,7 +315,7 @@ impl MarkdownRenderer {
 
         lines.push(Line::styled(
             "└─",
-            Style::default().fg(Color::DarkGray).bg(code_bg),
+            Style::default().fg(palette::MARKDOWN_QUOTE).bg(code_bg),
         ));
         lines.push(Line::from(""));
 
@@ -319,21 +325,23 @@ impl MarkdownRenderer {
     fn get_heading_style(&self, level: HeadingLevel) -> Style {
         match level {
             HeadingLevel::H1 => Style::default()
-                .fg(Color::Cyan)
+                .fg(palette::INFO)
                 .add_modifier(Modifier::BOLD),
             HeadingLevel::H2 => Style::default()
-                .fg(Color::Blue)
+                .fg(palette::MARKDOWN_LINK)
                 .add_modifier(Modifier::BOLD),
             HeadingLevel::H3 => Style::default()
-                .fg(Color::Green)
+                .fg(palette::SUCCESS)
                 .add_modifier(Modifier::BOLD),
             HeadingLevel::H4 => Style::default()
-                .fg(Color::Yellow)
+                .fg(palette::WARNING)
                 .add_modifier(Modifier::BOLD),
             HeadingLevel::H5 => Style::default()
-                .fg(Color::Magenta)
+                .fg(palette::MARKDOWN_HEADING)
                 .add_modifier(Modifier::BOLD),
-            HeadingLevel::H6 => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            HeadingLevel::H6 => Style::default()
+                .fg(palette::DESTRUCTIVE)
+                .add_modifier(Modifier::BOLD),
         }
     }
 

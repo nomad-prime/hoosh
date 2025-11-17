@@ -1,9 +1,10 @@
 use crate::tui::app_state::{AppState, ToolCallStatus};
 use crate::tui::component::Component;
+use crate::tui::palette;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
@@ -22,13 +23,21 @@ impl Component for ActiveToolCallsComponent {
 
         for tool_call in &state.active_tool_calls {
             let status_indicator = match &tool_call.status {
-                ToolCallStatus::Starting => Span::styled("○", Style::default().fg(Color::Gray)),
-                ToolCallStatus::AwaitingApproval => {
-                    Span::styled("◎", Style::default().fg(Color::Yellow))
+                ToolCallStatus::Starting => {
+                    Span::styled("○", Style::default().fg(palette::TOOL_STATUS_STARTING))
                 }
-                ToolCallStatus::Executing => Span::styled("●", Style::default().fg(Color::Cyan)),
-                ToolCallStatus::Completed => Span::styled("✓", Style::default().fg(Color::Green)),
-                ToolCallStatus::Error(_) => Span::styled("✗", Style::default().fg(Color::Red)),
+                ToolCallStatus::AwaitingApproval => {
+                    Span::styled("◎", Style::default().fg(palette::TOOL_STATUS_RUNNING))
+                }
+                ToolCallStatus::Executing => {
+                    Span::styled("●", Style::default().fg(palette::TOOL_STATUS_EXECUTING))
+                }
+                ToolCallStatus::Completed => {
+                    Span::styled("✓", Style::default().fg(palette::TOOL_STATUS_COMPLETED))
+                }
+                ToolCallStatus::Error(_) => {
+                    Span::styled("✗", Style::default().fg(palette::TOOL_STATUS_ERROR))
+                }
             };
 
             let mut spans = vec![
@@ -42,14 +51,14 @@ impl Component for ActiveToolCallsComponent {
                     spans.push(Span::styled(
                         " [Awaiting Approval]",
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(palette::WARNING)
                             .add_modifier(Modifier::ITALIC),
                     ));
                 }
                 ToolCallStatus::Error(err) => {
                     spans.push(Span::styled(
                         format!(" [Error: {}]", err),
-                        Style::default().fg(Color::Red),
+                        Style::default().fg(palette::DESTRUCTIVE),
                     ));
                 }
                 _ => {}
@@ -60,8 +69,8 @@ impl Component for ActiveToolCallsComponent {
             if let Some(summary) = &tool_call.result_summary {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("⎿ ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(summary, Style::default().fg(Color::Gray)),
+                    Span::styled("⎿ ", Style::default().fg(palette::DIMMED_TEXT)),
+                    Span::styled(summary, Style::default().fg(palette::SECONDARY_TEXT)),
                 ]));
             }
         }

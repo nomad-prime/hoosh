@@ -1,9 +1,10 @@
 use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
+use crate::tui::palette;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
@@ -25,9 +26,9 @@ impl Component for ModeIndicator {
         };
 
         let mode_color = if is_autopilot {
-            Color::Rgb(142, 240, 204)
+            palette::STATUS_IDLE
         } else {
-            Color::Magenta
+            palette::MARKDOWN_HEADING
         };
 
         let mode_line = Line::from(vec![
@@ -37,7 +38,9 @@ impl Component for ModeIndicator {
             ),
             Span::styled(
                 " (shift+tab to toggle)",
-                Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(palette::SECONDARY_TEXT)
+                    .add_modifier(Modifier::DIM),
             ),
         ]);
 

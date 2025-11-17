@@ -43,12 +43,14 @@ pub async fn handle_agent(
     )
     .await?
     {
-        (terminal, Some(init_permission::InitialPermissionChoice::Deny)) => {
+        (terminal, init_permission::InitialPermissionDialogResult::Cancelled) => {
             restore_terminal(terminal)?;
             return Ok(());
         }
-        (terminal, None) => terminal,
-        (terminal, Some(_)) => terminal,
+        (terminal, init_permission::InitialPermissionDialogResult::SkippedPermissionsExist) => {
+            terminal
+        }
+        (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => terminal,
     };
     restore_terminal(terminal)?;
     println!();

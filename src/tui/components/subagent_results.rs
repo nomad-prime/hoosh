@@ -1,9 +1,10 @@
 use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
+use crate::tui::palette;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
@@ -43,7 +44,7 @@ impl Component for SubagentResultsComponent {
             // Show each recent step
             for (i, step) in recent_steps.iter().enumerate() {
                 let prefix = if i == 0 {
-                    Span::styled("  ⎿ ", Style::default().fg(Color::DarkGray))
+                    Span::styled("  ⎿ ", Style::default().fg(palette::DIMMED_TEXT))
                 } else {
                     Span::styled("    ", Style::default())
                 };
@@ -52,7 +53,7 @@ impl Component for SubagentResultsComponent {
                     prefix,
                     Span::styled(
                         step.description.to_string(),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(palette::DIMMED_TEXT),
                     ),
                 ]));
             }
@@ -61,7 +62,7 @@ impl Component for SubagentResultsComponent {
             if has_more {
                 lines.push(Line::from(vec![
                     Span::styled("    ", Style::default()),
-                    Span::styled("...", Style::default().fg(Color::DarkGray)),
+                    Span::styled("...", Style::default().fg(palette::DIMMED_TEXT)),
                 ]));
             }
         }
