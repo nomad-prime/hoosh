@@ -23,3 +23,13 @@ if hoosh is running, a change on permissions file is overwritten
 ### ctrl+c on setup and init_permission 
 
 just enters instead of exiting
+
+### Pipe to file should trigger permissions
+
+echo "Hello, this is a test file created at $(date)" > test_output.txt && c..
+
+did not
+
+### tool calling fixing in case of crashes
+
+currently adding a tool message with some answer -> better just remove the ones that dont have proper answer

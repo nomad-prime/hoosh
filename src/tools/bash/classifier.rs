@@ -16,7 +16,13 @@ impl BashCommandClassifier {
     /// - `cat file | grep error` -> Safe
     /// - `find | xargs sed` -> NeedsReview (sed not whitelisted)
     /// - `cargo build` -> NeedsReview (cargo not whitelisted)
+    /// - `cat <<EOF` -> NeedsReview (heredocs can create arbitrary content)
     pub fn classify(command: &str) -> CommandRisk {
+        // Heredocs are never safe - they can create arbitrary content
+        if Self::contains_heredoc(command) {
+            return CommandRisk::NeedsReview;
+        }
+
         let base_commands = BashCommandParser::extract_base_commands(command);
 
         if base_commands.iter().all(|c| Self::is_whitelisted(c)) {
@@ -24,6 +30,11 @@ impl BashCommandClassifier {
         } else {
             CommandRisk::NeedsReview
         }
+    }
+
+    /// Check if command contains a heredoc
+    fn contains_heredoc(command: &str) -> bool {
+        command.contains("<<") || command.contains("<<<")
     }
 
     fn is_whitelisted(cmd: &str) -> bool {
@@ -128,5 +139,30 @@ mod tests {
             assert!(BashCommandClassifier::is_whitelisted(cmd));
             assert_eq!(BashCommandClassifier::classify(cmd), CommandRisk::Safe);
         }
+    }
+
+    #[test]
+    fn test_heredoc_needs_review() {
+        // Heredocs should always need review, even with safe commands
+        assert_eq!(
+            BashCommandClassifier::classify("cat <<EOF\nHello\nEOF"),
+            CommandRisk::NeedsReview
+        );
+        assert_eq!(
+            BashCommandClassifier::classify("cat <<'EOF'\nHello\nEOF"),
+            CommandRisk::NeedsReview
+        );
+        assert_eq!(
+            BashCommandClassifier::classify("echo <<EOF\ntest\nEOF"),
+            CommandRisk::NeedsReview
+        );
+    }
+
+    #[test]
+    fn test_herestring_needs_review() {
+        assert_eq!(
+            BashCommandClassifier::classify("cat <<< \"some text\""),
+            CommandRisk::NeedsReview
+        );
     }
 }
