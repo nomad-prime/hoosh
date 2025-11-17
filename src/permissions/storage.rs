@@ -155,8 +155,8 @@ impl PermissionRule {
 mod tests {
     use super::*;
     use crate::permissions::{BashPatternMatcher, FilePatternMatcher, ToolPermissionBuilder};
-    use crate::tools::bash::BashTool;
     use crate::tools::ReadFileTool;
+    use crate::tools::bash::BashTool;
     use std::sync::Arc;
 
     #[test]

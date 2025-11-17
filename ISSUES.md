@@ -19,3 +19,7 @@ broken
 ### Permission.json
 
 if hoosh is running, a change on permissions file is overwritten
+
+### ctrl+c on setup and init_permission 
+
+just enters instead of exiting
