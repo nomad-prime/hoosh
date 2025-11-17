@@ -44,7 +44,7 @@ pub struct PermissionRule {
 
 impl PermissionsFile {
     pub fn get_permissions_path(project_root: &Path) -> PathBuf {
-        project_root.join("../../.hoosh.bak").join("permissions.json")
+        project_root.join(".hoosh").join("permissions.json")
     }
 
     pub fn save_permissions(&self, project_root: &Path) -> Result<(), anyhow::Error> {

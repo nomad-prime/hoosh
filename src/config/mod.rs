@@ -339,7 +339,7 @@ impl AppConfig {
 
     pub fn project_config_path() -> ConfigResult<PathBuf> {
         let mut path = std::env::current_dir().map_err(ConfigError::IoError)?;
-        path.push("../../.hoosh.bak");
+        path.push(".hoosh");
         path.push("config.toml");
         Ok(path)
     }
