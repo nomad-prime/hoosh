@@ -3,7 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use walkdir::WalkDir;
 
 #[derive(Debug, Deserialize)]
@@ -96,7 +96,7 @@ impl Tool for GlobTool {
     }
 
     fn description(&self) -> &'static str {
-        "Fast file pattern matching tool for finding files by name patterns (e.g., **/*.js, src/**/*.rs)"
+        "Fast file pattern matching tool for finding files by name patterns (e.g., **/*.js, **/src/**/*.rs)"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -105,7 +105,7 @@ impl Tool for GlobTool {
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "The glob pattern to match files against (e.g., **/*.rs, src/**/*.ts)"
+                    "description": "The glob pattern to match files against (e.g., **/*.rs, **/src/**/*.ts)"
                 },
                 "path": {
                     "type": "string",

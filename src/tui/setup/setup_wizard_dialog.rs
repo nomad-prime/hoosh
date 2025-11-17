@@ -297,7 +297,7 @@ impl SetupWizardDialog {
         let block = Block::default()
             .title(" Confirmation ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Green))
+            .border_style(Style::default().fg(Color::Cyan))
             .style(Style::default().bg(Color::Black));
 
         let paragraph = Paragraph::new(lines)
