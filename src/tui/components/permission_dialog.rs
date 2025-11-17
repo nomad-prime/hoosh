@@ -28,7 +28,6 @@ impl Component for PermissionDialog {
             lines.push(Line::from(""));
 
             if let Some(preview) = descriptor.command_preview() {
-
                 for preview_line in preview.lines() {
                     lines.push(Line::from(vec![
                         Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
