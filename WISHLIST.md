@@ -28,6 +28,18 @@ I find myself referencing previous conversations often, so having a way to load 
 be helpful. Maybe a command like /load_conversation <conversation_id> that fetches and loads the conversation into the
 current context.
 
+### Tool results preview
+claude code shows
+
+⏺ Bash(cat Cargo.toml | grep version)
+⎿  version = "0.1.4"                                
+clap = { version = "4.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+… +3 lines (ctrl+o to expand)
+
+### in bash tool
+explanation of what bash does underneath approval dialog
+
 ### File Expansion
 
 if a file is referenced in input, file read should be shown afterwards

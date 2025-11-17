@@ -3,7 +3,7 @@ use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -147,7 +147,9 @@ impl Tool for BashTool {
     fn description(&self) -> &'static str {
         "Execute bash commands safely with timeout and security restrictions. \
         You are already in the project directory - do not cd into it.
-        Only use cd if you need to access files in a different directory."
+        Only use cd if you need to access files in a different directory.
+        Only use Bash if the other tools do not give you the functionalities you need. Bash should be last resort.
+        "
     }
 
     fn parameter_schema(&self) -> Value {
@@ -173,8 +175,8 @@ impl Tool for BashTool {
         if let Ok(parsed_args) = serde_json::from_value::<BashArgs>(args.clone()) {
             // Show a preview of the command (truncate if too long)
             let cmd = &parsed_args.command;
-            if cmd.chars().count() > 50 {
-                let truncated: String = cmd.chars().take(50).collect();
+            if cmd.chars().count() > 75 {
+                let truncated: String = cmd.chars().take(75).collect();
                 format!("Bash({}...)", truncated)
             } else {
                 format!("Bash({})", cmd)
@@ -236,7 +238,7 @@ impl Tool for BashTool {
             (
                 format!("Can I run \"{}\"", display),
                 format!(
-                    "don't ask me again for \"{}\" commands in this project",
+                    "don't ask me again for pipe combination of \"{}\" commands in this project",
                     display
                 ),
             )
