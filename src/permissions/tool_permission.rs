@@ -16,6 +16,7 @@ pub struct ToolPermissionDescriptor {
     display_name: String,
     approval_title: String,
     approval_prompt: String,
+    command_preview: Option<String>,
     persistent_approval: String,
     suggested_pattern: Option<String>,
     pattern_matcher: Arc<dyn PatternMatcher>,
@@ -34,6 +35,7 @@ impl std::fmt::Debug for ToolPermissionDescriptor {
             .field("display_name", &self.display_name)
             .field("approval_title", &self.approval_title)
             .field("approval_prompt", &self.approval_prompt)
+            .field("command_preview", &self.command_preview)
             .field("persistent_approval", &self.persistent_approval)
             .field("suggested_pattern", &self.suggested_pattern)
             .field("pattern_matcher", &"<PatternMatcher>")
@@ -53,6 +55,7 @@ impl PartialEq for ToolPermissionDescriptor {
             && self.display_name == other.display_name
             && self.approval_title == other.approval_title
             && self.approval_prompt == other.approval_prompt
+            && self.command_preview == other.command_preview
             && self.persistent_approval == other.persistent_approval
             && self.suggested_pattern == other.suggested_pattern
     }
@@ -97,6 +100,10 @@ impl ToolPermissionDescriptor {
         &self.approval_prompt
     }
 
+    pub fn command_preview(&self) -> Option<&str> {
+        self.command_preview.as_deref()
+    }
+
     pub fn persistent_approval(&self) -> &str {
         &self.persistent_approval
     }
@@ -122,6 +129,7 @@ pub struct ToolPermissionBuilder<'a> {
     display_name: Option<String>,
     approval_title: Option<String>,
     approval_prompt: Option<String>,
+    command_preview: Option<String>,
     persistent_approval: Option<String>,
     suggested_pattern: Option<String>,
     pattern_matcher: Option<Arc<dyn PatternMatcher>>,
@@ -139,6 +147,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             display_name: None,
             approval_title: None,
             approval_prompt: None,
+            command_preview: None,
             persistent_approval: None,
             suggested_pattern: None,
             pattern_matcher: None,
@@ -190,6 +199,11 @@ impl<'a> ToolPermissionBuilder<'a> {
 
     pub fn with_approval_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.approval_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn with_command_preview(mut self, preview: impl Into<String>) -> Self {
+        self.command_preview = Some(preview.into());
         self
     }
 
@@ -256,6 +270,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             display_name,
             approval_title,
             approval_prompt,
+            command_preview: self.command_preview,
             persistent_approval,
             suggested_pattern: self.suggested_pattern,
             pattern_matcher,

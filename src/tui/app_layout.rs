@@ -55,7 +55,16 @@ impl AppLayout for Layout<AppState> {
                 .tool_permission_dialog_state
                 .as_ref()
                 .map(|state| {
-                    let base = 4 + state.options.len() as u16;
+                    let mut base = 4 + state.options.len() as u16;
+
+                    // Add height for command preview if present
+                    if let Some(preview) = state.descriptor.command_preview() {
+                        // +3 for top border, bottom border, and spacing
+                        // + number of lines in the preview
+                        let preview_lines = preview.lines().count() as u16;
+                        base += 3 + preview_lines;
+                    }
+
                     if state.descriptor.is_destructive() {
                         base + 1
                     } else {
@@ -63,7 +72,7 @@ impl AppLayout for Layout<AppState> {
                     }
                 })
                 .unwrap_or(10);
-            builder = builder.permission_dialog(lines.min(15), true);
+            builder = builder.permission_dialog(lines.min(30), true);
         } else if app.is_showing_approval_dialog() {
             builder = builder.approval_dialog(true);
         } else if app.is_completing() {

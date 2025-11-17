@@ -218,7 +218,8 @@ impl Tool for BashTool {
             return ToolPermissionBuilder::new(self, target_str)
                 .into_read_only()
                 .with_approval_title(" Bash Command ")
-                .with_approval_prompt(format!("Can I run \"{}\"", target_str))
+                .with_approval_prompt("Can I run this bash command?".to_string())
+                .with_command_preview(target_str.to_string())
                 .with_persistent_approval("don't ask me again for bash in this project".to_string())
                 .with_suggested_pattern("*".to_string())
                 .with_pattern_matcher(Arc::new(BashPatternMatcher))
@@ -229,42 +230,34 @@ impl Tool for BashTool {
         let base_commands = BashCommandParser::extract_base_commands(target_str);
         let suggested_pattern = BashCommandParser::suggest_pattern(&base_commands);
 
-        let (approval_prompt, persistent_message) = if suggested_pattern.contains('|') {
+        let persistent_message = if suggested_pattern.contains('|') {
             let commands: Vec<&str> = suggested_pattern
                 .split('|')
                 .map(|s| s.trim_end_matches(":*"))
                 .collect();
             let display = commands.join(", ");
-            (
-                format!("Can I run \"{}\"", display),
-                format!(
-                    "don't ask me again for pipe combination of \"{}\" commands in this project",
-                    display
-                ),
+            format!(
+                "don't ask me again for pipe combination of \"{}\" commands in this project",
+                display
             )
         } else {
             let pattern_display = suggested_pattern
                 .trim_end_matches(":*")
                 .trim_end_matches('*');
             if pattern_display.is_empty() {
-                (
-                    format!("Can I run \"{}\"", target_str),
-                    "don't ask me again for bash in this project".to_string(),
-                )
+                "don't ask me again for bash in this project".to_string()
             } else {
-                (
-                    format!("Can I run \"{}\"", pattern_display),
-                    format!(
-                        "don't ask me again for \"{}\" commands in this project",
-                        pattern_display
-                    ),
+                format!(
+                    "don't ask me again for \"{}\" commands in this project",
+                    pattern_display
                 )
             }
         };
 
         ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
-            .with_approval_prompt(approval_prompt)
+            .with_approval_prompt("Can I run this bash command?".to_string())
+            .with_command_preview(target_str.to_string())
             .with_persistent_approval(persistent_message)
             .with_suggested_pattern(suggested_pattern)
             .with_pattern_matcher(Arc::new(BashPatternMatcher))
