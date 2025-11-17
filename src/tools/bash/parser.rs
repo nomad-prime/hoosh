@@ -13,7 +13,15 @@ impl BashCommandParser {
     pub fn extract_base_commands(input: &str) -> Vec<String> {
         let mut commands = Vec::new();
 
-        for statement in input.lines().flat_map(|line| line.split(';')) {
+        // Check if this is a heredoc - if so, only parse the first line
+        let lines_to_parse: Vec<&str> = if Self::contains_heredoc(input) {
+            // For heredocs, only parse the first line (the actual command)
+            input.lines().take(1).collect()
+        } else {
+            input.lines().collect()
+        };
+
+        for statement in lines_to_parse.iter().flat_map(|line| line.split(';')) {
             let trimmed = statement.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
@@ -31,6 +39,11 @@ impl BashCommandParser {
         }
 
         commands
+    }
+
+    /// Check if input contains a heredoc
+    fn contains_heredoc(input: &str) -> bool {
+        input.contains("<<") || input.contains("<<<")
     }
 
     /// Generate a permission pattern suggestion from base commands
@@ -184,5 +197,26 @@ mod tests {
         );
         assert_eq!(BashCommandParser::extract_single_base_command(""), None);
         assert_eq!(BashCommandParser::extract_single_base_command("   "), None);
+    }
+
+    #[test]
+    fn test_heredoc_only_parses_first_line() {
+        let input = "cat <<EOF\nHello from a heredoc!\nThis is a multi-line string.\nYou can use any content here.\nEOF";
+        let cmds = BashCommandParser::extract_base_commands(input);
+        assert_eq!(cmds, vec!["cat"]);
+    }
+
+    #[test]
+    fn test_heredoc_with_quotes() {
+        let input = "cat <<'EOF'\nHello\nWorld\nEOF";
+        let cmds = BashCommandParser::extract_base_commands(input);
+        assert_eq!(cmds, vec!["cat"]);
+    }
+
+    #[test]
+    fn test_herestring() {
+        let input = "cat <<< \"some text\"";
+        let cmds = BashCommandParser::extract_base_commands(input);
+        assert_eq!(cmds, vec!["cat"]);
     }
 }
