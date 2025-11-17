@@ -59,10 +59,18 @@ impl AppLayout for Layout<AppState> {
 
                     // Add height for command preview if present
                     if let Some(preview) = state.descriptor.command_preview() {
-                        // +3 for top border, bottom border, and spacing
-                        // + number of lines in the preview
+                        const MAX_PREVIEW_LINES: u16 = 15;
+                        // +1 for spacing after preview
+                        // + number of lines in the preview (capped at MAX_PREVIEW_LINES)
+                        // +1 for potential "... (X more lines)" indicator
                         let preview_lines = preview.lines().count() as u16;
-                        base += 3 + preview_lines;
+                        let displayed_lines = preview_lines.min(MAX_PREVIEW_LINES);
+                        base += 1 + displayed_lines;
+
+                        // Add 1 more line if we're showing the "more lines" indicator
+                        if preview_lines > MAX_PREVIEW_LINES {
+                            base += 1;
+                        }
                     }
 
                     if state.descriptor.is_destructive() {
@@ -72,7 +80,7 @@ impl AppLayout for Layout<AppState> {
                     }
                 })
                 .unwrap_or(10);
-            builder = builder.permission_dialog(lines.min(30), true);
+            builder = builder.permission_dialog(lines, true);
         } else if app.is_showing_approval_dialog() {
             builder = builder.approval_dialog(true);
         } else if app.is_completing() {

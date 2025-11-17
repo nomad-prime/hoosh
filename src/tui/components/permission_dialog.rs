@@ -28,10 +28,25 @@ impl Component for PermissionDialog {
             lines.push(Line::from(""));
 
             if let Some(preview) = descriptor.command_preview() {
-                for preview_line in preview.lines() {
+                const MAX_PREVIEW_LINES: usize = 15;
+                let preview_lines: Vec<&str> = preview.lines().collect();
+                let total_lines = preview_lines.len();
+
+                for preview_line in preview_lines.iter().take(MAX_PREVIEW_LINES) {
                     lines.push(Line::from(vec![
                         Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
-                        Span::styled(preview_line, Style::default().fg(palette::SECONDARY_TEXT)),
+                        Span::styled(*preview_line, Style::default().fg(palette::SECONDARY_TEXT)),
+                    ]));
+                }
+
+                // Show indicator if there are more lines
+                if total_lines > MAX_PREVIEW_LINES {
+                    lines.push(Line::from(vec![
+                        Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
+                        Span::styled(
+                            format!("... ({} more lines)", total_lines - MAX_PREVIEW_LINES),
+                            Style::default().fg(palette::DIMMED_TEXT).add_modifier(Modifier::ITALIC),
+                        ),
                     ]));
                 }
 
