@@ -1,10 +1,11 @@
 use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
+use crate::tui::palette;
 use ratatui::text::Span;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::{Block, Borders, Clear, List, ListItem, Widget},
 };
 
@@ -31,11 +32,11 @@ impl Component for CompletionPopup {
                     let is_selected = actual_idx == completion_state.selected_index;
                     let style = if is_selected {
                         Style::default()
-                            .fg(Color::Black)
-                            .bg(Color::Cyan)
+                            .fg(palette::SELECTED_FG)
+                            .bg(palette::SELECTED_BG)
                             .add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default().fg(Color::White)
+                        Style::default().fg(palette::PRIMARY_TEXT)
                     };
 
                     let prefix = if is_selected { "> " } else { "  " };
@@ -48,7 +49,7 @@ impl Component for CompletionPopup {
             let title = Span::styled(
                 format!(" Files ( {} / {} ) ", current_selection, total_completions),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette::PRIMARY_BORDER)
                     .add_modifier(Modifier::BOLD),
             );
 
@@ -58,7 +59,7 @@ impl Component for CompletionPopup {
             let block = Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan));
+                .border_style(Style::default().fg(palette::PRIMARY_BORDER));
 
             let list = List::new(items).block(block);
             list.render(area, buf);

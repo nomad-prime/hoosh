@@ -1,7 +1,9 @@
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
 };
+
+use crate::tui::palette;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -49,11 +51,11 @@ pub fn create_header_block(
     let box_width = total_content_width + 4; // 2 for left/right borders + 2 for padding
 
     // Combine ASCII art with info on the right
-    let logo_color = Color::Rgb(142, 240, 204);
-    let title_color = Color::Rgb(255, 255, 255);
-    let info_color = Color::Rgb(150, 150, 150);
-    let border_color = Color::Rgb(100, 100, 100);
-    let trust_color = Color::Rgb(255, 200, 0); // Yellow/Orange for trust indicator
+    let logo_color = palette::HEADER_LOGO;
+    let title_color = palette::HEADER_TITLE;
+    let info_color = palette::HEADER_INFO;
+    let border_color = palette::HEADER_BORDER;
+    let trust_color = palette::HEADER_TRUST;
 
     let mut lines = vec![
         // Top border

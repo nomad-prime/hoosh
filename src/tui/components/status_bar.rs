@@ -1,10 +1,11 @@
 use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
 use crate::tui::events::AgentState;
+use crate::tui::palette;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Paragraph, Widget},
 };
@@ -42,11 +43,14 @@ impl Component for StatusBar {
             let retry_spinner = retry_spinners[state.animation_frame % retry_spinners.len()];
             (
                 format!("{} {}", retry_spinner, retry_status),
-                Color::LightRed,
+                palette::DESTRUCTIVE,
             )
         } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {
             let waiting_spinner = waiting_spinners[state.animation_frame % waiting_spinners.len()];
-            (format!("{} Your turn", waiting_spinner), Color::Yellow)
+            (
+                format!("{} Your turn", waiting_spinner),
+                palette::STATUS_WAITING,
+            )
         } else {
             match state.agent_state {
                 AgentState::Summarizing => {
@@ -55,15 +59,18 @@ impl Component for StatusBar {
                         % thinking_spinners[state.current_thinking_spinner].len()];
                     (
                         format!("{} Summarizing", spinner),
-                        Color::Rgb(142, 240, 204),
+                        palette::STATUS_PROCESSING,
                     )
                 }
-                AgentState::Idle => (String::new(), Color::Rgb(142, 240, 204)),
+                AgentState::Idle => (String::new(), palette::STATUS_IDLE),
                 AgentState::Thinking => {
                     let spinner = thinking_spinners[state.current_thinking_spinner][state
                         .animation_frame
                         % thinking_spinners[state.current_thinking_spinner].len()];
-                    (format!("{} Processing", spinner), Color::Rgb(142, 240, 204))
+                    (
+                        format!("{} Processing", spinner),
+                        palette::STATUS_PROCESSING,
+                    )
                 }
                 AgentState::ExecutingTools => {
                     let spinner = executing_spinners[state.current_executing_spinner][state
@@ -71,7 +78,7 @@ impl Component for StatusBar {
                         % executing_spinners[state.current_executing_spinner].len()];
                     (
                         format!("{} Executing tools", spinner),
-                        Color::Rgb(142, 240, 204),
+                        palette::STATUS_PROCESSING,
                     )
                 }
             }
@@ -86,7 +93,7 @@ impl Component for StatusBar {
             "Tokens: 0 ↑ | 0 ↓ ".to_string()
         };
 
-        let token_color = Color::LightCyan;
+        let token_color = palette::INFO;
 
         let areas = Layout::horizontal([Constraint::Fill(1), Constraint::Length(36)]).split(area);
 

@@ -254,6 +254,52 @@ When refactoring, create new modules alongside existing ones:
 - Remove old implementation only after complete migration
 - Use feature flags if gradual rollout is needed
 
+## Color Palette
+
+### Primary Colors Used
+
+| Color | Usage | Files |
+|-------|-------|-------|
+| **Cyan** | Primary borders, titles, selected items background | All dialogs |
+| **Black** | Selected item text, dialog background | All dialogs |
+| **Yellow** | Warnings, descriptions, instructions | setup_wizard, markdown |
+| **LightYellow** | Instructions (italic) | setup_wizard, init_permission |
+| **Red** | Destructive operations, errors | permission_dialog, markdown |
+| **Green** | Success markers, list bullets | setup_wizard (step 4), markdown |
+| **Gray/DarkGray** | Secondary text, borders | markdown, subagent_results |
+| **White** | Unselected items | completion_popup |
+| **Magenta** | Markdown headings | markdown |
+| **Blue** | Markdown links | markdown |
+
+### Color Constants Pattern
+
+Use centralized color constants from `src/tui/colors.rs`:
+
+```rust
+use ratatui::style::Color;
+
+pub mod palette {
+    use super::*;
+
+    // Primary colors
+    pub const PRIMARY_BORDER: Color = Color::Cyan;
+    pub const SELECTED_BG: Color = Color::Cyan;
+    pub const SELECTED_FG: Color = Color::Black;
+    pub const DIALOG_BG: Color = Color::Black;
+
+    // Semantic colors
+    pub const DESTRUCTIVE: Color = Color::Red;
+    pub const WARNING: Color = Color::Yellow;
+    pub const SUCCESS: Color = Color::Green;
+    pub const INFO: Color = Color::Cyan;
+
+    // Text colors
+    pub const PRIMARY_TEXT: Color = Color::White;
+    pub const SECONDARY_TEXT: Color = Color::Gray;
+    pub const DIMMED_TEXT: Color = Color::DarkGray;
+}
+```
+
 ## Commands
 
 - `cargo run` - Run the CLI application

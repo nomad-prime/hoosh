@@ -1,9 +1,10 @@
 use super::init_permission_state::InitialPermissionState;
 use crate::tui::component::Component;
+use crate::tui::palette;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
@@ -46,8 +47,8 @@ impl Component for InitialPermissionDialog {
 
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(palette::SELECTED_FG)
+                    .bg(palette::SELECTED_BG)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -59,7 +60,7 @@ impl Component for InitialPermissionDialog {
                 lines.push(Line::from(Span::styled(
                     format!("    {}", desc),
                     Style::default()
-                        .fg(Color::LightYellow)
+                        .fg(palette::WARNING)
                         .add_modifier(Modifier::ITALIC),
                 )));
             }
@@ -69,20 +70,20 @@ impl Component for InitialPermissionDialog {
 
         lines.push(Line::from(Span::styled(
             "↑/↓ navigate, Enter/key to choose, Esc cancel",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
         let border_style = if state.selected_index == 1 {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(palette::WARNING)
         } else {
-            Style::default().fg(Color::Cyan)
+            Style::default().fg(palette::PRIMARY_BORDER)
         };
 
         let block = Block::default()
             .title(" First time opening this project ")
             .borders(Borders::ALL)
             .border_style(border_style)
-            .style(Style::default().bg(Color::Black));
+            .style(Style::default().bg(palette::DIALOG_BG));
 
         let paragraph = Paragraph::new(lines)
             .block(block)
