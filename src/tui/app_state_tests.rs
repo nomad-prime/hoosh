@@ -105,10 +105,8 @@ fn active_tool_call_add_subagent_step() {
         tool_call_id: "call1".to_string(),
         display_name: "test".to_string(),
         status: ToolCallStatus::Starting,
-        preview: None,
         result_summary: None,
         subagent_steps: Vec::new(),
-        current_step: 0,
         is_subagent_task: false,
     };
 
@@ -120,112 +118,7 @@ fn active_tool_call_add_subagent_step() {
 
     tool_call.add_subagent_step(step);
     assert_eq!(tool_call.subagent_steps.len(), 1);
-    assert_eq!(tool_call.current_step, 1);
     assert_eq!(tool_call.subagent_steps[0].step_number, 1);
-}
-
-#[test]
-fn active_tool_call_get_running_summary_empty_steps() {
-    let tool_call = ActiveToolCall {
-        tool_call_id: "call1".to_string(),
-        display_name: "test".to_string(),
-        status: ToolCallStatus::Starting,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        current_step: 0,
-        is_subagent_task: false,
-    };
-
-    assert_eq!(tool_call.get_running_summary(), "");
-}
-
-#[test]
-fn active_tool_call_get_running_summary_with_steps() {
-    let mut tool_call = ActiveToolCall {
-        tool_call_id: "call1".to_string(),
-        display_name: "test".to_string(),
-        status: ToolCallStatus::Starting,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        current_step: 0,
-        is_subagent_task: false,
-    };
-
-    tool_call.add_subagent_step(SubagentStepSummary {
-        step_number: 1,
-        action_type: "search".to_string(),
-        description: "short desc".to_string(),
-    });
-
-    let summary = tool_call.get_running_summary();
-    assert!(summary.contains("[1]"));
-    assert!(summary.contains("short desc"));
-}
-
-#[test]
-fn active_tool_call_get_running_summary_truncates_long_descriptions() {
-    let mut tool_call = ActiveToolCall {
-        tool_call_id: "call1".to_string(),
-        display_name: "test".to_string(),
-        status: ToolCallStatus::Starting,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        current_step: 0,
-        is_subagent_task: false,
-    };
-
-    let long_desc = "a".repeat(100);
-    tool_call.add_subagent_step(SubagentStepSummary {
-        step_number: 1,
-        action_type: "search".to_string(),
-        description: long_desc,
-    });
-
-    let summary = tool_call.get_running_summary();
-    assert!(summary.contains("..."));
-    assert!(summary.len() < 100);
-}
-
-#[test]
-fn active_tool_call_get_progress_indicator_empty() {
-    let tool_call = ActiveToolCall {
-        tool_call_id: "call1".to_string(),
-        display_name: "test".to_string(),
-        status: ToolCallStatus::Starting,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        current_step: 0,
-        is_subagent_task: false,
-    };
-
-    assert_eq!(tool_call.get_progress_indicator(), "0%");
-}
-
-#[test]
-fn active_tool_call_get_progress_indicator_with_steps() {
-    let mut tool_call = ActiveToolCall {
-        tool_call_id: "call1".to_string(),
-        display_name: "test".to_string(),
-        status: ToolCallStatus::Starting,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        current_step: 0,
-        is_subagent_task: false,
-    };
-
-    tool_call.add_subagent_step(SubagentStepSummary {
-        step_number: 1,
-        action_type: "test".to_string(),
-        description: "test".to_string(),
-    });
-
-    let indicator = tool_call.get_progress_indicator();
-    assert!(indicator.contains("Step 1"));
 }
 
 // ============================================================================

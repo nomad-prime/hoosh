@@ -30,10 +30,8 @@ pub struct ActiveToolCall {
     pub tool_call_id: String,
     pub display_name: String,
     pub status: ToolCallStatus,
-    pub preview: Option<String>,
     pub result_summary: Option<String>,
     pub subagent_steps: Vec<SubagentStepSummary>,
-    pub current_step: usize,
     pub is_subagent_task: bool,
 }
 
@@ -49,38 +47,6 @@ pub enum ToolCallStatus {
 impl ActiveToolCall {
     pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
         self.subagent_steps.push(step);
-        self.current_step = self.subagent_steps.len();
-    }
-
-    pub fn get_running_summary(&self) -> String {
-        if self.subagent_steps.is_empty() {
-            return String::new();
-        }
-
-        let start = self.subagent_steps.len().saturating_sub(3);
-        let recent = &self.subagent_steps[start..];
-
-        let step_descriptions = recent
-            .iter()
-            .map(|s| {
-                if s.description.len() > 50 {
-                    format!("{}...", &s.description[..50])
-                } else {
-                    s.description.clone()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" → ");
-
-        format!("[{}] {}", self.current_step, step_descriptions)
-    }
-
-    pub fn get_progress_indicator(&self) -> String {
-        if self.subagent_steps.is_empty() {
-            "0%".to_string()
-        } else {
-            format!("⊙ Step {}", self.current_step)
-        }
     }
 }
 
@@ -416,10 +382,8 @@ impl AppState {
             tool_call_id,
             display_name,
             status: ToolCallStatus::Starting,
-            preview: None,
             result_summary: None,
             subagent_steps: Vec::new(),
-            current_step: 0,
             is_subagent_task: false,
         });
     }
