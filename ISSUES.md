@@ -29,3 +29,7 @@ just enters instead of exiting
 echo "Hello, this is a test file created at $(date)" > test_output.txt && c..
 
 did not
+
+### tool calling fixing in case of crashes
+
+currently adding a tool message with some answer -> better just remove the ones that dont have proper answer
