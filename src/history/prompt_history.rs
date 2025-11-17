@@ -48,7 +48,7 @@ impl PromptHistory {
 
     /// Gets the default history file path (~/.hoosh/history)
     pub fn default_history_path() -> Option<PathBuf> {
-        dirs::home_dir().map(|home| home.join(".hoosh").join("history"))
+        dirs::home_dir().map(|home| home.join("../../.hoosh.bak").join("history"))
     }
 
     /// Loads history from the file

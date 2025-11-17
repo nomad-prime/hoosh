@@ -44,7 +44,7 @@ pub struct PermissionRule {
 
 impl PermissionsFile {
     pub fn get_permissions_path(project_root: &Path) -> PathBuf {
-        project_root.join(".hoosh").join("permissions.json")
+        project_root.join("../../.hoosh.bak").join("permissions.json")
     }
 
     pub fn save_permissions(&self, project_root: &Path) -> Result<(), anyhow::Error> {
@@ -155,8 +155,8 @@ impl PermissionRule {
 mod tests {
     use super::*;
     use crate::permissions::{BashPatternMatcher, FilePatternMatcher, ToolPermissionBuilder};
-    use crate::tools::ReadFileTool;
     use crate::tools::bash::BashTool;
+    use crate::tools::ReadFileTool;
     use std::sync::Arc;
 
     #[test]

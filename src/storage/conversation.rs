@@ -68,7 +68,7 @@ impl ConversationStorage {
 
     pub fn default_path() -> Result<PathBuf> {
         let project_root = std::env::current_dir().context("Failed to get current directory")?;
-        Ok(project_root.join(".hoosh").join("conversations"))
+        Ok(project_root.join("../../.hoosh.bak").join("conversations"))
     }
 
     pub fn with_default_path() -> Result<Self> {

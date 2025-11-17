@@ -3,7 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use walkdir::WalkDir;
 
 #[derive(Debug, Deserialize)]

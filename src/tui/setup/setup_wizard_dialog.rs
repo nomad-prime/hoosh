@@ -1,9 +1,10 @@
 use crate::tui::component::Component;
+use crate::tui::palette;
 use crate::tui::setup::setup_wizard_state::{BackendType, SetupWizardState, SetupWizardStep};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
@@ -17,7 +18,7 @@ impl SetupWizardDialog {
             Line::from(vec![Span::styled(
                 "Welcome to Hoosh Setup Wizard!",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette::PRIMARY_BORDER)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
@@ -31,15 +32,15 @@ impl SetupWizardDialog {
             Line::from(""),
             Line::from(Span::styled(
                 "Press Enter to continue, Esc to skip setup",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(palette::WARNING),
             )),
         ];
 
         let block = Block::default()
             .title(" Setup Wizard ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .style(Style::default().bg(Color::Black));
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
 
         let paragraph = Paragraph::new(lines)
             .block(block)
@@ -54,7 +55,7 @@ impl SetupWizardDialog {
             Line::from(vec![Span::styled(
                 "Select LLM Backend",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette::PRIMARY_BORDER)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
@@ -68,8 +69,8 @@ impl SetupWizardDialog {
 
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(palette::SELECTED_FG)
+                    .bg(palette::SELECTED_BG)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -81,7 +82,7 @@ impl SetupWizardDialog {
                 lines.push(Line::from(Span::styled(
                     format!("    {}", backend.description()),
                     Style::default()
-                        .fg(Color::LightYellow)
+                        .fg(palette::WARNING)
                         .add_modifier(Modifier::ITALIC),
                 )));
             }
@@ -90,14 +91,14 @@ impl SetupWizardDialog {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "↑/↓ navigate, Enter to select, Esc to cancel",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
         let block = Block::default()
             .title(" Backend Selection ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .style(Style::default().bg(Color::Black));
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
 
         let paragraph = Paragraph::new(lines)
             .block(block)
@@ -118,7 +119,7 @@ impl SetupWizardDialog {
             Line::from(vec![Span::styled(
                 format!("Configure {} API Key", backend_name),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette::PRIMARY_BORDER)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
@@ -145,14 +146,14 @@ impl SetupWizardDialog {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Enter to continue, Esc to go back",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
         let block = Block::default()
             .title(" API Key Configuration ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .style(Style::default().bg(Color::Black));
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
 
         let paragraph = Paragraph::new(lines)
             .block(block)
@@ -179,7 +180,7 @@ impl SetupWizardDialog {
             Line::from(vec![Span::styled(
                 format!("Select Model for {}", backend_name),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette::PRIMARY_BORDER)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
@@ -208,14 +209,14 @@ impl SetupWizardDialog {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Enter to continue, Esc to go back",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
         let block = Block::default()
             .title(" Model Selection ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .style(Style::default().bg(Color::Black));
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
 
         let paragraph = Paragraph::new(lines)
             .block(block)
@@ -249,7 +250,7 @@ impl SetupWizardDialog {
             Line::from(vec![Span::styled(
                 "Confirm Configuration",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette::PRIMARY_BORDER)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
@@ -278,8 +279,8 @@ impl SetupWizardDialog {
 
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(palette::SELECTED_FG)
+                    .bg(palette::SELECTED_BG)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -291,14 +292,14 @@ impl SetupWizardDialog {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "↑/↓ navigate, Enter to confirm, Esc to go back",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
         let block = Block::default()
             .title(" Confirmation ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .style(Style::default().bg(Color::Black));
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
 
         let paragraph = Paragraph::new(lines)
             .block(block)

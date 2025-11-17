@@ -69,7 +69,7 @@ impl IndexStorage {
     pub fn default_path() -> Result<PathBuf> {
         let project_root = std::env::current_dir().context("Failed to get current directory")?;
         Ok(project_root
-            .join(".hoosh")
+            .join("../../.hoosh.bak")
             .join("conversations")
             .join("index.json"))
     }

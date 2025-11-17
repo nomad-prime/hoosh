@@ -5,6 +5,7 @@ pub(crate) mod app_loop;
 mod app_main;
 pub(crate) mod app_state;
 mod clipboard;
+pub mod colors;
 mod component;
 pub mod components;
 mod events;
@@ -21,4 +22,5 @@ pub mod setup;
 pub mod terminal;
 
 pub use app_main::run_with_session;
+pub use colors::palette;
 pub use message_renderer::MessageRenderer;
