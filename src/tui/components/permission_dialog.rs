@@ -45,7 +45,9 @@ impl Component for PermissionDialog {
                         Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
                         Span::styled(
                             format!("... ({} more lines)", total_lines - MAX_PREVIEW_LINES),
-                            Style::default().fg(palette::DIMMED_TEXT).add_modifier(Modifier::ITALIC),
+                            Style::default()
+                                .fg(palette::DIMMED_TEXT)
+                                .add_modifier(Modifier::ITALIC),
                         ),
                     ]));
                 }

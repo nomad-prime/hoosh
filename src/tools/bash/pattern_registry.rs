@@ -13,7 +13,7 @@ impl BashCommandPatternRegistry {
             Box::new(SingleCommandPattern),
         ];
 
-        patterns.sort_by(|a, b| b.priority().cmp(&a.priority()));
+        patterns.sort_by_key(|a|  std::cmp::Reverse(a.priority()));
 
         Self { patterns }
     }
