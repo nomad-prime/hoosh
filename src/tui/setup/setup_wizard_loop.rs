@@ -68,7 +68,7 @@ pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
         crate::config::BackendConfig {
             api_key: result.api_key.clone(),
             model: Some(result.model.clone()),
-            base_url: None,
+            base_url: result.base_url.clone(),
             chat_api: None,
             temperature: None,
         },

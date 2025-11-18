@@ -7,6 +7,7 @@ pub enum SetupWizardStep {
     Welcome,
     BackendSelection,
     ApiKeyInput,
+    BaseUrlInput,
     ModelSelection,
     Confirmation,
 }
@@ -65,6 +66,7 @@ impl BackendType {
 pub struct SetupWizardResult {
     pub backend: String,
     pub api_key: Option<String>,
+    pub base_url: Option<String>,
     pub model: String,
     pub store_key_in_config: bool,
 }
@@ -74,6 +76,7 @@ pub struct SetupWizardState {
     pub selected_backend_index: usize,
     pub selected_backend: Option<BackendType>,
     pub api_key_input: TextArea<'static>,
+    pub base_url_input: TextArea<'static>,
     pub model_input: TextArea<'static>,
     pub selected_confirmation_index: usize,
     pub should_quit: bool,
@@ -88,6 +91,12 @@ impl Default for SetupWizardState {
         api_key_input.set_placeholder_text("Enter API key");
         api_key_input.set_placeholder_style(Style::default().fg(palette::PLACEHOLDER));
 
+        let mut base_url_input = TextArea::default();
+        base_url_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        base_url_input.set_cursor_line_style(Style::default());
+        base_url_input.set_placeholder_text("Leave empty for default");
+        base_url_input.set_placeholder_style(Style::default().fg(palette::PLACEHOLDER));
+
         let mut model_input = TextArea::default();
         model_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         model_input.set_cursor_line_style(Style::default());
@@ -99,6 +108,7 @@ impl Default for SetupWizardState {
             selected_backend_index: 0,
             selected_backend: None,
             api_key_input,
+            base_url_input,
             model_input,
             selected_confirmation_index: 0,
             should_quit: false,
@@ -141,13 +151,14 @@ impl SetupWizardState {
                         SetupWizardStep::ApiKeyInput
                     } else {
                         self.model_input.insert_str(backend.default_model());
-                        SetupWizardStep::ModelSelection
+                        SetupWizardStep::BaseUrlInput
                     }
                 } else {
                     SetupWizardStep::BackendSelection
                 }
             }
-            SetupWizardStep::ApiKeyInput => {
+            SetupWizardStep::ApiKeyInput => SetupWizardStep::BaseUrlInput,
+            SetupWizardStep::BaseUrlInput => {
                 if let Some(backend) = &self.selected_backend {
                     self.model_input.select_all();
                     self.model_input.cut();
@@ -165,7 +176,7 @@ impl SetupWizardState {
             SetupWizardStep::Welcome => SetupWizardStep::Welcome,
             SetupWizardStep::BackendSelection => SetupWizardStep::Welcome,
             SetupWizardStep::ApiKeyInput => SetupWizardStep::BackendSelection,
-            SetupWizardStep::ModelSelection => {
+            SetupWizardStep::BaseUrlInput => {
                 if let Some(backend) = &self.selected_backend {
                     if backend.needs_api_key() {
                         SetupWizardStep::ApiKeyInput
@@ -176,6 +187,7 @@ impl SetupWizardState {
                     SetupWizardStep::BackendSelection
                 }
             }
+            SetupWizardStep::ModelSelection => SetupWizardStep::BaseUrlInput,
             SetupWizardStep::Confirmation => SetupWizardStep::ModelSelection,
         };
     }
@@ -205,11 +217,19 @@ impl SetupWizardState {
                 None
             };
 
+            let base_url_text = self.base_url_input.lines()[0].clone();
+            let base_url = if base_url_text.is_empty() {
+                None
+            } else {
+                Some(base_url_text)
+            };
+
             let model = self.model_input.lines()[0].clone();
 
             self.result = Some(SetupWizardResult {
                 backend: backend.as_str().to_string(),
                 api_key,
+                base_url,
                 model,
                 store_key_in_config: true,
             });

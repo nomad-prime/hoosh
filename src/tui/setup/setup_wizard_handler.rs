@@ -34,6 +34,15 @@ impl SetupWizardHandler {
                                 }
                             }
                         }
+                        SetupWizardStep::BaseUrlInput => {
+                            let lines: Vec<&str> = text.lines().collect();
+                            for (i, line) in lines.iter().enumerate() {
+                                app.base_url_input.insert_str(line);
+                                if i < lines.len() - 1 {
+                                    app.base_url_input.insert_newline();
+                                }
+                            }
+                        }
                         SetupWizardStep::ModelSelection => {
                             let lines: Vec<&str> = text.lines().collect();
                             for (i, line) in lines.iter().enumerate() {
@@ -54,6 +63,9 @@ impl SetupWizardHandler {
         match &app.current_step {
             SetupWizardStep::ApiKeyInput => {
                 app.api_key_input.input(*event);
+            }
+            SetupWizardStep::BaseUrlInput => {
+                app.base_url_input.input(*event);
             }
             SetupWizardStep::ModelSelection => {
                 app.model_input.input(*event);
@@ -76,6 +88,16 @@ impl SetupWizardHandler {
                         state.api_key_input.insert_str(line);
                         if i < lines.len() - 1 {
                             state.api_key_input.insert_newline();
+                        }
+                    }
+                    return KeyHandlerResult::Handled;
+                }
+                SetupWizardStep::BaseUrlInput => {
+                    let lines: Vec<&str> = text.lines().collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        state.base_url_input.insert_str(line);
+                        if i < lines.len() - 1 {
+                            state.base_url_input.insert_newline();
                         }
                     }
                     return KeyHandlerResult::Handled;
@@ -104,7 +126,7 @@ impl SetupWizardHandler {
         // Only intercept Ctrl+C when NOT in text input steps to allow copy operations
         let is_text_input_step = matches!(
             &state.current_step,
-            SetupWizardStep::ApiKeyInput | SetupWizardStep::ModelSelection
+            SetupWizardStep::ApiKeyInput | SetupWizardStep::BaseUrlInput | SetupWizardStep::ModelSelection
         );
 
         if let KeyCode::Char('c') = key
@@ -136,6 +158,13 @@ impl SetupWizardHandler {
                 _ => {}
             },
             SetupWizardStep::ApiKeyInput => match key {
+                KeyCode::Enter => state.advance_step(),
+                KeyCode::Esc => state.go_back(),
+                _ => {
+                    self.handle_text_input(state, key_event);
+                }
+            },
+            SetupWizardStep::BaseUrlInput => match key {
                 KeyCode::Enter => state.advance_step(),
                 KeyCode::Esc => state.go_back(),
                 _ => {
