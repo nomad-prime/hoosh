@@ -114,6 +114,20 @@ impl SetupWizardDialog {
             .map(|b| b.as_str())
             .unwrap_or("unknown");
 
+        let block = Block::default()
+            .title(" API Key Configuration ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
+
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        // Don't render content if the area is too small
+        if inner.height < 8 {
+            return;
+        }
+
         let mut lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
@@ -133,9 +147,9 @@ impl SetupWizardDialog {
         let widget = state.api_key_input.widget();
         widget.render(
             Rect {
-                x: area.x + 2,
-                y: area.y + lines.len() as u16 + 1,
-                width: area.width.saturating_sub(4),
+                x: inner.x,
+                y: inner.y + lines.len() as u16,
+                width: inner.width,
                 height: 1,
             },
             buf,
@@ -149,17 +163,70 @@ impl SetupWizardDialog {
             Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+
+        paragraph.render(inner, buf);
+    }
+
+    fn render_base_url(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
+        let backend_name = state
+            .selected_backend
+            .as_ref()
+            .map(|b| b.as_str())
+            .unwrap_or("unknown");
+
         let block = Block::default()
-            .title(" API Key Configuration ")
+            .title(" Base URL Configuration ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(palette::PRIMARY_BORDER))
             .style(Style::default().bg(palette::DIALOG_BG));
 
-        let paragraph = Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let inner = block.inner(area);
+        block.render(area, buf);
 
-        paragraph.render(area, buf);
+        // Don't render content if the area is too small
+        if inner.height < 8 {
+            return;
+        }
+
+        let mut lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                format!("Configure {} Base URL", backend_name),
+                Style::default()
+                    .fg(palette::PRIMARY_BORDER)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Base URL (optional):",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+        ];
+
+        let widget = state.base_url_input.widget();
+        widget.render(
+            Rect {
+                x: inner.x,
+                y: inner.y + lines.len() as u16,
+                width: inner.width,
+                height: 1,
+            },
+            buf,
+        );
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Enter to continue, Esc to go back",
+            Style::default().fg(palette::PRIMARY_BORDER),
+        )));
+
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+
+        paragraph.render(inner, buf);
     }
 
     fn render_model_selection(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
@@ -174,6 +241,20 @@ impl SetupWizardDialog {
             .as_ref()
             .map(|b| b.default_model())
             .unwrap_or("");
+
+        let block = Block::default()
+            .title(" Model Selection ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
+
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        // Don't render content if the area is too small
+        if inner.height < 10 {
+            return;
+        }
 
         let mut lines = vec![
             Line::from(""),
@@ -196,9 +277,9 @@ impl SetupWizardDialog {
         let widget = state.model_input.widget();
         widget.render(
             Rect {
-                x: area.x + 2,
-                y: area.y + lines.len() as u16 + 1,
-                width: area.width.saturating_sub(4),
+                x: inner.x,
+                y: inner.y + lines.len() as u16,
+                width: inner.width,
                 height: 1,
             },
             buf,
@@ -212,17 +293,9 @@ impl SetupWizardDialog {
             Style::default().fg(palette::PRIMARY_BORDER),
         )));
 
-        let block = Block::default()
-            .title(" Model Selection ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
-            .style(Style::default().bg(palette::DIALOG_BG));
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
 
-        let paragraph = Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false });
-
-        paragraph.render(area, buf);
+        paragraph.render(inner, buf);
     }
 
     fn render_confirmation(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
@@ -245,6 +318,18 @@ impl SetupWizardDialog {
             "Set".to_string()
         };
 
+        let base_url = state
+            .base_url_input
+            .lines()
+            .first()
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        let base_url_display = if base_url.is_empty() {
+            "Default"
+        } else {
+            base_url
+        };
+
         let mut lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
@@ -259,12 +344,16 @@ impl SetupWizardDialog {
                 Span::raw(backend_name),
             ]),
             Line::from(vec![
-                Span::styled("Model: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(model),
-            ]),
-            Line::from(vec![
                 Span::styled("API Key: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(api_key_status),
+            ]),
+            Line::from(vec![
+                Span::styled("Base URL: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(base_url_display),
+            ]),
+            Line::from(vec![
+                Span::styled("Model: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(model),
             ]),
             Line::from(""),
             Line::from(""),
@@ -319,6 +408,7 @@ impl Component for SetupWizardDialog {
             SetupWizardStep::ApiKeyInput => self.render_api_key_input(state, area, buf),
             SetupWizardStep::ModelSelection => self.render_model_selection(state, area, buf),
             SetupWizardStep::Confirmation => self.render_confirmation(state, area, buf),
+            SetupWizardStep::BaseUrlInput => {self.render_base_url(state,area, buf) }
         }
     }
 }
