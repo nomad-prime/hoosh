@@ -105,9 +105,13 @@ fn active_tool_call_add_subagent_step() {
         tool_call_id: "call1".to_string(),
         display_name: "test".to_string(),
         status: ToolCallStatus::Starting,
+        preview: None,
         result_summary: None,
         subagent_steps: Vec::new(),
+        current_step: 0,
         is_subagent_task: false,
+        bash_output_lines: Vec::new(),
+        is_bash_streaming: false,
     };
 
     let step = SubagentStepSummary {
@@ -119,6 +123,36 @@ fn active_tool_call_add_subagent_step() {
     tool_call.add_subagent_step(step);
     assert_eq!(tool_call.subagent_steps.len(), 1);
     assert_eq!(tool_call.subagent_steps[0].step_number, 1);
+    assert_eq!(tool_call.current_step, 1);
+}
+
+#[test]
+fn active_tool_call_add_bash_output_line() {
+    let mut tool_call = ActiveToolCall {
+        tool_call_id: "call1".to_string(),
+        display_name: "bash".to_string(),
+        status: ToolCallStatus::Executing,
+        preview: None,
+        result_summary: None,
+        subagent_steps: Vec::new(),
+        current_step: 0,
+        is_subagent_task: false,
+        bash_output_lines: Vec::new(),
+        is_bash_streaming: false,
+    };
+
+    let line = BashOutputLine {
+        line_number: 1,
+        content: "Hello from bash".to_string(),
+        stream_type: "stdout".to_string(),
+    };
+
+    tool_call.add_bash_output_line(line);
+    assert_eq!(tool_call.bash_output_lines.len(), 1);
+    assert_eq!(tool_call.bash_output_lines[0].line_number, 1);
+    assert_eq!(tool_call.bash_output_lines[0].content, "Hello from bash");
+    assert_eq!(tool_call.bash_output_lines[0].stream_type, "stdout");
+    assert!(tool_call.is_bash_streaming);
 }
 
 // ============================================================================

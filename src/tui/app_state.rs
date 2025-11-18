@@ -26,13 +26,24 @@ pub struct SubagentStepSummary {
 }
 
 #[derive(Clone, Debug)]
+pub struct BashOutputLine {
+    pub line_number: usize,
+    pub content: String,
+    pub stream_type: String, // "stdout" or "stderr"
+}
+
+#[derive(Clone, Debug)]
 pub struct ActiveToolCall {
     pub tool_call_id: String,
     pub display_name: String,
     pub status: ToolCallStatus,
+    pub preview: Option<String>,
     pub result_summary: Option<String>,
     pub subagent_steps: Vec<SubagentStepSummary>,
+    pub current_step: usize,
     pub is_subagent_task: bool,
+    pub bash_output_lines: Vec<BashOutputLine>,
+    pub is_bash_streaming: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,6 +58,12 @@ pub enum ToolCallStatus {
 impl ActiveToolCall {
     pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
         self.subagent_steps.push(step);
+        self.current_step = self.subagent_steps.len();
+    }
+
+    pub fn add_bash_output_line(&mut self, line: BashOutputLine) {
+        self.bash_output_lines.push(line);
+        self.is_bash_streaming = true;
     }
 }
 
@@ -382,9 +399,13 @@ impl AppState {
             tool_call_id,
             display_name,
             status: ToolCallStatus::Starting,
+            preview: None,
             result_summary: None,
             subagent_steps: Vec::new(),
+            current_step: 0,
             is_subagent_task: false,
+            bash_output_lines: Vec::new(),
+            is_bash_streaming: false,
         });
     }
 
@@ -622,6 +643,22 @@ impl AppState {
                 }
             }
             AgentEvent::SubagentTaskComplete { .. } => {}
+            AgentEvent::BashOutputChunk {
+                tool_call_id,
+                output_line,
+                stream_type,
+                line_number,
+                ..
+            } => {
+                if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+                    let bash_line = BashOutputLine {
+                        line_number,
+                        content: output_line,
+                        stream_type,
+                    };
+                    tool_call.add_bash_output_line(bash_line);
+                }
+            }
         }
     }
 
