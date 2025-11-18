@@ -172,23 +172,10 @@ impl Agent {
             });
         }
 
-        let original_count = conversation.messages.len();
-
-        match context_manager.apply_strategies(conversation).await {
-            Ok(_) => {
-                let compressed_count = conversation.messages.len();
-                if compressed_count < original_count {
-                    self.send_event(AgentEvent::ContextCompressionComplete {
-                        summary_length: original_count - compressed_count,
-                    });
-                }
-            }
-            Err(e) => {
-                self.send_event(AgentEvent::ContextCompressionError {
-                    error: e.to_string(),
-                });
-            }
-        }
+        context_manager
+            .apply_strategies(conversation)
+            .await
+            .expect("error applying context management");
 
         Ok(())
     }

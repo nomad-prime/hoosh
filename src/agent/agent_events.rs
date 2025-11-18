@@ -48,17 +48,6 @@ pub enum AgentEvent {
     AgentSwitched {
         new_agent_name: String,
     },
-    ContextCompressionTriggered {
-        original_message_count: usize,
-        compressed_message_count: usize,
-        token_pressure: f32,
-    },
-    ContextCompressionComplete {
-        summary_length: usize,
-    },
-    ContextCompressionError {
-        error: String,
-    },
     TokenPressureWarning {
         current_pressure: f32,
         threshold: f32,
