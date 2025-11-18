@@ -126,7 +126,9 @@ impl SetupWizardHandler {
         // Only intercept Ctrl+C when NOT in text input steps to allow copy operations
         let is_text_input_step = matches!(
             &state.current_step,
-            SetupWizardStep::ApiKeyInput | SetupWizardStep::BaseUrlInput | SetupWizardStep::ModelSelection
+            SetupWizardStep::ApiKeyInput
+                | SetupWizardStep::BaseUrlInput
+                | SetupWizardStep::ModelSelection
         );
 
         if let KeyCode::Char('c') = key

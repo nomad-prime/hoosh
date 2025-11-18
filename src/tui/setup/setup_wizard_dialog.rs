@@ -408,7 +408,7 @@ impl Component for SetupWizardDialog {
             SetupWizardStep::ApiKeyInput => self.render_api_key_input(state, area, buf),
             SetupWizardStep::ModelSelection => self.render_model_selection(state, area, buf),
             SetupWizardStep::Confirmation => self.render_confirmation(state, area, buf),
-            SetupWizardStep::BaseUrlInput => {self.render_base_url(state,area, buf) }
+            SetupWizardStep::BaseUrlInput => self.render_base_url(state, area, buf),
         }
     }
 }
