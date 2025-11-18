@@ -33,3 +33,7 @@ did not
 ### tool calling fixing in case of crashes
 
 currently adding a tool message with some answer -> better just remove the ones that dont have proper answer
+
+### setup screen resizing crashes
+
+### config setup check agents

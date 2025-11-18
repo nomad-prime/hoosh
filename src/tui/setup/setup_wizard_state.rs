@@ -1,3 +1,4 @@
+use crate::tui::palette;
 use ratatui::style::{Modifier, Style};
 use tui_textarea::TextArea;
 
@@ -85,11 +86,13 @@ impl Default for SetupWizardState {
         api_key_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         api_key_input.set_cursor_line_style(Style::default());
         api_key_input.set_placeholder_text("Enter API key");
+        api_key_input.set_placeholder_style(Style::default().fg(palette::PLACEHOLDER));
 
         let mut model_input = TextArea::default();
         model_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         model_input.set_cursor_line_style(Style::default());
         model_input.set_placeholder_text("Enter Model name");
+        model_input.set_placeholder_style(Style::default().fg(palette::PLACEHOLDER));
 
         Self {
             current_step: SetupWizardStep::Welcome,
