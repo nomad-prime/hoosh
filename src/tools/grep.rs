@@ -3,6 +3,7 @@ use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -75,17 +76,27 @@ struct GrepResult {
     truncated: bool,
 }
 
-pub struct GrepTool;
+pub struct GrepTool {
+    working_directory: PathBuf,
+}
 
 impl Default for GrepTool {
     fn default() -> Self {
-        Self
+        Self::new()
     }
 }
 
 impl GrepTool {
     pub fn new() -> Self {
-        Self
+        Self {
+            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        }
+    }
+
+    pub fn with_working_directory(working_dir: PathBuf) -> Self {
+        Self {
+            working_directory: working_dir,
+        }
     }
 
     fn build_command(&self, args: &GrepArgs) -> ToolResult<Command> {
@@ -158,6 +169,7 @@ impl GrepTool {
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        cmd.current_dir(&self.working_directory);
 
         Ok(cmd)
     }
@@ -516,11 +528,21 @@ mod tests {
         let args = json!({
             "pattern": "fn ",
             "path": "src/tools/grep.rs",
-            "output_mode": "files_with_matches"
+            "output_mode": "content"
         });
 
         let result = tool.execute(&args).await;
         assert!(result.is_ok(), "Execution should succeed");
+
+        let result_str = result.unwrap();
+        let grep_result: GrepResult =
+            serde_json::from_str(&result_str).expect("Should deserialize result");
+
+        // With content mode, we should find matches when searching for "fn "
+        assert!(
+            !grep_result.matches.is_empty(),
+            "Should find matches for 'fn ' in grep.rs"
+        );
     }
 
     #[tokio::test]
@@ -538,6 +560,145 @@ mod tests {
 
         let result = tool.execute(&args).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_grep_with_test_file() {
+        use std::fs;
+
+        if which::which("rg").is_err() {
+            eprintln!("ripgrep not found, skipping integration test");
+            return;
+        }
+
+        // Create a test file
+        let test_content = "hello world\nfoo bar\nhello again\n";
+        fs::write("test_grep_temp.txt", test_content).expect("Failed to create test file");
+
+        let tool = GrepTool::new();
+        let args = json!({
+            "pattern": "hello",
+            "path": "test_grep_temp.txt",
+            "output_mode": "content"
+        });
+
+        let result = tool.execute(&args).await;
+
+        // Clean up
+        let _ = fs::remove_file("test_grep_temp.txt");
+
+        assert!(result.is_ok(), "Execution should succeed");
+
+        let result_str = result.unwrap();
+        println!("Grep result: {}", result_str);
+
+        let grep_result: GrepResult =
+            serde_json::from_str(&result_str).expect("Should deserialize result");
+
+        // We should find 2 matches for "hello"
+        assert_eq!(
+            grep_result.matches.len(),
+            2,
+            "Should find 2 matches for 'hello', but found {}: {:?}",
+            grep_result.matches.len(),
+            grep_result.matches
+        );
+    }
+
+    #[tokio::test]
+    async fn test_grep_with_absolute_path() {
+        use std::fs;
+
+        if which::which("rg").is_err() {
+            eprintln!("ripgrep not found, skipping integration test");
+            return;
+        }
+
+        // Create a test file in the current directory
+        let test_content = "hello world\nfoo bar\nhello again\n";
+        let filename = "test_grep_absolute.txt";
+        fs::write(filename, test_content).expect("Failed to create test file");
+
+        let tool = GrepTool::new();
+
+        // Get absolute path
+        let absolute_path = std::env::current_dir()
+            .ok()
+            .and_then(|pwd| pwd.join(filename).to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| filename.to_string());
+
+        println!("Testing with absolute path: {}", absolute_path);
+
+        let args = json!({
+            "pattern": "hello",
+            "path": absolute_path,
+            "output_mode": "content"
+        });
+
+        let result = tool.execute(&args).await;
+
+        // Clean up
+        let _ = fs::remove_file(filename);
+
+        assert!(result.is_ok(), "Execution should succeed");
+
+        let result_str = result.unwrap();
+        println!("Grep result: {}", result_str);
+
+        let grep_result: GrepResult =
+            serde_json::from_str(&result_str).expect("Should deserialize result");
+
+        // We should find 2 matches for "hello"
+        assert_eq!(
+            grep_result.matches.len(),
+            2,
+            "Should find 2 matches for 'hello', but found {}: {:?}",
+            grep_result.matches.len(),
+            grep_result.matches
+        );
+    }
+
+    #[tokio::test]
+    async fn test_grep_current_directory_explicitly() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        if which::which("rg").is_err() {
+            eprintln!("ripgrep not found, skipping integration test");
+            return;
+        }
+
+        // Use unique filename to avoid test conflicts
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let filename = format!("test_grep_cwd_{}.txt", timestamp);
+
+        // Create a test file
+        let test_content = "hello world\nfoo bar\nhello again\n";
+        fs::write(&filename, test_content).expect("Failed to create test file");
+
+        let tool = GrepTool::new();
+        let args = json!({
+            "pattern": "hello",
+            "path": &filename,
+            "output_mode": "content"
+        });
+
+        let result = tool.execute(&args).await;
+
+        // Clean up
+        let _ = fs::remove_file(&filename);
+
+        assert!(
+            result.is_ok(),
+            "Execution should succeed: {:?}",
+            result.err()
+        );
+
+        let result_str = result.unwrap();
+        println!("Grep result for '{}': {}", filename, result_str);
     }
 
     #[test]

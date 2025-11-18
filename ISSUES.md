@@ -34,6 +34,6 @@ did not
 
 currently adding a tool message with some answer -> better just remove the ones that dont have proper answer
 
-### setup screen resizing crashes
+### bash permission
+heredoc keeps asking
 
-### config setup check agents
