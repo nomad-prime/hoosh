@@ -278,10 +278,7 @@ impl BashTool {
             }
 
             // Add exit code information
-            result.push_str(&format!(
-                "Exit code: {}\n",
-                status.code().unwrap_or(-1)
-            ));
+            result.push_str(&format!("Exit code: {}\n", status.code().unwrap_or(-1)));
 
             if !status.success() {
                 result.push_str("⚠️  Command failed with non-zero exit code\n");
