@@ -57,12 +57,10 @@ impl Component for BashResultsComponent {
                     } else {
                         ("     ", Style::default().fg(palette::DESTRUCTIVE))
                     }
+                } else if i == 0 && !has_more {
+                    ("  ⎿ ", Style::default().fg(palette::DIMMED_TEXT))
                 } else {
-                    if i == 0 && !has_more {
-                        ("  ⎿ ", Style::default().fg(palette::DIMMED_TEXT))
-                    } else {
-                        ("    ", Style::default().fg(palette::DIMMED_TEXT))
-                    }
+                    ("    ", Style::default().fg(palette::DIMMED_TEXT))
                 };
 
                 // Truncate long lines
