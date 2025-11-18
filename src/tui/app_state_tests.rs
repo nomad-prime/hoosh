@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn completion_state_new_initializes_correctly() {
-    let state = CompletionState::new( 0);
+    let state = CompletionState::new(0);
     assert_eq!(state.selected_index, 0);
     assert_eq!(state.scroll_offset, 0);
     assert!(state.candidates.is_empty());
@@ -16,13 +16,13 @@ fn completion_state_new_initializes_correctly() {
 
 #[test]
 fn completion_state_selected_item_returns_none_when_empty() {
-    let state = CompletionState::new( 0);
+    let state = CompletionState::new(0);
     assert_eq!(state.selected_item(), None);
 }
 
 #[test]
 fn completion_state_selected_item_returns_correct_item() {
-    let mut state = CompletionState::new( 0);
+    let mut state = CompletionState::new(0);
     state.candidates = vec!["foo".to_string(), "bar".to_string()];
     assert_eq!(state.selected_item(), Some("foo"));
 
@@ -32,7 +32,7 @@ fn completion_state_selected_item_returns_correct_item() {
 
 #[test]
 fn completion_state_select_next_wraps_around() {
-    let mut state = CompletionState::new( 0);
+    let mut state = CompletionState::new(0);
     state.candidates = vec!["a".to_string(), "b".to_string(), "c".to_string()];
 
     state.select_next();
@@ -47,7 +47,7 @@ fn completion_state_select_next_wraps_around() {
 
 #[test]
 fn completion_state_select_prev_wraps_around() {
-    let mut state = CompletionState::new( 0);
+    let mut state = CompletionState::new(0);
     state.candidates = vec!["a".to_string(), "b".to_string(), "c".to_string()];
     state.selected_index = 0;
 
@@ -233,7 +233,7 @@ fn app_state_is_completing_returns_correct_state() {
     let mut state = AppState::new();
     assert!(!state.is_completing());
 
-    state.start_completion( 0);
+    state.start_completion(0);
     assert!(state.is_completing());
 
     state.cancel_completion();
@@ -243,7 +243,7 @@ fn app_state_is_completing_returns_correct_state() {
 #[test]
 fn app_state_start_completion_creates_state() {
     let mut state = AppState::new();
-    state.start_completion( 1);
+    state.start_completion(1);
 
     assert!(state.completion_state.is_some());
     let comp = state.completion_state.as_ref().unwrap();
@@ -264,7 +264,7 @@ fn app_state_update_completion_query() {
 #[test]
 fn app_state_set_completion_candidates() {
     let mut state = AppState::new();
-    state.start_completion( 0);
+    state.start_completion(0);
 
     let candidates = vec!["foo".to_string(), "bar".to_string()];
     state.set_completion_candidates(candidates);
@@ -277,7 +277,7 @@ fn app_state_set_completion_candidates() {
 #[test]
 fn app_state_select_next_completion() {
     let mut state = AppState::new();
-    state.start_completion( 0);
+    state.start_completion(0);
     state.set_completion_candidates(vec!["a".to_string(), "b".to_string()]);
 
     state.select_next_completion();
@@ -287,7 +287,7 @@ fn app_state_select_next_completion() {
 #[test]
 fn app_state_apply_completion_returns_selected() {
     let mut state = AppState::new();
-    state.start_completion( 0);
+    state.start_completion(0);
     state.set_completion_candidates(vec!["test".to_string()]);
 
     let result = state.apply_completion();
