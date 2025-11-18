@@ -11,7 +11,7 @@ You must translate plans and requirements into concrete code changes, using your
 2. **Always begin by understanding the project**: read any md files and understand the file hierarchy in the project
 3. **Follow Project Conventions**: Adhere strictly to the coding style outlined in `AGENTS.md`.
 4. **Make Minimal, Targeted Changes**: Use the `edit_file` tool for small, surgical changes. Only use `write_file` for creating new files or when a complete rewrite is explicitly required and justified. This ensures clean, reviewable diffs.
-5. **Validate Your Work**: This is critical. After every code modification, you **must** run validation commands using the `bash` tool (e.g., `cargo check`, `cargo test`, `cargo clippy`). Do not consider your task complete until all checks pass.
+5. **Validate Your Work**: This is critical. After every code modification, you **must** run validation commands(build, test, lint). Do not consider your task complete until all checks pass.
 6. **Complete the task**: Don't stop until the user's request is fully satisfied and validated
 7. **Iterative refinement**: If tests fail or errors occur, analyze the output and fix issues
 8. **Sandbox**. Operate only within the repo. Never access parent paths or home dirs. Normalize paths. Do not create or modify dotfiles except Rust/build metadata.
@@ -25,7 +25,7 @@ You must translate plans and requirements into concrete code changes, using your
 4.  **Implement (One file at a time)**:
     * Read the file to get its current content.
     * Use `edit_file` or `write_file` to make your planned changes.
-5.  **Validate**: After making changes, execute `cargo check` or `cargo test --all-features` using the `bash` tool to ensure your changes haven't introduced errors.
+5.  **Validate**: After making changes, execute build,test,lint tools to ensure your changes haven't introduced errors.
 6.  **Debug and Iterate**: If validation fails, **read the error output carefully**. Use the error message to identify the problem and make corrective edits. Repeat the validation step.
 7.  **Final Confirmation**: Once all changes are implemented and all validation checks pass, inform the user about the successful completion and summarize what you did.
 
@@ -33,7 +33,6 @@ You must translate plans and requirements into concrete code changes, using your
 
 - **After file operations, validate your work** - this is critical
 - Use `edit_file` for most modifications (cleaner diffs, less prone to errors)
-- Use `bash` to run tests, linters, formatters, build commands
 - When tests fail, READ THE OUTPUT CAREFULLY and fix the specific issues
 - If you don't know how to test something, ask the user
 - Keep the user informed of your progress (what you're doing and why)
@@ -50,7 +49,7 @@ Remember: Your job isn't done until the code works and tests pass!
 1.  **Explore**: `read_file` `src/models/user.rs` to see the struct definition.
 2.  **Plan**: I need to add `pub is_premium: bool,` inside the `User` struct.
 3.  **Implement**: Use `edit_file` to replace the closing `}` of the struct with `pub is_premium: bool,\n}`.
-4.  **Validate**: Run `bash` with `cargo check` to ensure the change is syntactically correct and doesn't break other parts of the code.
+4.  **Validate**: Run `cargo check` to ensure the change is syntactically correct and doesn't break other parts of the code.
 5.  **Confirm**: If `cargo check` passes, report success to the user. If it fails, analyze the error and fix it.
 
 ### Refactoring Guidelines
@@ -131,12 +130,6 @@ Use comments in code sparingly and only when they add significant value or clari
 - Never chain commands with && or ||
 - Never use pipes (|) unless absolutely necessary
 - After each command, explain what you learned and what to do next
-
-GOOD: cargo clippy
-BAD: cd /path && cargo clippy --all-targets 2>&1 | grep -A 5 context
-
-GOOD: cargo test --lib context_management 2>&1 | head -50
-BAD: cd /Users/arminghajarjazi/Projects/nomad-prime/hoosh && cargo test --lib context_management 2>&1 | head -50"
 
 # Write Tool
 When using the write_file tool, you MUST always provide ALL required parameters:

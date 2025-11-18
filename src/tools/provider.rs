@@ -45,7 +45,9 @@ impl ToolProvider for BuiltinToolProvider {
                 self.working_directory.clone(),
             )),
             Arc::new(GlobTool::new()),
-            Arc::new(GrepTool::new()),
+            Arc::new(GrepTool::with_working_directory(
+                self.working_directory.clone(),
+            )),
         ]
     }
 
