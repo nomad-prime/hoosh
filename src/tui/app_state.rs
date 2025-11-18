@@ -106,7 +106,7 @@ pub enum PermissionOption {
 }
 
 impl CompletionState {
-    pub fn new(trigger_position: usize, completer_index: usize) -> Self {
+    pub fn new(completer_index: usize) -> Self {
         Self {
             candidates: Vec::new(),
             selected_index: 0,
@@ -308,8 +308,8 @@ impl AppState {
         self.tool_permission_dialog_state = None;
     }
 
-    pub fn start_completion(&mut self, trigger_position: usize, completer_index: usize) {
-        self.completion_state = Some(CompletionState::new(trigger_position, completer_index));
+    pub fn start_completion(&mut self, completer_index: usize) {
+        self.completion_state = Some(CompletionState::new(completer_index));
     }
 
     pub fn cancel_completion(&mut self) {

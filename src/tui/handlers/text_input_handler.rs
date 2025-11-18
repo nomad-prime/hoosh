@@ -83,8 +83,7 @@ impl InputHandler for TextInputHandler {
                 if let Some(completer_idx) = app.find_completer_for_key(c) {
                     app.input
                         .input(KeyEvent::new(KeyCode::Char(c), key_event.modifiers));
-                    let cursor_pos = app.input.cursor();
-                    app.start_completion(cursor_pos.0, completer_idx);
+                    app.start_completion(completer_idx);
 
                     if let Some(completer) = app.completers.get(completer_idx)
                         && let Ok(candidates) = completer.get_completions("").await
