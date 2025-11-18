@@ -35,7 +35,9 @@ impl AgentType {
                 "Search the codebase to understand its structure and answer questions. \
             Use file searches to locate relevant code, then examine specific files. \
             Look for patterns, dependencies, and how components interact. \
-            Provide concrete findings with file paths and line references."
+            Provide concrete findings with file paths and line references.\
+            strive to be brief. Providing one result or one brief document should be prefered.
+            "
             }
         };
 
