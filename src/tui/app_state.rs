@@ -71,8 +71,6 @@ pub struct CompletionState {
     pub candidates: Vec<String>,
     pub selected_index: usize,
     pub scroll_offset: usize,
-    #[allow(dead_code)]
-    pub trigger_position: usize,
     pub query: String,
     pub completer_index: usize,
 }
@@ -88,7 +86,6 @@ pub struct ApprovalDialogState {
     pub tool_call_id: String,
     pub tool_name: String,
     pub selected_index: usize,
-    pub scroll_offset: usize,
 }
 
 impl ApprovalDialogState {
@@ -97,7 +94,6 @@ impl ApprovalDialogState {
             tool_call_id,
             tool_name,
             selected_index: 0, // 0 = Approve, 1 = Reject
-            scroll_offset: 0,
         }
     }
 }
@@ -115,7 +111,6 @@ impl CompletionState {
             candidates: Vec::new(),
             selected_index: 0,
             scroll_offset: 0,
-            trigger_position,
             query: String::new(),
             completer_index,
         }

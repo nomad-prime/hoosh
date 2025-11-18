@@ -7,7 +7,6 @@ use super::*;
 #[test]
 fn completion_state_new_initializes_correctly() {
     let state = CompletionState::new(42, 0);
-    assert_eq!(state.trigger_position, 42);
     assert_eq!(state.selected_index, 0);
     assert_eq!(state.scroll_offset, 0);
     assert!(state.candidates.is_empty());
@@ -92,7 +91,6 @@ fn approval_dialog_new_initializes_correctly() {
     assert_eq!(dialog.tool_call_id, "call123");
     assert_eq!(dialog.tool_name, "bash");
     assert_eq!(dialog.selected_index, 0);
-    assert_eq!(dialog.scroll_offset, 0);
 }
 
 // ============================================================================
@@ -249,7 +247,6 @@ fn app_state_start_completion_creates_state() {
 
     assert!(state.completion_state.is_some());
     let comp = state.completion_state.as_ref().unwrap();
-    assert_eq!(comp.trigger_position, 42);
     assert_eq!(comp.completer_index, 1);
 }
 
