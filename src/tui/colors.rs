@@ -48,4 +48,6 @@ pub mod palette {
     pub const TOOL_STATUS_EXECUTING: Color = Color::Cyan;
     pub const TOOL_STATUS_COMPLETED: Color = Color::Green;
     pub const TOOL_STATUS_ERROR: Color = Color::Red;
+
+    pub const PLACEHOLDER: Color = Color::Gray;
 }

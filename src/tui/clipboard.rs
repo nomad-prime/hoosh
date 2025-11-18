@@ -20,6 +20,16 @@ impl ClipboardManager {
             Err(anyhow::anyhow!("Clipboard not available"))
         }
     }
+
+    pub fn set_text(&mut self, text: String) -> Result<()> {
+        if let Some(clipboard) = &mut self.clipboard {
+            clipboard
+                .set_text(text)
+                .map_err(|e| anyhow::anyhow!("Failed to set clipboard text: {}", e))
+        } else {
+            Err(anyhow::anyhow!("Clipboard not available"))
+        }
+    }
 }
 
 impl Default for ClipboardManager {

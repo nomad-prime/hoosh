@@ -1,3 +1,4 @@
+use crate::tui::clipboard::ClipboardManager;
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::setup::setup_wizard_state::{SetupWizardResult, SetupWizardState, SetupWizardStep};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -5,14 +6,51 @@ use tokio::sync::mpsc;
 
 pub struct SetupWizardHandler {
     pub response_tx: mpsc::UnboundedSender<Option<SetupWizardResult>>,
+    clipboard: ClipboardManager,
 }
 
 impl SetupWizardHandler {
     pub fn new(response_tx: mpsc::UnboundedSender<Option<SetupWizardResult>>) -> Self {
-        Self { response_tx }
+        Self {
+            response_tx,
+            clipboard: ClipboardManager::new(),
+        }
     }
 
-    fn handle_text_input(&self, app: &mut SetupWizardState, event: &KeyEvent) {
+    fn handle_text_input(&mut self, app: &mut SetupWizardState, event: &KeyEvent) {
+        // Handle paste operations (Ctrl+V)
+        if let KeyCode::Char('v') = event.code {
+            let is_paste = event.modifiers.contains(KeyModifiers::CONTROL);
+
+            if is_paste {
+                if let Ok(text) = self.clipboard.get_text() {
+                    match &app.current_step {
+                        SetupWizardStep::ApiKeyInput => {
+                            let lines: Vec<&str> = text.lines().collect();
+                            for (i, line) in lines.iter().enumerate() {
+                                app.api_key_input.insert_str(line);
+                                if i < lines.len() - 1 {
+                                    app.api_key_input.insert_newline();
+                                }
+                            }
+                        }
+                        SetupWizardStep::ModelSelection => {
+                            let lines: Vec<&str> = text.lines().collect();
+                            for (i, line) in lines.iter().enumerate() {
+                                app.model_input.insert_str(line);
+                                if i < lines.len() - 1 {
+                                    app.model_input.insert_newline();
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                return;
+            }
+        }
+
+        // Default text input handling
         match &app.current_step {
             SetupWizardStep::ApiKeyInput => {
                 app.api_key_input.input(*event);
@@ -29,6 +67,33 @@ impl SetupWizardHandler {
         event: &Event,
         state: &mut SetupWizardState,
     ) -> KeyHandlerResult {
+        // Handle paste events (Cmd+V on macOS sends Event::Paste)
+        if let Event::Paste(text) = event {
+            match &state.current_step {
+                SetupWizardStep::ApiKeyInput => {
+                    let lines: Vec<&str> = text.lines().collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        state.api_key_input.insert_str(line);
+                        if i < lines.len() - 1 {
+                            state.api_key_input.insert_newline();
+                        }
+                    }
+                    return KeyHandlerResult::Handled;
+                }
+                SetupWizardStep::ModelSelection => {
+                    let lines: Vec<&str> = text.lines().collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        state.model_input.insert_str(line);
+                        if i < lines.len() - 1 {
+                            state.model_input.insert_newline();
+                        }
+                    }
+                    return KeyHandlerResult::Handled;
+                }
+                _ => return KeyHandlerResult::NotHandled,
+            }
+        }
+
         let Event::Key(key_event) = event else {
             return KeyHandlerResult::NotHandled;
         };
@@ -36,8 +101,15 @@ impl SetupWizardHandler {
         let key = key_event.code;
         let modifiers = key_event.modifiers;
 
+        // Only intercept Ctrl+C when NOT in text input steps to allow copy operations
+        let is_text_input_step = matches!(
+            &state.current_step,
+            SetupWizardStep::ApiKeyInput | SetupWizardStep::ModelSelection
+        );
+
         if let KeyCode::Char('c') = key
             && modifiers.contains(KeyModifiers::CONTROL)
+            && !is_text_input_step
         {
             state.cancel_setup();
             let _ = self.response_tx.send(None);
