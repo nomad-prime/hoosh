@@ -577,26 +577,6 @@ impl AppState {
                 self.agent_state = AgentState::Idle;
                 self.add_message(format!("Error summarizing conversation: {}", error));
             }
-            AgentEvent::ContextCompressionTriggered {
-                original_message_count,
-                token_pressure,
-                ..
-            } => {
-                self.add_status_message(&format!(
-                    "Compressing context ({} messages, {:.0}% token pressure)",
-                    original_message_count,
-                    token_pressure * 100.0
-                ));
-            }
-            AgentEvent::ContextCompressionComplete { summary_length } => {
-                self.add_status_message(&format!(
-                    "Context compressed (summarized {} messages)",
-                    summary_length
-                ));
-            }
-            AgentEvent::ContextCompressionError { error } => {
-                self.add_message(format!("Context compression error: {}", error));
-            }
             AgentEvent::TokenPressureWarning {
                 current_pressure,
                 threshold,

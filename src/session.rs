@@ -10,8 +10,7 @@ use crate::commands::{CommandRegistry, register_default_commands};
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
-    ContextCompressionStrategy, ContextManager, MessageSummarizer, SlidingWindowStrategy,
-    ToolOutputTruncationStrategy,
+    ContextManager, MessageSummarizer, SlidingWindowStrategy, ToolOutputTruncationStrategy,
 };
 use crate::history::PromptHistory;
 use crate::parser::MessageParser;
@@ -168,7 +167,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Setup context management
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
-    let context_manager = setup_context_manager(&config, summarizer.clone());
+    let context_manager = setup_context_manager(&config);
 
     let command_registry = setup_command_registry()?;
 
@@ -342,18 +341,9 @@ fn create_input_handlers(
     ]
 }
 
-fn setup_context_manager(
-    config: &AppConfig,
-    summarizer: Arc<MessageSummarizer>,
-) -> Arc<ContextManager> {
+fn setup_context_manager(config: &AppConfig) -> Arc<ContextManager> {
     let context_manager_config = config.get_context_manager_config();
     let token_accountant = Arc::new(crate::context_management::TokenAccountant::new());
-
-    let compression_strategy = ContextCompressionStrategy::new(
-        context_manager_config.clone(),
-        summarizer,
-        Arc::clone(&token_accountant),
-    );
 
     let mut context_manager_builder = ContextManager::new(
         context_manager_config.clone(),
@@ -372,5 +362,5 @@ fn setup_context_manager(
             context_manager_builder.add_strategy(Box::new(sliding_window_strategy));
     }
 
-    Arc::new(context_manager_builder.add_strategy(Box::new(compression_strategy)))
+    Arc::new(context_manager_builder)
 }
