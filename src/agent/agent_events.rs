@@ -89,4 +89,11 @@ pub enum AgentEvent {
         tool_call_id: String,
         total_steps: usize,
     },
+    BashOutputChunk {
+        tool_call_id: String,
+        output_line: String,
+        stream_type: String,
+        line_number: usize,
+        timestamp: std::time::SystemTime,
+    },
 }

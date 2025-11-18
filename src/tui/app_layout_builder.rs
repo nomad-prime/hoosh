@@ -1,6 +1,7 @@
 use crate::tui::app_state::AppState;
 use crate::tui::components::active_tool_calls::ActiveToolCallsComponent;
 use crate::tui::components::approval_dialog::ApprovalDialog;
+use crate::tui::components::bash_results::BashResultsComponent;
 use crate::tui::components::completion_popup::CompletionPopup;
 use crate::tui::components::input::Input;
 use crate::tui::components::mode_indicator::ModeIndicator;
@@ -14,6 +15,7 @@ pub trait AppLayoutBuilder {
     fn status_bar(self) -> Self;
     fn active_tool_calls(self, height: u16, visible: bool) -> Self;
     fn subagent_results(self, height: u16, visible: bool) -> Self;
+    fn bash_results(self, height: u16, visible: bool) -> Self;
     fn input_field(self) -> Self;
     fn mode_indicator(self, visible: bool) -> Self;
     fn permission_dialog(self, content_lines: u16, visible: bool) -> Self;
@@ -36,6 +38,13 @@ impl AppLayoutBuilder for LayoutBuilder<AppState> {
     fn subagent_results(self, height: u16, visible: bool) -> Self {
         self.component(
             ComponentDescriptor::new(height, Some(Box::new(SubagentResultsComponent)))
+                .with_visibility(visible),
+        )
+    }
+
+    fn bash_results(self, height: u16, visible: bool) -> Self {
+        self.component(
+            ComponentDescriptor::new(height, Some(Box::new(BashResultsComponent)))
                 .with_visibility(visible),
         )
     }

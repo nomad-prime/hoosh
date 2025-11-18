@@ -16,6 +16,7 @@ impl AppLayout for Layout<AppState> {
         let active_tool_calls_visible = !app.active_tool_calls.is_empty();
         let active_tool_calls_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
             let mut height = 1u16;
+
             if tc.result_summary.is_some() {
                 height += 1;
             }
@@ -41,11 +42,34 @@ impl AppLayout for Layout<AppState> {
             acc + height
         });
 
+        // Calculate bash results visibility and height
+        let has_bash_tasks = app.active_tool_calls.iter().any(|tc| tc.is_bash_streaming);
+        let bash_results_visible = has_bash_tasks;
+        let bash_results_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+            if !tc.is_bash_streaming || tc.bash_output_lines.is_empty() {
+                return acc;
+            }
+            const MAX_LINES: usize = 5;
+            let total_lines = tc.bash_output_lines.len();
+            let lines_to_show = total_lines.min(MAX_LINES);
+            let mut height = lines_to_show as u16;
+
+            // Add 1 for ellipsis if there are more lines
+            if total_lines > MAX_LINES {
+                height += 1;
+            }
+            acc + height
+        });
+
         let mut builder = LayoutBuilder::new()
             .spacer(1)
             .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
             .subagent_results(subagent_results_height, subagent_results_visible)
-            .spacer_if(1, active_tool_calls_visible || subagent_results_visible)
+            .bash_results(bash_results_height, bash_results_visible)
+            .spacer_if(
+                1,
+                active_tool_calls_visible || subagent_results_visible || bash_results_visible,
+            )
             .status_bar()
             .input_field()
             .mode_indicator(!has_overlay);

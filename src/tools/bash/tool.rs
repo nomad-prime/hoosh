@@ -1,6 +1,7 @@
+use crate::agent::AgentEvent;
 use crate::permissions::BashPatternMatcher;
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -8,6 +9,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -48,7 +50,11 @@ impl BashTool {
             .collect()
     }
 
-    async fn execute_impl(&self, args: &Value) -> ToolResult<String> {
+    async fn execute_impl(
+        &self,
+        args: &Value,
+        context: Option<ToolExecutionContext>,
+    ) -> ToolResult<String> {
         let args: BashArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "bash".to_string(),
@@ -60,6 +66,23 @@ impl BashTool {
         let timeout_duration =
             Duration::from_secs(args.timeout_override.unwrap_or(self.timeout_seconds));
 
+        // Check if we should stream output
+        let should_stream = context.as_ref().and_then(|c| c.event_tx.as_ref()).is_some();
+
+        if should_stream {
+            self.execute_with_streaming(command, timeout_duration, context.unwrap())
+                .await
+        } else {
+            self.execute_without_streaming(command, timeout_duration)
+                .await
+        }
+    }
+
+    async fn execute_without_streaming(
+        &self,
+        command: String,
+        timeout_duration: Duration,
+    ) -> ToolResult<String> {
         // Execute the command
         let mut cmd = Command::new("bash");
         cmd.arg("-c")
@@ -121,6 +144,161 @@ impl BashTool {
             }),
         }
     }
+
+    async fn execute_with_streaming(
+        &self,
+        command: String,
+        timeout_duration: Duration,
+        context: ToolExecutionContext,
+    ) -> ToolResult<String> {
+        let mut cmd = Command::new("bash");
+        cmd.arg("-c")
+            .arg(&command)
+            .current_dir(&self.working_directory)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::null());
+
+        let command_future = async {
+            let mut child = cmd.spawn().map_err(|e| ToolError::ExecutionFailed {
+                message: format!("Failed to spawn command '{}': {}", command, e),
+            })?;
+
+            let stdout = child
+                .stdout
+                .take()
+                .ok_or_else(|| ToolError::ExecutionFailed {
+                    message: "Failed to capture stdout".to_string(),
+                })?;
+
+            let stderr = child
+                .stderr
+                .take()
+                .ok_or_else(|| ToolError::ExecutionFailed {
+                    message: "Failed to capture stderr".to_string(),
+                })?;
+
+            let tool_call_id = context.tool_call_id.clone();
+            let event_tx = context.event_tx.clone();
+
+            // Accumulated output for final result
+            let stdout_lines = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+            let stderr_lines = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+            let stdout_lines_clone = Arc::clone(&stdout_lines);
+            let stderr_lines_clone = Arc::clone(&stderr_lines);
+
+            // Spawn tasks to read stdout and stderr
+            let stdout_task = {
+                let tool_call_id = tool_call_id.clone();
+                let event_tx = event_tx.clone();
+                let stdout_lines = stdout_lines_clone;
+                tokio::spawn(async move {
+                    let mut reader = BufReader::new(stdout).lines();
+                    let mut line_number = 1;
+
+                    while let Ok(Some(line)) = reader.next_line().await {
+                        // Store line for final output
+                        stdout_lines.lock().await.push(line.clone());
+
+                        // Send event
+                        if let Some(tx) = &event_tx {
+                            let _ = tx.send(AgentEvent::BashOutputChunk {
+                                tool_call_id: tool_call_id.clone(),
+                                output_line: line,
+                                stream_type: "stdout".to_string(),
+                                line_number,
+                                timestamp: std::time::SystemTime::now(),
+                            });
+                        }
+                        line_number += 1;
+                    }
+                })
+            };
+
+            let stderr_task = {
+                let tool_call_id = tool_call_id.clone();
+                let event_tx = event_tx.clone();
+                let stderr_lines = stderr_lines_clone;
+                tokio::spawn(async move {
+                    let mut reader = BufReader::new(stderr).lines();
+                    let mut line_number = 1;
+
+                    while let Ok(Some(line)) = reader.next_line().await {
+                        // Store line for final output
+                        stderr_lines.lock().await.push(line.clone());
+
+                        // Send event
+                        if let Some(tx) = &event_tx {
+                            let _ = tx.send(AgentEvent::BashOutputChunk {
+                                tool_call_id: tool_call_id.clone(),
+                                output_line: line,
+                                stream_type: "stderr".to_string(),
+                                line_number,
+                                timestamp: std::time::SystemTime::now(),
+                            });
+                        }
+                        line_number += 1;
+                    }
+                })
+            };
+
+            // Wait for command to complete
+            let status = child.wait().await.map_err(|e| ToolError::ExecutionFailed {
+                message: format!("Failed to wait for command '{}': {}", command, e),
+            })?;
+
+            // Wait for stream readers to finish
+            let _ = tokio::join!(stdout_task, stderr_task);
+
+            // Build final result
+            let stdout_vec = stdout_lines.lock().await;
+            let stderr_vec = stderr_lines.lock().await;
+
+            let mut result = String::new();
+
+            if !stdout_vec.is_empty() {
+                result.push_str("STDOUT:\n");
+                for line in stdout_vec.iter() {
+                    result.push_str(line);
+                    result.push('\n');
+                }
+            }
+
+            if !stderr_vec.is_empty() {
+                result.push_str("STDERR:\n");
+                for line in stderr_vec.iter() {
+                    result.push_str(line);
+                    result.push('\n');
+                }
+            }
+
+            if result.is_empty() {
+                result = "(command executed successfully with no output)\n".to_string();
+            }
+
+            // Add exit code information
+            result.push_str(&format!(
+                "Exit code: {}\n",
+                status.code().unwrap_or(-1)
+            ));
+
+            if !status.success() {
+                result.push_str("⚠️  Command failed with non-zero exit code\n");
+            }
+
+            Ok::<String, ToolError>(result)
+        };
+
+        // Apply timeout
+        match timeout(timeout_duration, command_future).await {
+            Ok(result) => result,
+            Err(_) => Err(ToolError::Timeout {
+                tool: "bash".to_string(),
+                seconds: timeout_duration.as_secs(),
+            }),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -133,7 +311,15 @@ struct BashArgs {
 #[async_trait]
 impl Tool for BashTool {
     async fn execute(&self, args: &Value) -> ToolResult<String> {
-        self.execute_impl(args).await
+        self.execute_impl(args, None).await
+    }
+
+    async fn execute_with_context(
+        &self,
+        args: &Value,
+        context: Option<ToolExecutionContext>,
+    ) -> ToolResult<String> {
+        self.execute_impl(args, context).await
     }
 
     fn name(&self) -> &'static str {
@@ -288,5 +474,134 @@ mod tests {
         let result = tool.execute(&args).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Timeout"));
+    }
+
+    #[tokio::test]
+    async fn test_bash_tool_streaming_with_context() {
+        use tokio::sync::mpsc;
+
+        let tool = BashTool::new();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let context = ToolExecutionContext {
+            tool_call_id: "test_call_123".to_string(),
+            event_tx: Some(event_tx),
+        };
+
+        let args = json!({
+            "command": "echo 'line1'\necho 'line2'\necho 'line3'"
+        });
+
+        // Spawn task to collect events
+        let events_collector = tokio::spawn(async move {
+            let mut collected_events = Vec::new();
+            while let Some(event) = event_rx.recv().await {
+                if let AgentEvent::BashOutputChunk {
+                    tool_call_id,
+                    output_line,
+                    stream_type,
+                    line_number,
+                    ..
+                } = event
+                {
+                    collected_events.push((tool_call_id, output_line, stream_type, line_number));
+                }
+            }
+            collected_events
+        });
+
+        // Execute command with context
+        let result = tool.execute_with_context(&args, Some(context)).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.contains("line1"));
+        assert!(output.contains("line2"));
+        assert!(output.contains("line3"));
+        assert!(output.contains("Exit code: 0"));
+
+        // Drop the tool to close the event channel
+        drop(tool);
+
+        // Check that events were emitted
+        let events = events_collector.await.unwrap();
+        assert_eq!(events.len(), 3, "Should have received 3 output chunks");
+        assert_eq!(events[0].0, "test_call_123");
+        assert_eq!(events[0].1, "line1");
+        assert_eq!(events[0].2, "stdout");
+        assert_eq!(events[0].3, 1);
+    }
+
+    #[tokio::test]
+    async fn test_bash_tool_streaming_stderr() {
+        use tokio::sync::mpsc;
+
+        let tool = BashTool::new();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let context = ToolExecutionContext {
+            tool_call_id: "test_call_456".to_string(),
+            event_tx: Some(event_tx),
+        };
+
+        let args = json!({
+            "command": "echo 'stdout line' && echo 'stderr line' >&2"
+        });
+
+        // Spawn task to collect events
+        let events_collector = tokio::spawn(async move {
+            let mut collected_events = Vec::new();
+            while let Some(event) = event_rx.recv().await {
+                if let AgentEvent::BashOutputChunk {
+                    output_line,
+                    stream_type,
+                    ..
+                } = event
+                {
+                    collected_events.push((output_line, stream_type));
+                }
+            }
+            collected_events
+        });
+
+        // Execute command with context
+        let result = tool.execute_with_context(&args, Some(context)).await;
+        assert!(result.is_ok());
+
+        // Drop the tool to close the event channel
+        drop(tool);
+
+        // Check that we got both stdout and stderr events
+        let events = events_collector.await.unwrap();
+        assert_eq!(events.len(), 2);
+
+        // Find stdout and stderr events
+        let stdout_events: Vec<_> = events
+            .iter()
+            .filter(|(_, stream_type)| stream_type == "stdout")
+            .collect();
+        let stderr_events: Vec<_> = events
+            .iter()
+            .filter(|(_, stream_type)| stream_type == "stderr")
+            .collect();
+
+        assert_eq!(stdout_events.len(), 1);
+        assert_eq!(stderr_events.len(), 1);
+        assert_eq!(stdout_events[0].0, "stdout line");
+        assert_eq!(stderr_events[0].0, "stderr line");
+    }
+
+    #[tokio::test]
+    async fn test_bash_tool_no_streaming_without_context() {
+        let tool = BashTool::new();
+
+        let args = json!({
+            "command": "echo 'test output'"
+        });
+
+        // Execute without context - should not stream
+        let result = tool.execute(&args).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("test output"));
     }
 }

@@ -1,5 +1,6 @@
 pub mod active_tool_calls;
 pub mod approval_dialog;
+pub mod bash_results;
 pub mod completion_popup;
 pub mod input;
 pub mod mode_indicator;
@@ -8,6 +9,7 @@ pub mod status_bar;
 pub mod subagent_results;
 pub use active_tool_calls::ActiveToolCallsComponent;
 pub use approval_dialog::ApprovalDialog;
+pub use bash_results::BashResultsComponent;
 pub use completion_popup::CompletionPopup;
 pub use input::Input;
 pub use mode_indicator::ModeIndicator;
