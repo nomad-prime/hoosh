@@ -1,8 +1,8 @@
+use crate::agent::{Conversation, ConversationMessage};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Records actual token usage from a backend response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenUsageRecord {
     /// Actual input tokens used by backend
@@ -14,7 +14,6 @@ pub struct TokenUsageRecord {
 }
 
 impl TokenUsageRecord {
-    /// Create a record from backend token counts
     pub fn from_backend(input_tokens: usize, output_tokens: usize) -> Self {
         Self {
             input_tokens,
@@ -110,6 +109,46 @@ impl TokenAccountant {
         self.total_input_consumed.store(0, Ordering::Relaxed);
         self.total_output_consumed.store(0, Ordering::Relaxed);
         self.call_count.store(0, Ordering::Relaxed);
+    }
+
+    pub fn estimate_conversation_tokens(conversation: &Conversation) -> usize {
+        const APPROX_BYTES_PER_TOKEN: usize = 4;
+
+        let total_bytes: usize = conversation
+            .messages
+            .iter()
+            .map(Self::estimate_message_bytes)
+            .sum();
+
+        // Round up: (bytes + 3) / 4
+        total_bytes.saturating_add(APPROX_BYTES_PER_TOKEN.saturating_sub(1))
+            / APPROX_BYTES_PER_TOKEN
+    }
+
+    pub fn estimate_message_bytes(msg: &ConversationMessage) -> usize {
+        let mut total = 0;
+
+        // Content field (can be very large for tool outputs)
+        if let Some(content) = &msg.content {
+            total += content.len();
+        }
+
+        // Tool calls (including arguments JSON which can be large)
+        if let Some(tool_calls) = &msg.tool_calls {
+            for call in tool_calls {
+                total += call.function.name.len();
+                total += call.function.arguments.len();
+            }
+        }
+
+        // Role and other fields (small but count them)
+        total += msg.role.len();
+
+        if let Some(name) = &msg.name {
+            total += name.len();
+        }
+
+        total
     }
 }
 
@@ -229,5 +268,148 @@ mod tests {
         assert!(summary.contains("Context: 250"));
         assert!(summary.contains("Consumed: 950"));
         assert!(summary.contains("95/call"));
+    }
+
+    #[test]
+    fn test_estimate_conversation_tokens_empty() {
+        let conv = Conversation::new();
+        assert_eq!(TokenAccountant::estimate_conversation_tokens(&conv), 0);
+    }
+
+    #[test]
+    fn test_estimate_conversation_tokens_simple_messages() {
+        use crate::agent::ConversationMessage;
+
+        let mut conv = Conversation::new();
+
+        // "user" (4) + "Hello" (5) = 9 bytes / 4 = 2.25 → 3 tokens
+        conv.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: Some("Hello".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+
+        // "assistant" (9) + "Hi there" (8) = 17 bytes / 4 = 4.25 → 5 tokens
+        conv.messages.push(ConversationMessage {
+            role: "assistant".to_string(),
+            content: Some("Hi there".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+
+        // Total: 9 + 17 = 26 bytes / 4 = 6.5 → 7 tokens
+        assert_eq!(TokenAccountant::estimate_conversation_tokens(&conv), 7);
+    }
+
+    #[test]
+    fn test_estimate_conversation_tokens_with_tool_calls() {
+        use crate::agent::{ConversationMessage, ToolCall, ToolFunction};
+
+        let mut conv = Conversation::new();
+
+        conv.messages.push(ConversationMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_123".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "read_file".to_string(),                        // 9 bytes
+                    arguments: r#"{"path": "/foo/bar.txt"}"#.to_string(), // 25 bytes
+                },
+            }]),
+            tool_call_id: None,
+            name: None,
+        });
+
+        // "assistant" (9) + "read_file" (9) + arguments (25) = 43 bytes / 4 = 10.75 → 11 tokens
+        assert_eq!(TokenAccountant::estimate_conversation_tokens(&conv), 11);
+    }
+
+    #[test]
+    fn test_estimate_conversation_tokens_large_tool_output() {
+        use crate::agent::ConversationMessage;
+
+        let mut conv = Conversation::new();
+
+        // Simulate a 10KB tool output
+        let large_output = "x".repeat(10_000);
+
+        conv.messages.push(ConversationMessage {
+            role: "tool".to_string(),
+            content: Some(large_output),
+            tool_calls: None,
+            tool_call_id: Some("call_123".to_string()),
+            name: Some("read_file".to_string()),
+        });
+
+        // "tool" (4) + "call_123" (8) + "read_file" (9) + content (10000) = 10021 bytes / 4 = 2505.25 → 2504 tokens (rounds down then up)
+        // Actually: (10021 + 3) / 4 = 10024 / 4 = 2506... wait let me recalc
+        // The formula is: (bytes + 3) / 4 = (10021 + 3) / 4 = 10024 / 4 = 2506
+        // But we don't count tool_call_id in estimate_message_bytes, only in content/name/role/tool_calls
+        // "tool" (4) + "read_file" (9) + content (10000) = 10013 bytes / 4 = (10013 + 3) / 4 = 10016 / 4 = 2504 tokens
+        assert_eq!(TokenAccountant::estimate_conversation_tokens(&conv), 2504);
+    }
+
+    #[test]
+    fn test_estimate_message_bytes_all_fields() {
+        use crate::agent::{ConversationMessage, ToolCall, ToolFunction};
+
+        let msg = ConversationMessage {
+            role: "assistant".to_string(),         // 9 bytes
+            content: Some("Response".to_string()), // 8 bytes
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "test".to_string(),    // 4 bytes
+                    arguments: "{}".to_string(), // 2 bytes
+                },
+            }]),
+            tool_call_id: None,
+            name: Some("assistant_name".to_string()), // 14 bytes
+        };
+
+        // 9 + 8 + 4 + 2 + 14 = 37 bytes
+        assert_eq!(TokenAccountant::estimate_message_bytes(&msg), 37);
+    }
+
+    #[test]
+    fn test_estimate_conversation_tokens_multiple_tool_calls() {
+        use crate::agent::{ConversationMessage, ToolCall, ToolFunction};
+
+        let mut conv = Conversation::new();
+
+        // Message with multiple tool calls
+        conv.messages.push(ConversationMessage {
+            role: "assistant".to_string(), // 9 bytes
+            content: None,
+            tool_calls: Some(vec![
+                ToolCall {
+                    id: "call_1".to_string(),
+                    r#type: "function".to_string(),
+                    function: ToolFunction {
+                        name: "read".to_string(),                 // 4 bytes
+                        arguments: r#"{"path":"a"}"#.to_string(), // 13 bytes
+                    },
+                },
+                ToolCall {
+                    id: "call_2".to_string(),
+                    r#type: "function".to_string(),
+                    function: ToolFunction {
+                        name: "write".to_string(),                // 5 bytes
+                        arguments: r#"{"path":"b"}"#.to_string(), // 13 bytes
+                    },
+                },
+            ]),
+            tool_call_id: None,
+            name: None,
+        });
+
+        // 9 + 4 + 13 + 5 + 13 = 44 bytes / 4 = 11 tokens
+        assert_eq!(TokenAccountant::estimate_conversation_tokens(&conv), 11);
     }
 }

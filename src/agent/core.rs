@@ -163,19 +163,19 @@ impl Agent {
         conversation: &mut Conversation,
         context_manager: &ContextManager,
     ) -> Result<()> {
-        let current_pressure = context_manager.get_token_pressure();
-
-        if context_manager.should_warn_about_pressure() {
-            self.send_event(AgentEvent::TokenPressureWarning {
-                current_pressure,
-                threshold: context_manager.config.warning_threshold,
-            });
-        }
-
         context_manager
             .apply_strategies(conversation)
             .await
             .expect("error applying context management");
+
+        let pressure_after = context_manager.get_token_pressure(conversation);
+
+        if context_manager.should_warn_about_pressure_value(pressure_after) {
+            self.send_event(AgentEvent::TokenPressureWarning {
+                current_pressure: pressure_after, // Show POST-compression pressure
+                threshold: context_manager.config.warning_threshold,
+            });
+        }
 
         Ok(())
     }
