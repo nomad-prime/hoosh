@@ -46,7 +46,10 @@ impl Component for PermissionDialog {
                     for preview_line in preview_lines.iter().take(max_preview_lines) {
                         lines.push(Line::from(vec![
                             Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
-                            Span::styled(*preview_line, Style::default().fg(palette::SECONDARY_TEXT)),
+                            Span::styled(
+                                *preview_line,
+                                Style::default().fg(palette::SECONDARY_TEXT),
+                            ),
                         ]));
                     }
 
@@ -55,7 +58,9 @@ impl Component for PermissionDialog {
                             Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
                             Span::styled(
                                 format!("... ({} more lines)", total_lines - max_preview_lines),
-                                Style::default().fg(palette::DIMMED_TEXT).add_modifier(Modifier::ITALIC),
+                                Style::default()
+                                    .fg(palette::DIMMED_TEXT)
+                                    .add_modifier(Modifier::ITALIC),
                             ),
                         ]));
                     }
