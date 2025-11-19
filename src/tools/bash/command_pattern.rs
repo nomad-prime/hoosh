@@ -5,6 +5,7 @@ pub struct CommandPatternResult {
     pub description: String,
     pub pattern: String,
     pub persistent_message: String,
+    pub safe: bool,
 }
 
 pub trait BashCommandPattern {
@@ -17,7 +18,7 @@ pub struct HeredocPattern;
 
 impl BashCommandPattern for HeredocPattern {
     fn matches(&self, command: &str) -> bool {
-        command.contains("<<")
+        command.contains("<<") || command.contains("<<<")
     }
 
     fn analyze(&self, command: &str) -> CommandPatternResult {
@@ -31,6 +32,7 @@ impl BashCommandPattern for HeredocPattern {
                 "don't ask me again for \"{}\" commands with heredoc (<<) in this project",
                 cmd
             ),
+            safe: false,
         }
     }
 
@@ -54,6 +56,7 @@ impl BashCommandPattern for PipelinePattern {
                 description: "pipeline".to_string(),
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
+                safe: false,
             };
         }
 
@@ -65,6 +68,7 @@ impl BashCommandPattern for PipelinePattern {
                     "don't ask me again for \"{}\" commands in this project",
                     base_commands[0]
                 ),
+                safe: false,
             }
         } else {
             let display = base_commands.join(", ");
@@ -81,6 +85,7 @@ impl BashCommandPattern for PipelinePattern {
                     "don't ask me again for pipe combination of \"{}\" commands in this project",
                     display
                 ),
+                safe: false,
             }
         }
     }
@@ -105,6 +110,7 @@ impl BashCommandPattern for CommandChainPattern {
                 description: "command chain".to_string(),
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
+                safe: false,
             };
         }
 
@@ -116,6 +122,7 @@ impl BashCommandPattern for CommandChainPattern {
                     "don't ask me again for \"{}\" commands in this project",
                     base_commands[0]
                 ),
+                safe: false,
             }
         } else {
             let display = base_commands.join(", ");
@@ -127,6 +134,7 @@ impl BashCommandPattern for CommandChainPattern {
                     "don't ask me again for \"{}\" command combinations in this project",
                     display
                 ),
+                safe: false,
             }
         }
     }
@@ -138,6 +146,26 @@ impl BashCommandPattern for CommandChainPattern {
 
 pub struct SingleCommandPattern;
 
+impl SingleCommandPattern {
+    /// Check if a command is in the whitelist of safe read-only commands
+    fn is_whitelisted(cmd: &str) -> bool {
+        matches!(
+            cmd,
+            // File/directory reading
+            "ls" | "pwd" | "cat" | "head" | "tail" | "less" | "more"
+            | "find" | "tree" | "stat" | "file"
+
+            // Text processing (read-only)
+            | "grep" | "egrep" | "fgrep"
+            | "wc" | "sort" | "uniq" | "diff"
+
+            // System info
+            | "echo" | "which" | "type"
+            | "whoami" | "hostname" | "date"
+        )
+    }
+}
+
 impl BashCommandPattern for SingleCommandPattern {
     fn matches(&self, _command: &str) -> bool {
         true
@@ -147,6 +175,8 @@ impl BashCommandPattern for SingleCommandPattern {
         let base_commands = BashCommandParser::extract_base_commands(command);
 
         if let Some(cmd) = base_commands.first() {
+            let safe = Self::is_whitelisted(cmd);
+
             CommandPatternResult {
                 description: cmd.clone(),
                 pattern: format!("{}:*", cmd),
@@ -154,12 +184,14 @@ impl BashCommandPattern for SingleCommandPattern {
                     "don't ask me again for \"{}\" commands in this project",
                     cmd
                 ),
+                safe,
             }
         } else {
             CommandPatternResult {
                 description: "bash command".to_string(),
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
+                safe: false,
             }
         }
     }
@@ -187,6 +219,7 @@ mod tests {
         let result = pattern.analyze("cat <<EOF\nHello\nEOF");
         assert_eq!(result.pattern, "cat:<<");
         assert!(result.persistent_message.contains("heredoc"));
+        assert!(!result.safe);
     }
 
     #[test]
@@ -229,13 +262,43 @@ mod tests {
     }
 
     #[test]
-    fn test_single_command_pattern() {
+    fn test_single_command_pattern_whitelisted() {
         let pattern = SingleCommandPattern;
         assert!(pattern.matches("ls -la"));
 
         let result = pattern.analyze("ls -la");
         assert_eq!(result.pattern, "ls:*");
         assert!(result.persistent_message.contains("ls"));
+        assert!(!result.safe);
+    }
+
+    #[test]
+    fn test_single_command_pattern_not_whitelisted() {
+        let pattern = SingleCommandPattern;
+        let result = pattern.analyze("cargo build");
+        assert_eq!(result.pattern, "cargo:*");
+        assert!(!result.safe);
+    }
+
+    #[test]
+    fn test_whitelist_coverage() {
+        let safe_commands = vec![
+            "ls", "pwd", "cat", "head", "tail", "find", "grep", "wc", "sort", "echo", "which",
+            "date",
+        ];
+
+        for cmd in safe_commands {
+            assert!(SingleCommandPattern::is_whitelisted(cmd));
+        }
+    }
+
+    #[test]
+    fn test_non_whitelisted_commands() {
+        let unsafe_commands = vec!["cargo", "sed", "rm", "xargs", "docker"];
+
+        for cmd in unsafe_commands {
+            assert!(!SingleCommandPattern::is_whitelisted(cmd));
+        }
     }
 
     #[test]

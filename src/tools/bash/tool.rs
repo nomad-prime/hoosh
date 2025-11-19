@@ -1,6 +1,7 @@
 use crate::agent::AgentEvent;
 use crate::permissions::BashPatternMatcher;
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
+use crate::tools::bash::BashCommandPatternRegistry;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -393,11 +394,13 @@ impl Tool for BashTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
-        use super::{BashCommandClassifier, BashCommandPatternRegistry, CommandRisk};
-
         let target_str = target.unwrap_or("*");
 
-        if BashCommandClassifier::classify(target_str) == CommandRisk::Safe {
+        // Use the pattern registry to analyze the command
+        let registry = BashCommandPatternRegistry::new();
+        let pattern_result = registry.analyze_command(target_str);
+
+        if pattern_result.safe {
             return ToolPermissionBuilder::new(self, target_str)
                 .into_read_only()
                 .with_approval_title(" Bash Command ")
@@ -409,10 +412,6 @@ impl Tool for BashTool {
                 .build()
                 .expect("Failed to build BashTool permission descriptor");
         }
-
-        // Use the pattern registry to analyze the command
-        let registry = BashCommandPatternRegistry::new();
-        let pattern_result = registry.analyze_command(target_str);
 
         ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")

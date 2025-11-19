@@ -314,7 +314,6 @@ pub mod palette {
 - Keep dependencies minimal and well-maintained
 - Pin major versions in Cargo.toml
 - Use `cargo audit` to check for security vulnerabilities
-- Document why each dependency is needed
 
 ## Performance Notes
 

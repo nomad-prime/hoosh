@@ -45,7 +45,13 @@ impl BashPatternMatcher {
             return true;
         }
         if let Some(prefix) = pattern.strip_suffix(":*") {
-            target.starts_with(prefix)
+            // Extract actual base command from target, not just string prefix
+            let target_commands = BashCommandParser::extract_base_commands(target);
+            if let Some(target_cmd) = target_commands.first() {
+                target_cmd == prefix
+            } else {
+                false
+            }
         } else {
             pattern == target
         }
@@ -207,5 +213,23 @@ mod tests {
         let matcher = FilePatternMatcher;
         assert!(matcher.matches("*", "anything"));
         assert!(matcher.matches("*", "/any/path"));
+    }
+
+    #[test]
+    fn test_pattern_matching_security_no_prefix_bypass() {
+        let matcher = BashPatternMatcher;
+
+        // Should match
+        assert!(matcher.matches("cargo:*", "cargo build"));
+        assert!(matcher.matches("cargo:*", "cargo test --release"));
+        assert!(matcher.matches("npm:*", "npm install"));
+
+        // Should NOT match - different command entirely
+        assert!(!matcher.matches("cargo:*", "cargoship"));
+        assert!(!matcher.matches("cargo:*", "cargowithanything"));
+
+        // Edge cases
+        assert!(!matcher.matches("ls:*", "lsof"));
+        assert!(!matcher.matches("cat:*", "catch"));
     }
 }

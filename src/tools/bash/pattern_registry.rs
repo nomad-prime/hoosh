@@ -18,6 +18,7 @@ impl BashCommandPatternRegistry {
         Self { patterns }
     }
 
+    /// Analyze a command and return detailed pattern information including risk assessment
     pub fn analyze_command(&self, command: &str) -> CommandPatternResult {
         for pattern in &self.patterns {
             if pattern.matches(command) {
@@ -29,6 +30,7 @@ impl BashCommandPatternRegistry {
             description: "bash command".to_string(),
             pattern: "*".to_string(),
             persistent_message: "don't ask me again for bash in this project".to_string(),
+            safe: false,
         }
     }
 }
@@ -49,13 +51,15 @@ mod tests {
         let result = registry.analyze_command("cat <<EOF\nHello\nEOF");
         assert_eq!(result.pattern, "cat:<<");
         assert!(result.persistent_message.contains("heredoc"));
+        assert!(!result.safe);
     }
 
     #[test]
-    fn test_registry_pipeline() {
+    fn test_registry_pipeline_safe() {
         let registry = BashCommandPatternRegistry::new();
         let result = registry.analyze_command("cat file | grep error | wc -l");
         assert_eq!(result.pattern, "cat:*|grep:*|wc:*");
+        assert!(!result.safe);
     }
 
     #[test]
@@ -63,13 +67,23 @@ mod tests {
         let registry = BashCommandPatternRegistry::new();
         let result = registry.analyze_command("cargo build && cargo test");
         assert_eq!(result.pattern, "cargo:*");
+        assert!(!result.safe);
     }
 
     #[test]
-    fn test_registry_single_command() {
+    fn test_registry_single_command_whitelisted() {
         let registry = BashCommandPatternRegistry::new();
         let result = registry.analyze_command("ls -la");
         assert_eq!(result.pattern, "ls:*");
+        assert!(result.safe);
+    }
+
+    #[test]
+    fn test_registry_single_command_not_whitelisted() {
+        let registry = BashCommandPatternRegistry::new();
+        let result = registry.analyze_command("cargo build");
+        assert_eq!(result.pattern, "cargo:*");
+        assert!(!result.safe);
     }
 
     #[test]
@@ -79,5 +93,26 @@ mod tests {
         // Heredoc should take priority over pipeline
         let result = registry.analyze_command("cat <<EOF | grep test\nEOF");
         assert_eq!(result.pattern, "cat:<<");
+        assert!(!result.safe);
+    }
+
+    #[test]
+    fn test_registry_safe_single_command() {
+        let registry = BashCommandPatternRegistry::new();
+        assert!(registry.analyze_command("find . -name '*.rs'").safe);
+        assert!(registry.analyze_command("cat README.md").safe);
+        assert!(registry.analyze_command("pwd").safe);
+    }
+
+    #[test]
+    fn test_registry_needs_review_commands() {
+        let registry = BashCommandPatternRegistry::new();
+        assert!(!registry.analyze_command("cargo build").safe);
+        assert!(
+            !registry
+                .analyze_command("sed -i 's/test/TEST/g' file.txt")
+                .safe
+        );
+        assert!(!registry.analyze_command("rm file.txt").safe);
     }
 }
