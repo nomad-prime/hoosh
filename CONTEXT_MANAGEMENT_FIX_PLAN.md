@@ -850,13 +850,13 @@ These enhancements add new capabilities to the context management system.
 
 **Problem**: `MessageSummarizer` is fully implemented but never used.
 
-**Goal**: Create a `SummaryCompressionStrategy` that uses the summarizer when pressure is very high.
+**Goal**: Create a `SummaryCompactionStrategy` that uses the summarizer when pressure is very high.
 
 #### Solution Design
 
 **Approach**: Create a new strategy that triggers summarization when other strategies can't reduce enough.
 
-**File**: `src/context_management/summary_compression_strategy.rs` (NEW)
+**File**: `src/context_management/summary_compaction_strategy.rs` (NEW)
 
 ```rust
 use super::{ContextManagementStrategy, StrategyResult};
@@ -868,7 +868,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SummaryCompressionConfig {
+pub struct SummaryCompactionConfig {
     /// Trigger summarization when pressure exceeds this threshold (default: 0.90)
     pub trigger_threshold: f32,
 
@@ -882,7 +882,7 @@ pub struct SummaryCompressionConfig {
     pub preserve_recent_count: usize,
 }
 
-impl Default for SummaryCompressionConfig {
+impl Default for SummaryCompactionConfig {
     fn default() -> Self {
         Self {
             trigger_threshold: 0.90,
@@ -893,13 +893,13 @@ impl Default for SummaryCompressionConfig {
     }
 }
 
-pub struct SummaryCompressionStrategy {
-    config: SummaryCompressionConfig,
+pub struct SummaryCompactionStrategy {
+    config: SummaryCompactionConfig,
     summarizer: MessageSummarizer,
     max_tokens: usize,
 }
 
-impl SummaryCompressionStrategy {
+impl SummaryCompactionStrategy {
     pub fn new(config: SummaryCompressionConfig, summarizer: MessageSummarizer, max_tokens: usize) -> Self {
         Self {
             config,
@@ -910,7 +910,7 @@ impl SummaryCompressionStrategy {
 }
 
 #[async_trait]
-impl ContextManagementStrategy for SummaryCompressionStrategy {
+impl ContextManagementStrategy for SummaryCompactionStrategy {
     async fn apply(&self, conversation: &mut Conversation) -> Result<StrategyResult> {
         // Check if we should trigger summarization
         let current_tokens = TokenAccountant::estimate_conversation_tokens(conversation);
@@ -969,7 +969,7 @@ impl ContextManagementStrategy for SummaryCompressionStrategy {
 mod tests {
     use super::*;
 
-    // TODO: Add tests for summary compression strategy
+    // TODO: Add tests for summary compaction strategy
 }
 ```
 
