@@ -32,6 +32,57 @@ impl SlidingWindowStrategy {
 
         false
     }
+
+    fn ensure_tool_call_pairs(&self, messages: &[ConversationMessage], keep_flags: &mut [bool]) {
+        for i in 0..messages.len() {
+            if !keep_flags[i] {
+                continue;
+            }
+
+            if messages[i].role == "assistant"
+                && let Some(tool_calls) = &messages[i].tool_calls
+            {
+                for tool_call in tool_calls {
+                    for j in (i + 1)..messages.len() {
+                        if messages[j].role == "tool"
+                            && messages[j].tool_call_id.as_ref() == Some(&tool_call.id)
+                        {
+                            keep_flags[j] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        for i in 0..messages.len() {
+            if !keep_flags[i] {
+                continue;
+            }
+
+            if messages[i].role == "tool"
+                && let Some(tool_call_id) = &messages[i].tool_call_id
+            {
+                for j in (0..i).rev() {
+                    if messages[j].role == "assistant"
+                        && let Some(tool_calls) = &messages[j].tool_calls
+                        && tool_calls.iter().any(|tc| &tc.id == tool_call_id)
+                    {
+                        keep_flags[j] = true;
+                        for tool_call in tool_calls {
+                            for k in (j + 1)..messages.len() {
+                                if messages[k].role == "tool"
+                                    && messages[k].tool_call_id.as_ref() == Some(&tool_call.id)
+                                {
+                                    keep_flags[k] = true;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -69,7 +120,8 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
         let preserved_count = keep_flags.iter().filter(|&&k| k).count();
 
         if preserved_count >= total_to_keep {
-            // Keep only preserved messages (maintaining order)
+            self.ensure_tool_call_pairs(&conversation.messages, &mut keep_flags);
+
             conversation.messages = conversation
                 .messages
                 .drain(..)
@@ -80,10 +132,8 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
             return Ok(());
         }
 
-        // We need to keep `total_to_keep - preserved_count` recent non-preserved messages
         let regular_to_keep = total_to_keep - preserved_count;
 
-        // Mark the most recent non-preserved messages to keep
         let mut regular_kept = 0;
         for i in (0..keep_flags.len()).rev() {
             if !keep_flags[i] && regular_kept < regular_to_keep {
@@ -92,7 +142,8 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
             }
         }
 
-        // Filter messages while maintaining original order
+        self.ensure_tool_call_pairs(&conversation.messages, &mut keep_flags);
+
         conversation.messages = conversation
             .messages
             .drain(..)
@@ -480,6 +531,189 @@ mod tests {
         for msg in &conversation.messages {
             assert_eq!(msg.role, "system");
         }
+    }
+
+    #[tokio::test]
+    async fn test_preserves_tool_call_pairs_basic() {
+        let config = SlidingWindowConfig {
+            window_size: 5,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        for i in 0..10 {
+            conversation.add_user_message(format!("msg-{}", i));
+        }
+
+        conversation.add_user_message("read file".to_string());
+        conversation.add_assistant_message(
+            None,
+            Some(vec![crate::agent::ToolCall {
+                id: "call_1".to_string(),
+                r#type: "function".to_string(),
+                function: crate::agent::ToolFunction {
+                    name: "read_file".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+        );
+        conversation
+            .messages
+            .push(crate::agent::ConversationMessage {
+                role: "tool".to_string(),
+                content: Some("file contents".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                name: Some("read_file".to_string()),
+            });
+        conversation.add_assistant_message(Some("done".to_string()), None);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let has_tool_call = conversation
+            .messages
+            .iter()
+            .any(|m| m.role == "assistant" && m.tool_calls.is_some());
+        let has_tool_result = conversation
+            .messages
+            .iter()
+            .any(|m| m.role == "tool" && m.tool_call_id == Some("call_1".to_string()));
+
+        assert_eq!(has_tool_call, has_tool_result);
+    }
+
+    #[tokio::test]
+    async fn test_preserves_tool_call_pairs_multiple_calls() {
+        let config = SlidingWindowConfig {
+            window_size: 8,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        for i in 0..10 {
+            conversation.add_user_message(format!("msg-{}", i));
+        }
+
+        conversation.add_user_message("read files".to_string());
+        conversation.add_assistant_message(
+            None,
+            Some(vec![
+                crate::agent::ToolCall {
+                    id: "call_1".to_string(),
+                    r#type: "function".to_string(),
+                    function: crate::agent::ToolFunction {
+                        name: "read_file".to_string(),
+                        arguments: r#"{"path":"a.txt"}"#.to_string(),
+                    },
+                },
+                crate::agent::ToolCall {
+                    id: "call_2".to_string(),
+                    r#type: "function".to_string(),
+                    function: crate::agent::ToolFunction {
+                        name: "read_file".to_string(),
+                        arguments: r#"{"path":"b.txt"}"#.to_string(),
+                    },
+                },
+            ]),
+        );
+        conversation
+            .messages
+            .push(crate::agent::ConversationMessage {
+                role: "tool".to_string(),
+                content: Some("contents a".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                name: Some("read_file".to_string()),
+            });
+        conversation
+            .messages
+            .push(crate::agent::ConversationMessage {
+                role: "tool".to_string(),
+                content: Some("contents b".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_2".to_string()),
+                name: Some("read_file".to_string()),
+            });
+        conversation.add_assistant_message(Some("done".to_string()), None);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let assistant_with_calls = conversation
+            .messages
+            .iter()
+            .find(|m| m.role == "assistant" && m.tool_calls.is_some());
+
+        if let Some(msg) = assistant_with_calls {
+            let tool_calls = msg.tool_calls.as_ref().unwrap();
+            for tool_call in tool_calls {
+                let has_result = conversation
+                    .messages
+                    .iter()
+                    .any(|m| m.role == "tool" && m.tool_call_id.as_ref() == Some(&tool_call.id));
+                assert!(
+                    has_result,
+                    "Tool call {} must have corresponding result",
+                    tool_call.id
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_removes_complete_tool_pairs_together() {
+        let config = SlidingWindowConfig {
+            window_size: 5,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        conversation.add_user_message("old request".to_string());
+        conversation.add_assistant_message(
+            None,
+            Some(vec![crate::agent::ToolCall {
+                id: "old_call".to_string(),
+                r#type: "function".to_string(),
+                function: crate::agent::ToolFunction {
+                    name: "old_tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+        );
+        conversation
+            .messages
+            .push(crate::agent::ConversationMessage {
+                role: "tool".to_string(),
+                content: Some("old result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("old_call".to_string()),
+                name: Some("old_tool".to_string()),
+            });
+        conversation.add_assistant_message(Some("old done".to_string()), None);
+
+        for i in 0..10 {
+            conversation.add_user_message(format!("new-{}", i));
+        }
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        let has_old_call = conversation
+            .messages
+            .iter()
+            .any(|m| m.tool_call_id.as_ref() == Some(&"old_call".to_string()));
+
+        assert!(!has_old_call);
     }
 
     #[tokio::test]
