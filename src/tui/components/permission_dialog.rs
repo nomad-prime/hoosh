@@ -18,43 +18,52 @@ impl Component for PermissionDialog {
         if let Some(dialog_state) = &state.tool_permission_dialog_state {
             let descriptor = &dialog_state.descriptor;
 
+            // 1. Calculate height of "Fixed Chrome" (Borders, Buttons, Prompt, Help)
+            // We absolutely need space for these.
+            // Borders(2) + Prompt(2) + Options(N) + Footer(2)
+            let options_count = dialog_state.options.len() as u16;
+            let fixed_chrome_height = 2 + 2 + options_count + 2;
+
             let mut lines = vec![];
 
             lines.push(Line::from(vec![Span::styled(
                 descriptor.approval_prompt(),
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
-
             lines.push(Line::from(""));
 
+            // 2. Calculate Dynamic Preview Height
+            // Give the preview whatever space is left, up to 15 lines.
             if let Some(preview) = descriptor.command_preview() {
-                const MAX_PREVIEW_LINES: usize = 15;
+                let available_for_preview = area.height.saturating_sub(fixed_chrome_height);
+                let max_preview_lines = 15.min(available_for_preview as usize);
+
                 let preview_lines: Vec<&str> = preview.lines().collect();
                 let total_lines = preview_lines.len();
 
-                for preview_line in preview_lines.iter().take(MAX_PREVIEW_LINES) {
-                    lines.push(Line::from(vec![
-                        Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
-                        Span::styled(*preview_line, Style::default().fg(palette::SECONDARY_TEXT)),
-                    ]));
-                }
+                // Only render if we have at least 1 line of space
+                if max_preview_lines > 0 {
+                    for preview_line in preview_lines.iter().take(max_preview_lines) {
+                        lines.push(Line::from(vec![
+                            Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
+                            Span::styled(*preview_line, Style::default().fg(palette::SECONDARY_TEXT)),
+                        ]));
+                    }
 
-                // Show indicator if there are more lines
-                if total_lines > MAX_PREVIEW_LINES {
-                    lines.push(Line::from(vec![
-                        Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
-                        Span::styled(
-                            format!("... ({} more lines)", total_lines - MAX_PREVIEW_LINES),
-                            Style::default()
-                                .fg(palette::DIMMED_TEXT)
-                                .add_modifier(Modifier::ITALIC),
-                        ),
-                    ]));
+                    if total_lines > max_preview_lines {
+                        lines.push(Line::from(vec![
+                            Span::styled(" │ ", Style::default().fg(palette::DIMMED_TEXT)),
+                            Span::styled(
+                                format!("... ({} more lines)", total_lines - max_preview_lines),
+                                Style::default().fg(palette::DIMMED_TEXT).add_modifier(Modifier::ITALIC),
+                            ),
+                        ]));
+                    }
+                    lines.push(Line::from(""));
                 }
-
-                lines.push(Line::from(""));
             }
 
+            // 3. Render Options (Guaranteed to fit now)
             for (idx, option) in dialog_state.options.iter().enumerate() {
                 let is_selected = idx == dialog_state.selected_index;
                 let (key, label) = match option {

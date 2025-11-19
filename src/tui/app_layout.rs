@@ -79,7 +79,15 @@ impl AppLayout for Layout<AppState> {
                 .tool_permission_dialog_state
                 .as_ref()
                 .map(|state| {
-                    let mut base = 4 + state.options.len() as u16;
+                    // breakdown:
+                    // 1 line: Prompt
+                    // 1 line: Spacer (after prompt)
+                    // N lines: Options
+                    // 1 line: Spacer (after options)
+                    // 1 line: Help text
+                    // 2 lines: Borders (Top + Bottom)
+                    // Total: 6 + N
+                    let mut base = 6 + state.options.len() as u16;
 
                     // Add height for command preview if present
                     if let Some(preview) = state.descriptor.command_preview() {
@@ -97,11 +105,7 @@ impl AppLayout for Layout<AppState> {
                         }
                     }
 
-                    if state.descriptor.is_destructive() {
-                        base + 1
-                    } else {
-                        base
-                    }
+                    base
                 })
                 .unwrap_or(10);
             builder = builder.permission_dialog(lines, true);
