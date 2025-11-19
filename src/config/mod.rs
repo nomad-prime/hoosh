@@ -321,11 +321,6 @@ impl AppConfig {
         self.context_manager.clone().unwrap_or_default()
     }
 
-    /// Set the context manager configuration
-    pub fn set_context_manager_config(&mut self, config: ContextManagerConfig) {
-        self.context_manager = Some(config);
-    }
-
     pub fn config_path() -> ConfigResult<PathBuf> {
         let path = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))

@@ -339,16 +339,6 @@ fn get_context_manager_config_returns_default() {
 }
 
 #[test]
-fn set_context_manager_config_updates_config() {
-    let mut config = AppConfig::default();
-    let ctx_config = ContextManagerConfig::default();
-
-    config.set_context_manager_config(ctx_config.clone());
-
-    assert_eq!(config.context_manager, Some(ctx_config));
-}
-
-#[test]
 fn merge_overwrites_backends() {
     let mut config = AppConfig::default();
     config.backends.insert(
