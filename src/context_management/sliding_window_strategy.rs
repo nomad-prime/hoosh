@@ -815,7 +815,7 @@ mod tests {
             .messages
             .iter()
             .filter(|msg| msg.role == "system")
-            .last()
+            .next_back()
             .unwrap()
             .content
             .as_ref()
@@ -878,10 +878,10 @@ mod tests {
                         tool_calls_seen.insert(tc.id.clone());
                     }
                 }
-            } else if msg.role == "tool" {
-                if let Some(tool_call_id) = &msg.tool_call_id {
-                    tool_results_seen.insert(tool_call_id.clone());
-                }
+            } else if msg.role == "tool"
+                && let Some(tool_call_id) = &msg.tool_call_id
+            {
+                tool_results_seen.insert(tool_call_id.clone());
             }
         }
 
@@ -1074,7 +1074,7 @@ mod tests {
         verify_tool_balance(&conversation.messages);
 
         // balancing should force the system for a larger windows
-        assert_eq!(conversation.messages.len(),10);
+        assert_eq!(conversation.messages.len(), 10);
     }
 
     #[tokio::test]
