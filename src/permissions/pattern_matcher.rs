@@ -27,7 +27,12 @@ impl BashPatternMatcher {
     fn matches_multicommand(&self, pattern: &str, target: &str) -> bool {
         let pattern_commands: Vec<&str> = pattern
             .split('|')
-            .map(|p| p.trim().trim_end_matches(":*").trim_end_matches('*'))
+            .map(|p| {
+                p.trim()
+                    .trim_end_matches(":*")
+                    .trim_end_matches('*')
+                    .trim_end_matches(":<<") // <--- Fix: Also trim heredoc suffix
+            })
             .filter(|s| !s.is_empty())
             .collect();
 
@@ -44,6 +49,27 @@ impl BashPatternMatcher {
         if pattern == "*" {
             return true;
         }
+
+        // <--- Fix: Handle "cat:<<" and "*:<<" patterns
+        if let Some(prefix) = pattern.strip_suffix(":<<") {
+            // If pattern is "*:<<", just check for heredoc presence
+            if prefix == "*" {
+                return target.contains("<<");
+            }
+
+            // Otherwise check if command starts with prefix AND has heredoc
+            let clean_target = target.trim();
+
+            if clean_target.starts_with(prefix) {
+                let rest = &clean_target[prefix.len()..];
+                // Ensure we matched a full word
+                let valid_word_boundary = rest.is_empty() || rest.starts_with(' ');
+
+                return valid_word_boundary && target.contains("<<");
+            }
+            return false;
+        }
+
         // Handle "cargo build:*"
         if let Some(prefix) = pattern.strip_suffix(":*") {
             let clean_target = target.trim();
@@ -91,6 +117,22 @@ mod tests {
         let matcher = BashPatternMatcher;
         assert!(matcher.matches("*", "any command"));
         assert!(matcher.matches("*", ""));
+    }
+
+    #[test]
+    fn test_bash_pattern_matcher_heredoc() {
+        let matcher = BashPatternMatcher;
+
+        // Test exact command match
+        assert!(matcher.matches("cat:<<", "cat <<EOF\nhello\nEOF"));
+
+        // Test wildcard heredoc match
+        assert!(matcher.matches("*:<<", "cat <<EOF\nhello\nEOF"));
+        assert!(matcher.matches("*:<<", "grep pattern <<EOF\nhello\nEOF"));
+
+        // Test mismatch
+        assert!(!matcher.matches("cat:<<", "grep <<EOF")); // Wrong command
+        assert!(!matcher.matches("cat:<<", "cat file.txt")); // No heredoc
     }
 
     #[test]
