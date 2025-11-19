@@ -350,16 +350,18 @@ fn setup_context_manager(config: &AppConfig) -> Arc<ContextManager> {
         Arc::clone(&token_accountant),
     );
 
-    if let Some(truncation_config) = context_manager_config.tool_output_truncation {
-        let truncation_strategy = ToolOutputTruncationStrategy::new(truncation_config);
-        context_manager_builder =
-            context_manager_builder.add_strategy(Box::new(truncation_strategy));
-    }
-
+    // Apply sliding window FIRST to remove old messages
     if let Some(sliding_window_config) = context_manager_config.sliding_window {
         let sliding_window_strategy = SlidingWindowStrategy::new(sliding_window_config);
         context_manager_builder =
             context_manager_builder.add_strategy(Box::new(sliding_window_strategy));
+    }
+
+    // Apply truncation SECOND to reduce size of remaining messages
+    if let Some(truncation_config) = context_manager_config.tool_output_truncation {
+        let truncation_strategy = ToolOutputTruncationStrategy::new(truncation_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(truncation_strategy));
     }
 
     Arc::new(context_manager_builder)

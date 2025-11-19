@@ -37,3 +37,5 @@ currently adding a tool message with some answer -> better just remove the ones 
 ### bash permission
 heredoc keeps asking
 
+### Auto Scroll 
+auto scrolling when dialogs open up in custom terminal has a limitation, lets see if we can remove that height limit
