@@ -38,19 +38,9 @@ impl SlidingWindowStrategy {
             if !keep_flags[i] {
                 continue;
             }
-
-            if messages[i].role == "assistant"
-                && let Some(tool_calls) = &messages[i].tool_calls
-            {
-                for tool_call in tool_calls {
-                    for j in (i + 1)..messages.len() {
-                        if messages[j].role == "tool"
-                            && messages[j].tool_call_id.as_ref() == Some(&tool_call.id)
-                        {
-                            keep_flags[j] = true;
-                        }
-                    }
-                }
+            // If it's an assistant message with tool calls, ensure its results are kept.
+            if messages[i].role == "assistant" && messages[i].tool_calls.is_some() {
+                self.mark_tool_results(i, messages, keep_flags);
             }
         }
 
@@ -67,17 +57,32 @@ impl SlidingWindowStrategy {
                         && let Some(tool_calls) = &messages[j].tool_calls
                         && tool_calls.iter().any(|tc| &tc.id == tool_call_id)
                     {
-                        keep_flags[j] = true;
-                        for tool_call in tool_calls {
-                            for k in (j + 1)..messages.len() {
-                                if messages[k].role == "tool"
-                                    && messages[k].tool_call_id.as_ref() == Some(&tool_call.id)
-                                {
-                                    keep_flags[k] = true;
-                                }
-                            }
+                        // Assistant is found and should be kept.
+                        if !keep_flags[j] {
+                            keep_flags[j] = true;
+                            // Crucial: Re-run the forward check for this newly-kept assistant.
+                            self.mark_tool_results(j, messages, keep_flags);
                         }
-                        break;
+                        break; // Stop searching backward once the parent is found
+                    }
+                }
+            }
+        }
+    }
+
+    fn mark_tool_results(
+        &self,
+        assistant_index: usize,
+        messages: &[ConversationMessage],
+        keep_flags: &mut [bool],
+    ) {
+        if let Some(tool_calls) = &messages[assistant_index].tool_calls {
+            for tool_call in tool_calls {
+                for k in (assistant_index + 1)..messages.len() {
+                    if messages[k].role == "tool"
+                        && messages[k].tool_call_id.as_ref() == Some(&tool_call.id)
+                    {
+                        keep_flags[k] = true;
                     }
                 }
             }

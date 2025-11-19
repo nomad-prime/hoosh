@@ -136,16 +136,35 @@ async fn test_strategy_execution_order() {
         .await
         .expect("Failed to apply strategies");
 
-    // After sliding window, should have only 5 messages total
+    // After sliding window, should have 6 messages (3 complete tool call pairs)
+    // Window size is 5, but tool call/result pairs must be kept together
+    // So we keep the last 3 complete pairs: assistant_7+tool_7, assistant_8+tool_8, assistant_9+tool_9
     assert_eq!(
         conversation.messages.len(),
-        5,
-        "Sliding window should reduce to 5 messages"
+        6,
+        "Sliding window should reduce to 6 messages (3 complete tool call pairs)"
     );
 
+    // Verify all tool calls have matching results
+    for msg in conversation.messages.iter() {
+        if let Some(tool_calls) = &msg.tool_calls {
+            for tool_call in tool_calls {
+                let has_result = conversation
+                    .messages
+                    .iter()
+                    .any(|m| m.role == "tool" && m.tool_call_id.as_ref() == Some(&tool_call.id));
+                assert!(
+                    has_result,
+                    "Tool call {} must have matching result",
+                    tool_call.id
+                );
+            }
+        }
+    }
+
     // The main goal of this test is to verify that the strategies run in the correct order
-    // (sliding window first, then truncation). The fact that we get exactly 5 messages (from 20)
-    // proves sliding window ran successfully.
+    // (sliding window first, then truncation). The fact that we reduced from 20 to 6 messages
+    // while maintaining tool call/result pairs proves sliding window ran successfully.
 }
 
 /// Test that pressure is recalculated after compression
