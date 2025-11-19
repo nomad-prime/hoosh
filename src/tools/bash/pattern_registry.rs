@@ -128,7 +128,10 @@ mod tests {
         let result = registry.analyze_command("echo $(rm -rf /)");
 
         // This assertion will FAIL until we apply the fix below
-        assert!(!result.safe, "Subshell injection was incorrectly marked as safe!");
+        assert!(
+            !result.safe,
+            "Subshell injection was incorrectly marked as safe!"
+        );
         assert!(result.pattern.contains("subshell") || result.description.contains("subshell"));
     }
 }
