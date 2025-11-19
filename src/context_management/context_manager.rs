@@ -4,11 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::agent::Conversation;
-use crate::context_management::{TokenAccountant, TokenAccountantStats, TokenUsageRecord};
+use crate::context_management::{
+    StrategyResult, TokenAccountant, TokenAccountantStats, TokenUsageRecord,
+};
 
 #[async_trait]
 pub trait ContextManagementStrategy: Send + Sync {
-    async fn apply(&self, conversation: &mut Conversation) -> Result<()>;
+    async fn apply(&self, conversation: &mut Conversation) -> Result<StrategyResult>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -18,6 +20,12 @@ pub struct ToolOutputTruncationConfig {
     pub smart_truncate: bool,
     pub head_length: usize,
     pub tail_length: usize,
+    #[serde(default = "default_preserve_last_tool_result")]
+    pub preserve_last_tool_result: bool,
+}
+
+fn default_preserve_last_tool_result() -> bool {
+    true
 }
 
 impl Default for ToolOutputTruncationConfig {
@@ -28,6 +36,7 @@ impl Default for ToolOutputTruncationConfig {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         }
     }
 }
@@ -38,6 +47,12 @@ pub struct SlidingWindowConfig {
     pub preserve_system: bool,
     pub min_messages_before_windowing: usize,
     pub preserve_initial_task: bool,
+    #[serde(default = "default_strict_window_size")]
+    pub strict_window_size: bool,
+}
+
+fn default_strict_window_size() -> bool {
+    false
 }
 
 impl Default for SlidingWindowConfig {
@@ -47,6 +62,7 @@ impl Default for SlidingWindowConfig {
             preserve_system: true,
             min_messages_before_windowing: 50,
             preserve_initial_task: true,
+            strict_window_size: false,
         }
     }
 }
@@ -146,7 +162,12 @@ impl ContextManager {
 
     pub async fn apply_strategies(&self, conversation: &mut Conversation) -> Result<()> {
         for strategy in &self.strategies {
-            strategy.apply(conversation).await?;
+            let result = strategy.apply(conversation).await?;
+
+            // If strategy reports target reached, stop processing further strategies
+            if result == StrategyResult::TargetReached {
+                break;
+            }
         }
         Ok(())
     }
@@ -249,5 +270,111 @@ mod tests {
         assert_eq!(stats.current_context_size, 190);
         assert_eq!(stats.total_consumed, 340);
         assert_eq!(stats.record_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_strategy_coordination_stops_at_target_reached() {
+        use crate::agent::ConversationMessage;
+
+        // Create a mock strategy that returns TargetReached
+        struct TargetReachedStrategy;
+
+        #[async_trait]
+        impl ContextManagementStrategy for TargetReachedStrategy {
+            async fn apply(&self, _conversation: &mut Conversation) -> Result<StrategyResult> {
+                Ok(StrategyResult::TargetReached)
+            }
+        }
+
+        // Create another mock strategy that tracks if it was called
+        use std::sync::Arc as StdArc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let was_called = StdArc::new(AtomicBool::new(false));
+        let was_called_clone = was_called.clone();
+
+        struct TrackingStrategy {
+            was_called: StdArc<AtomicBool>,
+        }
+
+        #[async_trait]
+        impl ContextManagementStrategy for TrackingStrategy {
+            async fn apply(&self, _conversation: &mut Conversation) -> Result<StrategyResult> {
+                self.was_called.store(true, Ordering::Relaxed);
+                Ok(StrategyResult::Applied)
+            }
+        }
+
+        let accountant = Arc::new(TokenAccountant::new());
+        let config = ContextManagerConfig::default();
+        let mut manager = ContextManager::new(config, accountant);
+
+        // Add TargetReached strategy first, then tracking strategy
+        manager = manager.add_strategy(Box::new(TargetReachedStrategy));
+        manager = manager.add_strategy(Box::new(TrackingStrategy {
+            was_called: was_called_clone,
+        }));
+
+        let mut conversation = Conversation::new();
+        conversation.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: Some("test".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+
+        // Apply strategies
+        manager.apply_strategies(&mut conversation).await.unwrap();
+
+        // Second strategy should NOT have been called because first one returned TargetReached
+        assert!(!was_called.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_all_strategies_run_without_target_reached() {
+        use crate::agent::ConversationMessage;
+        use std::sync::Arc as StdArc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let call_count = StdArc::new(AtomicUsize::new(0));
+
+        struct CountingStrategy {
+            call_count: StdArc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl ContextManagementStrategy for CountingStrategy {
+            async fn apply(&self, _conversation: &mut Conversation) -> Result<StrategyResult> {
+                self.call_count.fetch_add(1, Ordering::Relaxed);
+                Ok(StrategyResult::Applied)
+            }
+        }
+
+        let accountant = Arc::new(TokenAccountant::new());
+        let config = ContextManagerConfig::default();
+        let mut manager = ContextManager::new(config, accountant);
+
+        // Add three strategies - all should run
+        for _ in 0..3 {
+            manager = manager.add_strategy(Box::new(CountingStrategy {
+                call_count: call_count.clone(),
+            }));
+        }
+
+        let mut conversation = Conversation::new();
+        conversation.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: Some("test".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+
+        // Apply strategies
+        manager.apply_strategies(&mut conversation).await.unwrap();
+
+        // All three strategies should have been called
+        assert_eq!(call_count.load(Ordering::Relaxed), 3);
     }
 }
