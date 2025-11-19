@@ -122,13 +122,17 @@ impl ContextManager {
         self
     }
 
-    pub fn get_token_pressure(&self) -> f32 {
-        let current = self.token_accountant.current_context_tokens();
+    pub fn get_token_pressure(&self, conversation: &Conversation) -> f32 {
+        let current = TokenAccountant::estimate_conversation_tokens(conversation);
         (current as f32 / self.config.max_tokens as f32).min(1.0)
     }
 
-    pub fn should_warn_about_pressure(&self) -> bool {
-        self.get_token_pressure() > self.config.warning_threshold
+    pub fn should_warn_about_pressure(&self, conversation: &Conversation) -> bool {
+        self.get_token_pressure(conversation) > self.config.warning_threshold
+    }
+
+    pub fn should_warn_about_pressure_value(&self, pressure: f32) -> bool {
+        pressure >= self.config.warning_threshold
     }
 
     pub fn get_token_stats(&self) -> TokenAccountantStats {
@@ -169,37 +173,65 @@ mod tests {
         let accountant = Arc::new(TokenAccountant::new());
         let config = ContextManagerConfig::default();
         let manager = ContextManager::new(config, accountant);
+        let conversation = Conversation::new();
 
-        let pressure = manager.get_token_pressure();
+        let pressure = manager.get_token_pressure(&conversation);
         assert_eq!(pressure, 0.0);
     }
 
     #[test]
     fn test_token_pressure_with_data() {
-        let accountant = TokenAccountant::new();
+        use crate::agent::ConversationMessage;
 
-        accountant.record_usage(TokenUsageRecord::from_backend(5_000, 2_000));
-
-        let accountant = Arc::new(accountant);
+        let accountant = Arc::new(TokenAccountant::new());
         let config = ContextManagerConfig::default();
         let manager = ContextManager::new(config, accountant);
 
-        let pressure = manager.get_token_pressure();
+        let mut conversation = Conversation::new();
+        conversation.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: Some("x".repeat(20_000)), // ~5000 tokens
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+
+        let pressure = manager.get_token_pressure(&conversation);
         assert!(pressure > 0.0);
         assert!(pressure <= 1.0);
     }
 
     #[test]
     fn test_should_warn_about_pressure() {
-        let accountant = TokenAccountant::new();
+        use crate::agent::ConversationMessage;
 
-        accountant.record_usage(TokenUsageRecord::from_backend(126_000, 2_000));
-
-        let accountant = Arc::new(accountant);
+        let accountant = Arc::new(TokenAccountant::new());
         let config = ContextManagerConfig::default().with_warning_threshold(0.5);
         let manager = ContextManager::new(config, accountant);
 
-        assert!(manager.should_warn_about_pressure());
+        // Create a conversation with >50% tokens (64K+ for 128K limit)
+        let mut conversation = Conversation::new();
+        conversation.messages.push(ConversationMessage {
+            role: "user".to_string(),
+            content: Some("x".repeat(260_000)), // ~65K tokens (>50% of 128K)
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        });
+
+        assert!(manager.should_warn_about_pressure(&conversation));
+    }
+
+    #[test]
+    fn test_should_warn_about_pressure_value() {
+        let accountant = Arc::new(TokenAccountant::new());
+        let config = ContextManagerConfig::default().with_warning_threshold(0.70);
+        let manager = ContextManager::new(config, accountant);
+
+        // Test direct pressure value checking
+        assert!(manager.should_warn_about_pressure_value(0.75));
+        assert!(manager.should_warn_about_pressure_value(0.70)); // Equal to threshold
+        assert!(!manager.should_warn_about_pressure_value(0.65));
     }
 
     #[test]
