@@ -50,7 +50,6 @@ impl BashPatternMatcher {
             return true;
         }
 
-        // <--- Fix: Handle "cat:<<" and "*:<<" patterns
         if let Some(prefix) = pattern.strip_suffix(":<<") {
             // If pattern is "*:<<", just check for heredoc presence
             if prefix == "*" {
@@ -60,8 +59,7 @@ impl BashPatternMatcher {
             // Otherwise check if command starts with prefix AND has heredoc
             let clean_target = target.trim();
 
-            if clean_target.starts_with(prefix) {
-                let rest = &clean_target[prefix.len()..];
+            if let Some(rest) = clean_target.strip_prefix(prefix) {
                 // Ensure we matched a full word
                 let valid_word_boundary = rest.is_empty() || rest.starts_with(' ');
 
@@ -84,8 +82,7 @@ impl BashPatternMatcher {
             // But since we generate patterns from full tokens, starts_with is usually okay
             // IF we ensure a boundary (space or end of string).
 
-            if clean_target.starts_with(prefix) {
-                let rest = &clean_target[prefix.len()..];
+            if let Some(rest) = clean_target.strip_prefix(prefix) {
                 // Ensure we matched a full word (matches "cargo build" or "cargo build " but not "cargo builder")
                 return rest.is_empty() || rest.starts_with(' ');
             }

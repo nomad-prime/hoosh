@@ -109,16 +109,7 @@ impl BashCommandParser {
 
         // If the next token is a control operator, there is no argument
         let next_token = cmd_iter.next();
-        let argument = if let Some(arg) = next_token {
-            if Self::is_control_operator(&arg) {
-                None
-            } else {
-                Some(arg)
-            }
-        } else {
-            None
-        };
-
+        let argument = next_token.filter(|arg| !Self::is_control_operator(arg));
         Some((command, argument))
     }
 }
