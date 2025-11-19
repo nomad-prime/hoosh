@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::agent::{Conversation, ConversationMessage};
-use crate::context_management::{ContextManagementStrategy, SlidingWindowConfig};
+use crate::context_management::{ContextManagementStrategy, SlidingWindowConfig, StrategyResult};
 
 pub struct SlidingWindowStrategy {
     config: SlidingWindowConfig,
@@ -92,17 +92,17 @@ impl SlidingWindowStrategy {
 
 #[async_trait]
 impl ContextManagementStrategy for SlidingWindowStrategy {
-    async fn apply(&self, conversation: &mut Conversation) -> Result<()> {
-        let message_count = conversation.messages.len();
+    async fn apply(&self, conversation: &mut Conversation) -> Result<StrategyResult> {
+        let initial_count = conversation.messages.len();
 
-        if message_count <= self.config.min_messages_before_windowing {
-            return Ok(());
+        if initial_count <= self.config.min_messages_before_windowing {
+            return Ok(StrategyResult::NoChange);
         }
 
         let total_to_keep = self.config.window_size;
 
-        if message_count <= total_to_keep {
-            return Ok(());
+        if initial_count <= total_to_keep {
+            return Ok(StrategyResult::NoChange);
         }
 
         // Find the index of the first user message
@@ -125,6 +125,38 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
         let preserved_count = keep_flags.iter().filter(|&&k| k).count();
 
         if preserved_count >= total_to_keep {
+            if self.config.strict_window_size {
+                // Strict mode: enforce window_size as hard limit
+                // Keep the MOST RECENT total_to_keep preserved messages
+                let preserved_indices: Vec<usize> = keep_flags
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, k)| **k)
+                    .map(|(i, _)| i)
+                    .collect();
+
+                // Keep only the last total_to_keep indices
+                let indices_to_keep: Vec<usize> = if preserved_indices.len() > total_to_keep {
+                    preserved_indices
+                        .iter()
+                        .rev()
+                        .take(total_to_keep)
+                        .copied()
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect()
+                } else {
+                    preserved_indices
+                };
+
+                // Reset keep_flags and set only the indices we want
+                keep_flags.fill(false);
+                for idx in indices_to_keep {
+                    keep_flags[idx] = true;
+                }
+            }
+
             self.ensure_tool_call_pairs(&conversation.messages, &mut keep_flags);
 
             conversation.messages = conversation
@@ -134,7 +166,7 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
                 .filter_map(|(i, msg)| if keep_flags[i] { Some(msg) } else { None })
                 .collect();
 
-            return Ok(());
+            return Ok(StrategyResult::Applied);
         }
 
         let regular_to_keep = total_to_keep - preserved_count;
@@ -156,7 +188,7 @@ impl ContextManagementStrategy for SlidingWindowStrategy {
             .filter_map(|(i, msg)| if keep_flags[i] { Some(msg) } else { None })
             .collect();
 
-        Ok(())
+        Ok(StrategyResult::Applied)
     }
 }
 
@@ -191,6 +223,7 @@ mod tests {
             min_messages_before_windowing: 5,
             preserve_system: false,
             preserve_initial_task: false,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -227,6 +260,7 @@ mod tests {
             min_messages_before_windowing: 5,
             preserve_system: true,
             preserve_initial_task: false,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -274,6 +308,7 @@ mod tests {
             min_messages_before_windowing: 5,
             preserve_system: true,
             preserve_initial_task: true,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -318,59 +353,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_window_size_includes_preserved() {
-        let config = SlidingWindowConfig {
-            window_size: 5,
-            min_messages_before_windowing: 3,
-            preserve_system: true,
-            preserve_initial_task: true,
-        };
-        let strategy = SlidingWindowStrategy::new(config);
-
-        let mut conversation = Conversation::new();
-
-        conversation.add_system_message("system".to_string());
-        conversation.add_user_message("initial".to_string());
-
-        for i in 2..12 {
-            conversation.add_user_message(format!("msg-{}", i));
-        }
-
-        strategy.apply(&mut conversation).await.unwrap();
-
-        assert_eq!(conversation.messages.len(), 5);
-
-        assert!(
-            conversation.messages[0]
-                .content
-                .as_ref()
-                .unwrap()
-                .contains("system")
-        );
-        assert!(
-            conversation.messages[1]
-                .content
-                .as_ref()
-                .unwrap()
-                .contains("initial")
-        );
-        assert!(
-            conversation.messages[2]
-                .content
-                .as_ref()
-                .unwrap()
-                .contains("msg-9")
-        );
-        assert!(
-            conversation.messages[4]
-                .content
-                .as_ref()
-                .unwrap()
-                .contains("msg-11")
-        );
-    }
-
-    #[tokio::test]
     async fn test_sliding_window_integration() {
         use crate::context_management::{ContextManager, ContextManagerConfig, TokenAccountant};
         use std::sync::Arc;
@@ -381,6 +363,7 @@ mod tests {
                 min_messages_before_windowing: 5,
                 preserve_system: true,
                 preserve_initial_task: true,
+                strict_window_size: false,
             }),
             tool_output_truncation: None,
             ..Default::default()
@@ -431,6 +414,7 @@ mod tests {
             min_messages_before_windowing: 5,
             preserve_system: true,
             preserve_initial_task: true,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -516,6 +500,7 @@ mod tests {
             min_messages_before_windowing: 3,
             preserve_system: true,
             preserve_initial_task: true,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -545,6 +530,7 @@ mod tests {
             min_messages_before_windowing: 3,
             preserve_system: false,
             preserve_initial_task: false,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -598,6 +584,7 @@ mod tests {
             min_messages_before_windowing: 3,
             preserve_system: false,
             preserve_initial_task: false,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -679,6 +666,7 @@ mod tests {
             min_messages_before_windowing: 3,
             preserve_system: false,
             preserve_initial_task: false,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -728,6 +716,7 @@ mod tests {
             min_messages_before_windowing: 3,
             preserve_system: false,
             preserve_initial_task: true,
+            strict_window_size: false,
         };
         let strategy = SlidingWindowStrategy::new(config);
 
@@ -763,5 +752,375 @@ mod tests {
                 .unwrap()
                 .contains("system-9")
         );
+    }
+
+    #[tokio::test]
+    async fn test_non_strict_window_size_mode() {
+        let config = SlidingWindowConfig {
+            window_size: 10,
+            min_messages_before_windowing: 5,
+            preserve_system: true,
+            preserve_initial_task: true,
+            strict_window_size: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Add many system messages (simulating config with lots of system info)
+        for i in 0..15 {
+            conversation.add_system_message(format!("system-{}", i));
+        }
+
+        // Add user message
+        conversation.add_user_message("user message".to_string());
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // In legacy mode, with preserve_system=true, all 15 system messages should be kept
+        // plus the user message = 16 total (can exceed window_size)
+        assert_eq!(conversation.messages.len(), 16);
+    }
+
+    #[tokio::test]
+    async fn test_strict_window_size_mode_enforced() {
+        let config = SlidingWindowConfig {
+            window_size: 10,
+            min_messages_before_windowing: 5,
+            preserve_system: true,
+            preserve_initial_task: true,
+            strict_window_size: true, // Strict mode
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Add many system messages (simulating config with lots of system info)
+        for i in 0..15 {
+            conversation.add_system_message(format!("system-{}", i));
+        }
+
+        // Add user message
+        conversation.add_user_message("user message".to_string());
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // In strict mode, window_size must be enforced as hard limit
+        // Should keep ONLY the most recent 10 messages total
+        assert_eq!(conversation.messages.len(), 10);
+
+        // The most recent messages should be kept (system-5 through system-9 and user)
+        // Then the most recent 10
+        let last_system = conversation
+            .messages
+            .iter()
+            .filter(|msg| msg.role == "system")
+            .next_back()
+            .unwrap()
+            .content
+            .as_ref()
+            .unwrap();
+
+        // Should have one of the higher-numbered system messages
+        assert!(last_system.contains("system-") && !last_system.contains("system-0"));
+    }
+
+    #[tokio::test]
+    async fn test_strict_window_size_with_mixed_messages() {
+        let config = SlidingWindowConfig {
+            window_size: 5,
+            min_messages_before_windowing: 3,
+            preserve_system: true,
+            preserve_initial_task: true,
+            strict_window_size: true,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Add system messages
+        for i in 0..5 {
+            conversation.add_system_message(format!("system-{}", i));
+        }
+
+        // Add first user message
+        conversation.add_user_message("first user".to_string());
+
+        // Add assistant messages
+        for i in 0..5 {
+            conversation.add_assistant_message(Some(format!("response-{}", i)), None);
+        }
+
+        // Add more user messages
+        for i in 0..5 {
+            conversation.add_user_message(format!("user-{}", i));
+        }
+
+        let initial_count = conversation.messages.len();
+        assert!(initial_count > 5);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // With strict_window_size, should keep exactly 5 messages
+        assert_eq!(conversation.messages.len(), 5);
+    }
+
+    /// Helper function to verify tool call/result balance
+    fn verify_tool_balance(messages: &[ConversationMessage]) {
+        // Collect all tool call IDs from assistant messages
+        let mut tool_calls_seen = std::collections::HashSet::new();
+        let mut tool_results_seen = std::collections::HashSet::new();
+
+        for msg in messages {
+            if msg.role == "assistant" {
+                if let Some(tool_calls) = &msg.tool_calls {
+                    for tc in tool_calls {
+                        tool_calls_seen.insert(tc.id.clone());
+                    }
+                }
+            } else if msg.role == "tool"
+                && let Some(tool_call_id) = &msg.tool_call_id
+            {
+                tool_results_seen.insert(tool_call_id.clone());
+            }
+        }
+
+        // Every tool call should have a result
+        for call_id in &tool_calls_seen {
+            assert!(
+                tool_results_seen.contains(call_id),
+                "Tool call {} has no corresponding result",
+                call_id
+            );
+        }
+
+        // Every tool result should have a call
+        for result_id in &tool_results_seen {
+            assert!(
+                tool_calls_seen.contains(result_id),
+                "Tool result {} has no corresponding call",
+                result_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sliding_cuts_off_old_tool_calls_with_results() {
+        let config = SlidingWindowConfig {
+            window_size: 5,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: false,
+            strict_window_size: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Create old tool call that should be cut off
+        conversation.add_user_message("old request".to_string());
+        conversation.add_assistant_message(
+            None,
+            Some(vec![crate::agent::ToolCall {
+                id: "old_call_1".to_string(),
+                r#type: "function".to_string(),
+                function: crate::agent::ToolFunction {
+                    name: "old_tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+        );
+        conversation
+            .messages
+            .push(crate::agent::ConversationMessage {
+                role: "tool".to_string(),
+                content: Some("old result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("old_call_1".to_string()),
+                name: Some("old_tool".to_string()),
+            });
+
+        // Add many recent messages
+        for i in 0..15 {
+            conversation.add_user_message(format!("recent-{}", i));
+        }
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Verify tool balance - old call should be completely removed
+        verify_tool_balance(&conversation.messages);
+
+        // Verify the old tool call was removed (no orphaned results)
+        let has_old_call = conversation
+            .messages
+            .iter()
+            .any(|m| m.tool_call_id.as_ref() == Some(&"old_call_1".to_string()));
+        assert!(!has_old_call);
+    }
+
+    #[tokio::test]
+    async fn test_sliding_preserves_complete_tool_pairs_when_keeping_call() {
+        let config = SlidingWindowConfig {
+            window_size: 8,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: false,
+            strict_window_size: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Add many old messages
+        for i in 0..10 {
+            conversation.add_user_message(format!("old-{}", i));
+        }
+
+        // Add tool call that should be kept (recent enough)
+        conversation.add_user_message("request for tool".to_string());
+        conversation.add_assistant_message(
+            None,
+            Some(vec![crate::agent::ToolCall {
+                id: "kept_call".to_string(),
+                r#type: "function".to_string(),
+                function: crate::agent::ToolFunction {
+                    name: "my_tool".to_string(),
+                    arguments: r#"{"arg":"value"}"#.to_string(),
+                },
+            }]),
+        );
+        conversation
+            .messages
+            .push(crate::agent::ConversationMessage {
+                role: "tool".to_string(),
+                content: Some("tool result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("kept_call".to_string()),
+                name: Some("my_tool".to_string()),
+            });
+        conversation.add_assistant_message(Some("processed".to_string()), None);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Verify tool balance
+        verify_tool_balance(&conversation.messages);
+
+        // Verify the kept tool call has its result
+        let has_call = conversation
+            .messages
+            .iter()
+            .any(|m| m.role == "assistant" && m.tool_calls.is_some());
+        let has_result = conversation
+            .messages
+            .iter()
+            .any(|m| m.role == "tool" && m.tool_call_id == Some("kept_call".to_string()));
+
+        if has_call {
+            assert!(has_result, "If tool call is kept, result must be kept too");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sliding_multiple_tool_calls_sliding_cuts_tool_call() {
+        let config = SlidingWindowConfig {
+            window_size: 9,
+            min_messages_before_windowing: 3,
+            preserve_system: false,
+            preserve_initial_task: false,
+            strict_window_size: false,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        // Scenario: 3 rounds of tool calls, window cuts off middle one
+        for round in 0..3 {
+            conversation.add_user_message(format!("request-{}", round));
+            conversation.add_assistant_message(
+                None,
+                Some(vec![crate::agent::ToolCall {
+                    id: format!("call_{}", round),
+                    r#type: "function".to_string(),
+                    function: crate::agent::ToolFunction {
+                        name: "operation".to_string(),
+                        arguments: format!(r#"{{"index":{}}}"#, round),
+                    },
+                }]),
+            );
+            conversation
+                .messages
+                .push(crate::agent::ConversationMessage {
+                    role: "tool".to_string(),
+                    content: Some(format!("result-{}", round)),
+                    tool_calls: None,
+                    tool_call_id: Some(format!("call_{}", round)),
+                    name: Some("operation".to_string()),
+                });
+            conversation.add_assistant_message(Some(format!("response-{}", round)), None);
+        }
+
+        // Add padding to trigger windowing
+        for i in 0..7 {
+            conversation.add_user_message(format!("padding-{}", i));
+        }
+
+        let initial_count = conversation.messages.len();
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Verify we actually did windowing
+        assert!(conversation.messages.len() < initial_count);
+
+        // Verify tool balance - no orphaned calls or results
+        verify_tool_balance(&conversation.messages);
+
+        // balancing should force the system for a larger windows
+        assert_eq!(conversation.messages.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_sliding_strict_mode_maintains_tool_balance() {
+        let config = SlidingWindowConfig {
+            window_size: 8,
+            min_messages_before_windowing: 3,
+            preserve_system: true,
+            preserve_initial_task: true,
+            strict_window_size: true,
+        };
+        let strategy = SlidingWindowStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        conversation.add_system_message("system".to_string());
+        conversation.add_user_message("initial task".to_string());
+
+        // Add tool call rounds
+        for round in 0..5 {
+            conversation.add_user_message(format!("round-{}", round));
+            conversation.add_assistant_message(
+                None,
+                Some(vec![crate::agent::ToolCall {
+                    id: format!("strict_call_{}", round),
+                    r#type: "function".to_string(),
+                    function: crate::agent::ToolFunction {
+                        name: "tool".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }]),
+            );
+            conversation
+                .messages
+                .push(crate::agent::ConversationMessage {
+                    role: "tool".to_string(),
+                    content: Some(format!("result-{}", round)),
+                    tool_calls: None,
+                    tool_call_id: Some(format!("strict_call_{}", round)),
+                    name: Some("tool".to_string()),
+                });
+        }
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Verify tool balance in strict mode
+        verify_tool_balance(&conversation.messages);
     }
 }

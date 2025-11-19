@@ -31,6 +31,8 @@ show_truncation_notice = true        # Show "[... truncated N characters ...]" n
 smart_truncate = false               # If true, keep head + tail instead of just head (default: false)
 head_length = 3000                   # Characters to keep from start (default: 3000, smart_truncate only)
 tail_length = 1000                   # Characters to keep from end (default: 1000, smart_truncate only)
+preserve_last_tool_result = true     # If false, even the last tool result will be truncated (default: true)
+                                     # Set to false if you hit context limits due to large final results
 
 # Sliding window configuration (enabled by default)
 # Limits the total number of messages in conversation history to prevent unbounded growth
@@ -40,6 +42,8 @@ window_size = 40                     # Maximum number of messages to keep (defau
 preserve_system = true               # Always keep system messages (default: true, recommended)
 preserve_initial_task = true         # Always keep the first user message (default: true, recommended)
 min_messages_before_windowing = 50   # Don't apply window until this many messages exist (default: 50)
+strict_window_size = false           # If true, enforce window_size as hard limit even when preserving (default: false)
+                                     # Set to true if system messages exceed window_size and you need tight limits
 
 # Backend configurations
 [backends.anthropic]

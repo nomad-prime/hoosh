@@ -69,12 +69,14 @@ async fn test_strategy_execution_order() {
             smart_truncate: false,
             head_length: 800,
             tail_length: 200,
+            preserve_last_tool_result: true,
         }),
         sliding_window: Some(SlidingWindowConfig {
             window_size: 5, // Keep only last 5 messages
             preserve_system: false,
             min_messages_before_windowing: 0,
             preserve_initial_task: false,
+            strict_window_size: false,
         }),
     };
 
@@ -183,6 +185,7 @@ async fn test_pressure_recalculation_after_compression() {
             preserve_system: false,
             min_messages_before_windowing: 0,
             preserve_initial_task: false,
+            strict_window_size: false,
         }),
     };
 

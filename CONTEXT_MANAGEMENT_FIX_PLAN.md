@@ -1307,37 +1307,12 @@ token_window_budget = 100000  # Keep last 100K tokens
 
 ---
 
-## Rollout Plan
-
-### Phase Rollout
-
-1. **Phase 1**: Deploy to development environment, test with real conversations
-2. **Phase 2**: Beta testing with select users, gather feedback
-3. **Phase 3**: Feature flag rollout for summarization (opt-in)
-4. **Phase 4**: General availability with updated documentation
-
 ### Documentation Updates
 
 - Update `README.md` with new configuration options
 - Add `CONTEXT_MANAGEMENT.md` explaining the system architecture
 - Create migration guide for users on older versions
 - Update `example_config.toml` with all new options
-
----
-
-## Risks and Mitigations
-
-### Risk 1: Breaking Changes in Trait Signatures
-**Mitigation**: Thorough compilation testing, update all implementations together
-
-### Risk 2: Performance Regression from Token Estimation
-**Mitigation**: Benchmark against baseline, optimize if needed (e.g., cache estimates)
-
-### Risk 3: Summarization Quality Issues
-**Mitigation**: Make summarization opt-in, allow users to control trigger threshold
-
-### Risk 4: Unexpected Behavior Changes
-**Mitigation**: Comprehensive testing, feature flags for new behaviors
 
 ---
 
