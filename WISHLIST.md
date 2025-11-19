@@ -1,5 +1,13 @@
 ### Wishes
 
+### Warm up
+
+a feature where at startup when project is ran, agent is asked to create a list of all commands its going to need, so we can
+have them added to permission before hand
+
+### google backend Support
+
+
 ### Timer
 
 add timer when processing and tool calling etc.

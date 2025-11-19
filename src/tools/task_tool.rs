@@ -166,6 +166,7 @@ impl Tool for TaskTool {
         ToolPermissionBuilder::new(self, target.unwrap_or("*"))
             .into_destructive()
             .with_display_name("Task")
+            .with_approval_prompt("Can I run a subagent ?")
             .build()
             .expect("Failed to build TaskTool permission descriptor")
     }
