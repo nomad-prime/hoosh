@@ -2,7 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::agent::{Conversation, ConversationMessage};
-use crate::context_management::{ContextManagementStrategy, ToolOutputTruncationConfig};
+use crate::context_management::{
+    ContextManagementStrategy, StrategyResult, ToolOutputTruncationConfig,
+};
 
 pub struct ToolOutputTruncationStrategy {
     config: ToolOutputTruncationConfig,
@@ -124,12 +126,14 @@ impl ToolOutputTruncationStrategy {
 
 #[async_trait]
 impl ContextManagementStrategy for ToolOutputTruncationStrategy {
-    async fn apply(&self, conversation: &mut Conversation) -> Result<()> {
+    async fn apply(&self, conversation: &mut Conversation) -> Result<StrategyResult> {
         let message_count = conversation.messages.len();
 
         if message_count < 2 {
-            return Ok(());
+            return Ok(StrategyResult::NoChange);
         }
+
+        let mut any_truncated = false;
 
         let last_tool_result_index = conversation
             .messages
@@ -140,7 +144,8 @@ impl ContextManagementStrategy for ToolOutputTruncationStrategy {
             .map(|(i, _)| i);
 
         for i in 0..message_count {
-            if Some(i) == last_tool_result_index {
+            // Skip truncation only if preserve_last_tool_result is enabled
+            if self.config.preserve_last_tool_result && Some(i) == last_tool_result_index {
                 continue;
             }
 
@@ -153,6 +158,7 @@ impl ContextManagementStrategy for ToolOutputTruncationStrategy {
 
                 if original_len > self.config.max_length {
                     message.content = Some(self.truncate_content(content));
+                    any_truncated = true;
                 }
             }
 
@@ -171,13 +177,18 @@ impl ContextManagementStrategy for ToolOutputTruncationStrategy {
                         if modified {
                             tool_call.function.arguments = serde_json::to_string(&args_json)
                                 .unwrap_or_else(|_| args_str.clone());
+                            any_truncated = true;
                         }
                     }
                 }
             }
         }
 
-        Ok(())
+        if any_truncated {
+            Ok(StrategyResult::Applied)
+        } else {
+            Ok(StrategyResult::NoChange)
+        }
     }
 }
 
@@ -194,6 +205,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -249,6 +261,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -294,6 +307,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -319,6 +333,7 @@ mod tests {
             smart_truncate: true,
             head_length: 30,
             tail_length: 20,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -385,6 +400,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let max_length = config.max_length;
         let strategy = ToolOutputTruncationStrategy::new(config);
@@ -428,6 +444,7 @@ mod tests {
             smart_truncate: true,
             head_length: 8,
             tail_length: 5,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -472,6 +489,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let max_length = config.max_length;
         let strategy = ToolOutputTruncationStrategy::new(config);
@@ -516,6 +534,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -561,6 +580,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -624,6 +644,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -684,6 +705,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -753,6 +775,7 @@ mod tests {
             smart_truncate: false,
             head_length: 3000,
             tail_length: 1000,
+            preserve_last_tool_result: true,
         };
         let strategy = ToolOutputTruncationStrategy::new(config);
 
@@ -785,5 +808,107 @@ mod tests {
 
         // Arguments should remain unchanged since they're short
         assert_eq!(args_str, &original_args_str);
+    }
+
+    #[tokio::test]
+    async fn test_preserves_last_tool_result_when_enabled() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 20,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+            preserve_last_tool_result: true, // NEW: enabled
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let old_result = ToolCallResponse::success(
+            "tool_1".to_string(),
+            "read_file".to_string(),
+            "Read(file.txt)".to_string(),
+            "A".repeat(100), // Long content
+        );
+        conversation.add_tool_result(old_result);
+
+        let recent_result = ToolCallResponse::success(
+            "tool_2".to_string(),
+            "read_file".to_string(),
+            "Read(file2.txt)".to_string(),
+            "B".repeat(100), // Also long
+        );
+        conversation.add_tool_result(recent_result);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Old result should be truncated
+        assert!(
+            conversation.messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("truncated")
+        );
+        assert!(conversation.messages[0].content.as_ref().unwrap().len() < 100);
+
+        // Recent result should be PRESERVED (not truncated)
+        assert_eq!(
+            conversation.messages[1].content.as_ref().unwrap(),
+            &"B".repeat(100)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_truncates_last_tool_result_when_disabled() {
+        let config = ToolOutputTruncationConfig {
+            max_length: 20,
+            show_truncation_notice: true,
+            smart_truncate: false,
+            head_length: 3000,
+            tail_length: 1000,
+            preserve_last_tool_result: false, // NEW: disabled
+        };
+        let strategy = ToolOutputTruncationStrategy::new(config);
+
+        let mut conversation = Conversation::new();
+
+        let old_result = ToolCallResponse::success(
+            "tool_1".to_string(),
+            "read_file".to_string(),
+            "Read(file.txt)".to_string(),
+            "A".repeat(100), // Long content
+        );
+        conversation.add_tool_result(old_result);
+
+        let recent_result = ToolCallResponse::success(
+            "tool_2".to_string(),
+            "read_file".to_string(),
+            "Read(file2.txt)".to_string(),
+            "B".repeat(100), // Also long
+        );
+        conversation.add_tool_result(recent_result);
+
+        strategy.apply(&mut conversation).await.unwrap();
+
+        // Both old and recent results should be truncated now
+        assert!(
+            conversation.messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("truncated")
+        );
+        assert!(conversation.messages[0].content.as_ref().unwrap().len() < 100);
+
+        // NEW: Recent result should also be truncated now
+        assert!(
+            conversation.messages[1]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("truncated")
+        );
+        assert!(conversation.messages[1].content.as_ref().unwrap().len() < 100);
     }
 }
