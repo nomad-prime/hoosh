@@ -1,7 +1,5 @@
 # Context Management Implementation Guide for Hoosh
 
-**Based on Codex's Context Management System**
-
 This document provides a comprehensive guide to implementing Codex's context management system for handling context length in agentic workflows. This is a complete reference for replicating the architecture in your coding agent "Hoosh".
 
 ---
