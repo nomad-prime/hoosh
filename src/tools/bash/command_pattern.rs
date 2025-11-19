@@ -201,7 +201,6 @@ impl BashCommandPattern for SingleCommandPattern {
     fn analyze(&self, command: &str) -> CommandPatternResult {
         // Use the new helper to get the subcommand
         if let Some((cmd, arg_opt)) = BashCommandParser::extract_first_command_and_arg(command) {
-
             // Determine safety (existing logic)
             let safe = Self::is_whitelisted(&cmd, command);
 

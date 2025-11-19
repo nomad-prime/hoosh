@@ -101,14 +101,20 @@ impl BashCommandParser {
         let tokens = shlex::split(&input_to_parse)?;
 
         // Skip env vars (RUST_LOG=1 ...)
-        let mut cmd_iter = tokens.into_iter().skip_while(|t| t.contains('=') && !t.starts_with('-'));
+        let mut cmd_iter = tokens
+            .into_iter()
+            .skip_while(|t| t.contains('=') && !t.starts_with('-'));
 
         let command = cmd_iter.next()?;
 
         // If the next token is a control operator, there is no argument
         let next_token = cmd_iter.next();
         let argument = if let Some(arg) = next_token {
-            if Self::is_control_operator(&arg) { None } else { Some(arg) }
+            if Self::is_control_operator(&arg) {
+                None
+            } else {
+                Some(arg)
+            }
         } else {
             None
         };
