@@ -44,14 +44,26 @@ impl BashPatternMatcher {
         if pattern == "*" {
             return true;
         }
+        // Handle "cargo build:*"
         if let Some(prefix) = pattern.strip_suffix(":*") {
-            // Extract actual base command from target, not just string prefix
-            let target_commands = BashCommandParser::extract_base_commands(target);
-            if let Some(target_cmd) = target_commands.first() {
-                target_cmd == prefix
-            } else {
-                false
+            let clean_target = target.trim();
+
+            // Logic: Does the target start with the prefix?
+            // Prefix: "cargo build"
+            // Target: "cargo build --release" -> Match
+            // Target: "cargo install" -> No Match
+
+            // We need to be careful about boundaries.
+            // "cargo b" should not match "cargo build" if the pattern was partial.
+            // But since we generate patterns from full tokens, starts_with is usually okay
+            // IF we ensure a boundary (space or end of string).
+
+            if clean_target.starts_with(prefix) {
+                let rest = &clean_target[prefix.len()..];
+                // Ensure we matched a full word (matches "cargo build" or "cargo build " but not "cargo builder")
+                return rest.is_empty() || rest.starts_with(' ');
             }
+            false
         } else {
             pattern == target
         }

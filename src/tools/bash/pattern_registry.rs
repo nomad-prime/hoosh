@@ -8,6 +8,7 @@ impl BashCommandPatternRegistry {
     pub fn new() -> Self {
         let mut patterns: Vec<Box<dyn BashCommandPattern>> = vec![
             Box::new(HeredocPattern),
+            Box::new(SubshellPattern),
             Box::new(PipelinePattern),
             Box::new(CommandChainPattern),
             Box::new(SingleCommandPattern),
@@ -74,7 +75,7 @@ mod tests {
     fn test_registry_single_command_whitelisted() {
         let registry = BashCommandPatternRegistry::new();
         let result = registry.analyze_command("ls -la");
-        assert_eq!(result.pattern, "ls:*");
+        assert_eq!(result.pattern, "ls -la:*");
         assert!(result.safe);
     }
 
@@ -82,7 +83,7 @@ mod tests {
     fn test_registry_single_command_not_whitelisted() {
         let registry = BashCommandPatternRegistry::new();
         let result = registry.analyze_command("cargo build");
-        assert_eq!(result.pattern, "cargo:*");
+        assert_eq!(result.pattern, "cargo build:*");
         assert!(!result.safe);
     }
 
@@ -114,5 +115,20 @@ mod tests {
                 .safe
         );
         assert!(!registry.analyze_command("rm file.txt").safe);
+    }
+
+    #[test]
+    fn test_security_exploit_subshell_bypass() {
+        let registry = BashCommandPatternRegistry::new();
+
+        // THE VULNERABILITY:
+        // 1. Parser sees "echo"
+        // 2. Whitelist approves "echo"
+        // 3. Bash executes "rm" inside $() BEFORE echo runs
+        let result = registry.analyze_command("echo $(rm -rf /)");
+
+        // This assertion will FAIL until we apply the fix below
+        assert!(!result.safe, "Subshell injection was incorrectly marked as safe!");
+        assert!(result.pattern.contains("subshell") || result.description.contains("subshell"));
     }
 }

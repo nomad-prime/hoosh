@@ -14,11 +14,32 @@ pub trait BashCommandPattern {
     fn priority(&self) -> u32;
 }
 
+pub struct SubshellPattern;
+
+impl BashCommandPattern for SubshellPattern {
+    fn matches(&self, command: &str) -> bool {
+        BashCommandParser::contains_subshell(command)
+    }
+
+    fn analyze(&self, _command: &str) -> CommandPatternResult {
+        CommandPatternResult {
+            description: "command with subshell execution".to_string(),
+            pattern: "*".to_string(), // Too dynamic to pattern match specific commands
+            persistent_message: "don't ask me again for complex shell expansions".to_string(),
+            safe: false, // NEVER safe to auto-approve subshells
+        }
+    }
+
+    fn priority(&self) -> u32 {
+        90 // High priority, just below Heredoc
+    }
+}
+
 pub struct HeredocPattern;
 
 impl BashCommandPattern for HeredocPattern {
     fn matches(&self, command: &str) -> bool {
-        command.contains("<<") || command.contains("<<<")
+        BashCommandParser::contains_heredoc(command)
     }
 
     fn analyze(&self, command: &str) -> CommandPatternResult {
@@ -147,22 +168,28 @@ impl BashCommandPattern for CommandChainPattern {
 pub struct SingleCommandPattern;
 
 impl SingleCommandPattern {
-    /// Check if a command is in the whitelist of safe read-only commands
-    fn is_whitelisted(cmd: &str) -> bool {
-        matches!(
-            cmd,
-            // File/directory reading
-            "ls" | "pwd" | "cat" | "head" | "tail" | "less" | "more"
-            | "find" | "tree" | "stat" | "file"
+    fn is_whitelisted(cmd: &str, full_command: &str) -> bool {
+        match cmd {
+            // Always safe (information only)
+            "ls" | "pwd" | "whoami" | "date" | "echo" | "which" | "type" | "hostname" => true,
 
-            // Text processing (read-only)
-            | "grep" | "egrep" | "fgrep"
-            | "wc" | "sort" | "uniq" | "diff"
+            // Safe read-only text processing (unless redirecting output)
+            "cat" | "head" | "tail" | "less" | "more" | "grep" | "wc" | "sort" | "uniq"
+            | "diff" => {
+                // PREVENT: cat file.txt > overwritten_file.txt
+                !full_command.contains('>')
+            }
 
-            // System info
-            | "echo" | "which" | "type"
-            | "whoami" | "hostname" | "date"
-        )
+            // Find is DANGEROUS if used with exec/delete
+            "find" => {
+                !full_command.contains("-exec")
+                    && !full_command.contains("-delete")
+                    && !full_command.contains("-ok")
+            }
+
+            // Everything else is assumed unsafe for auto-approval
+            _ => false,
+        }
     }
 }
 
@@ -172,25 +199,40 @@ impl BashCommandPattern for SingleCommandPattern {
     }
 
     fn analyze(&self, command: &str) -> CommandPatternResult {
-        let base_commands = BashCommandParser::extract_base_commands(command);
+        // Use the new helper to get the subcommand
+        if let Some((cmd, arg_opt)) = BashCommandParser::extract_first_command_and_arg(command) {
 
-        if let Some(cmd) = base_commands.first() {
-            let safe = Self::is_whitelisted(cmd);
+            // Determine safety (existing logic)
+            let safe = Self::is_whitelisted(&cmd, command);
+
+            // Format the pattern: "cargo build:*" vs "ls:*"
+            let pattern = if let Some(arg) = &arg_opt {
+                format!("{} {}:*", cmd, arg)
+            } else {
+                format!("{}:*", cmd)
+            };
+
+            let description = if let Some(arg) = &arg_opt {
+                format!("{} {}", cmd, arg)
+            } else {
+                cmd.clone()
+            };
 
             CommandPatternResult {
-                description: cmd.clone(),
-                pattern: format!("{}:*", cmd),
+                description: description.clone(),
+                pattern,
                 persistent_message: format!(
                     "don't ask me again for \"{}\" commands in this project",
-                    cmd
+                    description
                 ),
                 safe,
             }
         } else {
+            // Fallback
             CommandPatternResult {
                 description: "bash command".to_string(),
                 pattern: "*".to_string(),
-                persistent_message: "don't ask me again for bash in this project".to_string(),
+                persistent_message: "don't ask me again for bash".to_string(),
                 safe: false,
             }
         }
@@ -267,16 +309,16 @@ mod tests {
         assert!(pattern.matches("ls -la"));
 
         let result = pattern.analyze("ls -la");
-        assert_eq!(result.pattern, "ls:*");
+        assert_eq!(result.pattern, "ls -la:*");
         assert!(result.persistent_message.contains("ls"));
-        assert!(!result.safe);
+        assert!(result.safe);
     }
 
     #[test]
     fn test_single_command_pattern_not_whitelisted() {
         let pattern = SingleCommandPattern;
         let result = pattern.analyze("cargo build");
-        assert_eq!(result.pattern, "cargo:*");
+        assert_eq!(result.pattern, "cargo build:*");
         assert!(!result.safe);
     }
 
@@ -288,7 +330,7 @@ mod tests {
         ];
 
         for cmd in safe_commands {
-            assert!(SingleCommandPattern::is_whitelisted(cmd));
+            assert!(SingleCommandPattern::is_whitelisted(cmd, cmd));
         }
     }
 
@@ -297,7 +339,7 @@ mod tests {
         let unsafe_commands = vec!["cargo", "sed", "rm", "xargs", "docker"];
 
         for cmd in unsafe_commands {
-            assert!(!SingleCommandPattern::is_whitelisted(cmd));
+            assert!(!SingleCommandPattern::is_whitelisted(cmd, cmd));
         }
     }
 

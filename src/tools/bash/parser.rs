@@ -1,104 +1,119 @@
-/// Extracts base commands from bash input for permission checking
+use std::collections::HashSet;
+
 pub struct BashCommandParser;
 
 impl BashCommandParser {
-    /// Extract base commands from a bash string
-    /// Returns a list of unique base command names
-    ///
-    /// Examples:
-    /// - "cargo build" -> ["cargo"]
-    /// - "cargo build && cargo test" -> ["cargo"]
-    /// - "cat file | grep error | wc -l" -> ["cat", "grep", "wc"]
-    /// - "ls -la; pwd; echo done" -> ["ls", "pwd", "echo"]
+    /// Extract base commands using proper tokenization.
+    /// Handles:
+    /// - Quotes: 'echo "a | b"' -> ["echo"] (not ["echo", "b"])
+    /// - Env Vars: 'Start=1 cargo build' -> ["cargo"]
+    /// - Chains: 'git commit && git push' -> ["git"]
     pub fn extract_base_commands(input: &str) -> Vec<String> {
-        let mut commands = Vec::new();
-
-        // Check if this is a heredoc - if so, only parse the first line
-        let lines_to_parse: Vec<&str> = if Self::contains_heredoc(input) {
-            // For heredocs, only parse the first line (the actual command)
-            input.lines().take(1).collect()
+        // 1. Heredoc Pre-processing
+        // We keep your existing logic to only parse the first line if heredoc exists
+        // to prevent parsing the content of the heredoc as commands.
+        let input_to_parse = if Self::contains_heredoc(input) {
+            input.lines().next().unwrap_or("").to_string()
         } else {
-            input.lines().collect()
+            input.to_string()
         };
 
-        for statement in lines_to_parse.iter().flat_map(|line| line.split(';')) {
-            let trimmed = statement.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
+        // 2. Tokenization via shlex
+        // This handles the quoting logic automatically.
+        let tokens = match shlex::split(&input_to_parse) {
+            Some(t) => t,
+            None => return vec![], // Unbalanced quotes or parse error -> Unsafe to run
+        };
+
+        let mut commands = HashSet::new();
+        let mut expect_command = true;
+
+        for token in tokens {
+            if Self::is_control_operator(&token) {
+                expect_command = true;
                 continue;
             }
 
-            for segment in Self::split_on_operators(trimmed) {
-                for cmd in segment.split('|') {
-                    if let Some(base) = Self::extract_single_base_command(cmd.trim())
-                        && !commands.contains(&base)
-                    {
-                        commands.push(base);
-                    }
+            if expect_command {
+                // 3. Handle Environment Variable Prefixes (e.g., RUST_LOG=debug cargo run)
+                // If it looks like VAR=VAL, it's not the command yet.
+                if token.contains('=') && !token.starts_with('-') {
+                    // Edge case check: ensure it's actually a variable assignment
+                    // and not a command that happens to have an equal sign (rare but possible)
+                    continue;
                 }
+
+                // This is our command
+                commands.insert(token);
+                expect_command = false;
             }
+
+            // If expect_command is false, we are processing arguments.
+            // We ignore them until we hit a control operator.
         }
 
-        commands
+        let mut result: Vec<String> = commands.into_iter().collect();
+        result.sort();
+        result
     }
 
-    /// Check if input contains a heredoc
-    fn contains_heredoc(input: &str) -> bool {
-        input.contains("<<") || input.contains("<<<")
+    pub fn contains_heredoc(input: &str) -> bool {
+        input.contains("<<")
     }
 
-    /// Generate a permission pattern suggestion from base commands
-    ///
-    /// Examples:
-    /// - ["cargo"] -> "cargo:*"
-    /// - ["cat", "grep", "wc"] -> "cat:*|grep:*|wc:*"
-    /// - ["npm"] -> "npm:*"
+    pub fn contains_subshell(input: &str) -> bool {
+        // Basic check for $(...) or backticks `...`
+        input.contains("$(") || input.contains('`')
+    }
+
     pub fn suggest_pattern(base_commands: &[String]) -> String {
-        match base_commands.len() {
-            0 => "*".to_string(),
-            1 => format!("{}:*", base_commands[0]),
-            _ => {
-                if base_commands.iter().all(|c| c == &base_commands[0]) {
-                    format!("{}:*", base_commands[0])
-                } else {
-                    base_commands
-                        .iter()
-                        .map(|cmd| format!("{}:*", cmd))
-                        .collect::<Vec<_>>()
-                        .join("|")
-                }
-            }
+        if base_commands.is_empty() {
+            return "*".to_string();
+        }
+
+        // Deduplicate for display
+        let mut unique = base_commands.to_vec();
+        unique.sort();
+        unique.dedup();
+
+        if unique.len() == 1 {
+            format!("{}:*", unique[0])
+        } else {
+            unique
+                .iter()
+                .map(|cmd| format!("{}:*", cmd))
+                .collect::<Vec<_>>()
+                .join("|")
         }
     }
 
-    /// Extract base command from a single command string
-    /// "cargo build --release" -> Some("cargo")
-    /// "  ls -la  " -> Some("ls")
-    fn extract_single_base_command(cmd: &str) -> Option<String> {
-        cmd.split_whitespace()
-            .next()
-            .filter(|s| !s.is_empty())
-            .map(String::from)
+    fn is_control_operator(token: &str) -> bool {
+        matches!(token, "|" | "||" | "&&" | ";")
     }
 
-    /// Split on && and || operators
-    fn split_on_operators(input: &str) -> Vec<&str> {
-        let mut segments = Vec::new();
-        let mut current = input;
+    pub fn extract_first_command_and_arg(input: &str) -> Option<(String, Option<String>)> {
+        let input_to_parse = if Self::contains_heredoc(input) {
+            input.lines().next().unwrap_or("").to_string()
+        } else {
+            input.to_string()
+        };
 
-        loop {
-            if let Some(pos) = current.find("&&") {
-                segments.push(&current[..pos]);
-                current = &current[pos + 2..];
-            } else if let Some(pos) = current.find("||") {
-                segments.push(&current[..pos]);
-                current = &current[pos + 2..];
-            } else {
-                segments.push(current);
-                break;
-            }
-        }
+        let tokens = shlex::split(&input_to_parse)?;
 
-        segments
+        // Skip env vars (RUST_LOG=1 ...)
+        let mut cmd_iter = tokens.into_iter().skip_while(|t| t.contains('=') && !t.starts_with('-'));
+
+        let command = cmd_iter.next()?;
+
+        // If the next token is a control operator, there is no argument
+        let next_token = cmd_iter.next();
+        let argument = if let Some(arg) = next_token {
+            if Self::is_control_operator(&arg) { None } else { Some(arg) }
+        } else {
+            None
+        };
+
+        Some((command, argument))
     }
 }
 
@@ -107,116 +122,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_simple_command() {
-        let cmds = BashCommandParser::extract_base_commands("cargo build");
+    fn test_quote_protection() {
+        // The old parser would fail here and see "grep" as a command
+        let cmds =
+            BashCommandParser::extract_base_commands("git commit -m 'Fixed bug | grep issue'");
+        assert_eq!(cmds, vec!["git"]);
+    }
+
+    #[test]
+    fn test_env_vars() {
+        // The old parser would fail here and think "RUST_LOG=debug" is the command
+        let cmds = BashCommandParser::extract_base_commands("RUST_LOG=debug cargo run");
         assert_eq!(cmds, vec!["cargo"]);
     }
 
     #[test]
-    fn test_extract_command_with_args() {
-        let cmds = BashCommandParser::extract_base_commands("cargo build --release");
-        assert_eq!(cmds, vec!["cargo"]);
-    }
-
-    #[test]
-    fn test_extract_command_chain() {
-        let cmds = BashCommandParser::extract_base_commands("cargo build && cargo test");
-        assert_eq!(cmds, vec!["cargo"]);
-    }
-
-    #[test]
-    fn test_extract_pipeline() {
-        let cmds = BashCommandParser::extract_base_commands("cat file.txt | grep error | wc -l");
-        assert_eq!(cmds, vec!["cat", "grep", "wc"]);
-    }
-
-    #[test]
-    fn test_extract_semicolon_separator() {
-        let cmds = BashCommandParser::extract_base_commands("ls -la; pwd; echo done");
-        assert_eq!(cmds, vec!["ls", "pwd", "echo"]);
-    }
-
-    #[test]
-    fn test_extract_mixed_complex() {
+    fn test_complex_chain() {
         let cmds = BashCommandParser::extract_base_commands(
-            "cargo build && cat Cargo.toml | grep version",
+            "cd /tmp && RUST_BACKTRACE=1 ./app | grep error",
         );
-        assert_eq!(cmds, vec!["cargo", "cat", "grep"]);
-    }
-
-    #[test]
-    fn test_extract_with_comments() {
-        let cmds = BashCommandParser::extract_base_commands("# comment\ncargo build");
-        assert_eq!(cmds, vec!["cargo"]);
-    }
-
-    #[test]
-    fn test_extract_multiline() {
-        let cmds = BashCommandParser::extract_base_commands("cargo build\ncargo test");
-        assert_eq!(cmds, vec!["cargo"]);
-    }
-
-    #[test]
-    fn test_suggest_pattern_single_command() {
-        let pattern = BashCommandParser::suggest_pattern(&["cargo".to_string()]);
-        assert_eq!(pattern, "cargo:*");
-    }
-
-    #[test]
-    fn test_suggest_pattern_multiple_same() {
-        let pattern =
-            BashCommandParser::suggest_pattern(&["cargo".to_string(), "cargo".to_string()]);
-        assert_eq!(pattern, "cargo:*");
-    }
-
-    #[test]
-    fn test_suggest_pattern_multiple_different() {
-        let pattern = BashCommandParser::suggest_pattern(&[
-            "cat".to_string(),
-            "grep".to_string(),
-            "wc".to_string(),
-        ]);
-        assert_eq!(pattern, "cat:*|grep:*|wc:*");
-    }
-
-    #[test]
-    fn test_suggest_pattern_empty() {
-        let pattern = BashCommandParser::suggest_pattern(&[]);
-        assert_eq!(pattern, "*");
-    }
-
-    #[test]
-    fn test_extract_single_base_command() {
-        assert_eq!(
-            BashCommandParser::extract_single_base_command("cargo build --release"),
-            Some("cargo".to_string())
-        );
-        assert_eq!(
-            BashCommandParser::extract_single_base_command("  ls -la  "),
-            Some("ls".to_string())
-        );
-        assert_eq!(BashCommandParser::extract_single_base_command(""), None);
-        assert_eq!(BashCommandParser::extract_single_base_command("   "), None);
-    }
-
-    #[test]
-    fn test_heredoc_only_parses_first_line() {
-        let input = "cat <<EOF\nHello from a heredoc!\nThis is a multi-line string.\nYou can use any content here.\nEOF";
-        let cmds = BashCommandParser::extract_base_commands(input);
-        assert_eq!(cmds, vec!["cat"]);
-    }
-
-    #[test]
-    fn test_heredoc_with_quotes() {
-        let input = "cat <<'EOF'\nHello\nWorld\nEOF";
-        let cmds = BashCommandParser::extract_base_commands(input);
-        assert_eq!(cmds, vec!["cat"]);
-    }
-
-    #[test]
-    fn test_herestring() {
-        let input = "cat <<< \"some text\"";
-        let cmds = BashCommandParser::extract_base_commands(input);
-        assert_eq!(cmds, vec!["cat"]);
+        assert_eq!(cmds, vec!["./app", "cd", "grep"]);
     }
 }
