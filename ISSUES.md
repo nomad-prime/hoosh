@@ -41,3 +41,6 @@ heredoc keeps asking
 auto scrolling when dialogs open up in custom terminal has a limitation, lets see if we can remove that height limit
 
 ### Explore and Plan agents are timing out
+
+
+### LLM Keeps cd-ing in working directory

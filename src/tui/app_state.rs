@@ -9,6 +9,7 @@ use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use std::collections::VecDeque;
+use std::time::Instant;
 use tui_textarea::TextArea;
 
 #[derive(Clone)]
@@ -23,6 +24,7 @@ pub struct SubagentStepSummary {
     pub step_number: usize,
     pub action_type: String,
     pub description: String,
+    pub budget_pct: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +46,7 @@ pub struct ActiveToolCall {
     pub is_subagent_task: bool,
     pub bash_output_lines: Vec<BashOutputLine>,
     pub is_bash_streaming: bool,
+    pub start_time: Instant,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,6 +67,19 @@ impl ActiveToolCall {
     pub fn add_bash_output_line(&mut self, line: BashOutputLine) {
         self.bash_output_lines.push(line);
         self.is_bash_streaming = true;
+    }
+
+    pub fn elapsed_time(&self) -> String {
+        let elapsed = self.start_time.elapsed();
+        let total_secs = elapsed.as_secs();
+        
+        if total_secs < 60 {
+            format!("{}s", total_secs)
+        } else {
+            let mins = total_secs / 60;
+            let secs = total_secs % 60;
+            format!("{}m{}s", mins, secs)
+        }
     }
 }
 
@@ -393,6 +409,7 @@ impl AppState {
             is_subagent_task: false,
             bash_output_lines: Vec::new(),
             is_bash_streaming: false,
+            start_time: Instant::now(),
         });
     }
 
@@ -597,6 +614,7 @@ impl AppState {
                 step_number,
                 action_type,
                 description,
+                budget_pct,
                 ..
             } => {
                 if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
@@ -605,6 +623,7 @@ impl AppState {
                         step_number,
                         action_type,
                         description,
+                        budget_pct,
                     };
                     tool_call.add_subagent_step(step);
                 }
@@ -626,13 +645,11 @@ impl AppState {
                     tool_call.add_bash_output_line(bash_line);
                 }
             }
-            AgentEvent::BudgetUpdate { .. } => {}
         }
     }
 
     pub fn add_thought(&mut self, content: &str) {
         if !content.is_empty() {
-            self.add_message("\n".to_string());
             let content = format!("\n• {}", content);
 
             let msg_line = MessageLine::Markdown(content.to_string());

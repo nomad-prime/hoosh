@@ -40,10 +40,16 @@ impl Component for ActiveToolCallsComponent {
                 }
             };
 
+            let timer = tool_call.elapsed_time();
+
             let mut spans = vec![
                 status_indicator,
                 Span::raw(" "),
                 Span::raw(&tool_call.display_name),
+                Span::styled(
+                    format!("({}) ", timer),
+                    Style::default().fg(palette::DIMMED_TEXT),
+                ),
             ];
 
             match &tool_call.status {

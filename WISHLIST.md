@@ -1,5 +1,7 @@
 ### Wishes
 
+### Approval and switch to autopilot option
+
 ### Warm up
 
 a feature where at startup when project is ran, agent is asked to create a list of all commands its going to need, so we can

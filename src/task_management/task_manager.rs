@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
-use crate::task_management::{TaskDefinition, TaskEvent, TaskResult};
+use crate::task_management::{ExecutionBudget, TaskDefinition, TaskEvent, TaskResult};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -45,6 +45,13 @@ impl TaskManager {
     pub async fn execute_task(&self, task_def: TaskDefinition) -> Result<TaskResult> {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
 
+        let task_def = task_def.initialize_budget();
+        let budget_arc = task_def
+            .budget
+            .as_ref()
+            .map(|b| Arc::new(b.clone()))
+            .expect("Budget should be defined");
+
         // The tool_registry passed to TaskManager is already the subagent registry
         // (without task tool) to prevent infinite recursion
         let tool_executor = Arc::new(
@@ -55,7 +62,7 @@ impl TaskManager {
             .with_event_sender(event_tx.clone()),
         );
 
-        let agent = Agent::new(
+        let mut agent = Agent::new(
             self.backend.clone(),
             self.tool_registry.clone(),
             tool_executor,
@@ -63,8 +70,12 @@ impl TaskManager {
         .with_max_steps(task_def.agent_type.max_steps())
         .with_event_sender(event_tx);
 
+        agent = agent.with_execution_budget(budget_arc.clone());
+
         let mut conversation = Conversation::new();
-        let system_message = task_def.agent_type.system_message(&task_def.prompt);
+        let system_message = task_def
+            .agent_type
+            .system_message(&task_def.prompt, task_def.budget.as_ref());
         conversation.add_user_message(system_message);
 
         let parent_event_tx = self.event_tx.clone();
@@ -91,7 +102,7 @@ impl TaskManager {
                 {
                     step_count += 1;
                     if let Ok(progress_event) =
-                        transform_to_subagent_event(&event, tcid, step_count)
+                        transform_to_subagent_event(&event, tcid, step_count, budget_arc.clone())
                     {
                         let _ = tx.send(progress_event);
                     }
@@ -121,6 +132,17 @@ impl TaskManager {
             });
         }
 
+        // Collect budget info if budget was used
+        let budget_info = task_def
+            .budget
+            .as_ref()
+            .map(|b| crate::task_management::BudgetInfo {
+                elapsed_seconds: b.elapsed_seconds(),
+                remaining_seconds: b.remaining_seconds(),
+                steps_completed: events.len(),
+                max_steps: task_def.agent_type.max_steps(),
+            });
+
         match execute_result {
             Ok(Ok(())) => {
                 let final_response = conversation
@@ -131,12 +153,28 @@ impl TaskManager {
                     .and_then(|m| m.content.clone())
                     .unwrap_or_else(|| "Task completed without final message".to_string());
 
-                Ok(TaskResult::success(final_response).with_events(events))
+                let mut result = TaskResult::success(final_response).with_events(events);
+                if let Some(info) = budget_info {
+                    result = result.with_budget_info(info);
+                }
+                Ok(result)
             }
             Ok(Err(e)) => {
-                Ok(TaskResult::failure(format!("Task failed: {}", e)).with_events(events))
+                let mut result =
+                    TaskResult::failure(format!("Task failed: {}", e)).with_events(events);
+                if let Some(info) = budget_info {
+                    result = result.with_budget_info(info);
+                }
+                Ok(result)
             }
-            Err(_) => Ok(TaskResult::failure("Task timed out".to_string()).with_events(events)),
+            Err(_) => {
+                let mut result =
+                    TaskResult::failure("Task timed out".to_string()).with_events(events);
+                if let Some(info) = budget_info {
+                    result = result.with_budget_info(info);
+                }
+                Ok(result)
+            }
         }
     }
 }
@@ -155,6 +193,7 @@ fn transform_to_subagent_event(
     event: &AgentEvent,
     tool_call_id: &str,
     step_number: usize,
+    budget: Arc<ExecutionBudget>,
 ) -> Result<AgentEvent, String> {
     let (action_type, description) = match event {
         AgentEvent::AssistantThought(content) => {
@@ -182,12 +221,15 @@ fn transform_to_subagent_event(
         _ => return Err("Event not bridged".to_string()),
     };
 
+    let budget_pct = budget.percentage_used(step_number);
+
     Ok(AgentEvent::SubagentStepProgress {
         tool_call_id: tool_call_id.to_string(),
         step_number,
         action_type: action_type.to_string(),
         description,
         timestamp: std::time::SystemTime::now(),
+        budget_pct,
     })
 }
 
@@ -334,8 +376,7 @@ mod tests {
             crate::task_management::AgentType::Plan,
             "long running task".to_string(),
             "long task".to_string(),
-        )
-        .with_timeout(1);
+        );
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());

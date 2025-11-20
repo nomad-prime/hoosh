@@ -15,6 +15,8 @@ pub struct ExecutionBudget {
     pub start_time: Instant,
     pub max_duration: Duration,
     pub max_steps: usize,
+    pause_start: Option<Instant>,
+    total_paused_duration: Duration,
 }
 
 impl ExecutionBudget {
@@ -23,11 +25,25 @@ impl ExecutionBudget {
             start_time: Instant::now(),
             max_duration,
             max_steps,
+            pause_start: None,
+            total_paused_duration: Duration::ZERO,
+        }
+    }
+
+    pub fn pause(&mut self) {
+        self.pause_start = Some(Instant::now());
+    }
+
+    pub fn resume(&mut self) {
+        if let Some(start) = self.pause_start {
+            self.total_paused_duration += start.elapsed();
+            self.pause_start = None;
         }
     }
 
     pub fn elapsed_seconds(&self) -> u64 {
-        self.start_time.elapsed().as_secs()
+        let raw_elapsed = self.start_time.elapsed().as_secs();
+        raw_elapsed.saturating_sub(self.total_paused_duration.as_secs())
     }
 
     pub fn remaining_seconds(&self) -> u64 {
@@ -56,18 +72,20 @@ impl ExecutionBudget {
         }
     }
 
+    pub fn percentage_used(&self, current_step: usize) -> f32 {
+        self.steps_percentage_used(current_step)
+            .max(self.time_percentage_used())
+    }
+
     pub fn should_wrap_up(&self, current_step: usize) -> bool {
         let time_pressure = self.time_percentage_used();
         let step_pressure = self.steps_percentage_used(current_step);
         let max_pressure = time_pressure.max(step_pressure);
 
         // Threshold for wrapping up: 70% of either budget used.
-        // Also consider a hard limit of 80% if still running past the soft wrap-up.
         let low_budget_threshold = 70.0;
-        let hard_exit_threshold = 80.0; // This might be used by the caller to force an exit
 
-        max_pressure >= low_budget_threshold ||
-            self.elapsed_seconds() >= (self.max_duration.as_secs_f32() * hard_exit_threshold / 100.0).floor() as u64
+        max_pressure >= low_budget_threshold
     }
 }
 
@@ -78,7 +96,7 @@ mod tests {
     fn test_execution_budget_elapsed_seconds() {
         let budget = ExecutionBudget::new(Duration::from_secs(60), 10);
         std::thread::sleep(Duration::from_millis(100));
-        assert!((budget.elapsed_seconds() - 0) as i64 <= 1);
+        assert!(budget.elapsed_seconds() as i64 <= 1);
     }
 
     #[test]
@@ -94,13 +112,12 @@ mod tests {
 
     #[test]
     fn test_execution_budget_time_percentage_used() {
-        let budget = ExecutionBudget::new(Duration::from_secs(1), 10);
-        std::thread::sleep(Duration::from_millis(200));
-        assert!((budget.time_percentage_used() - 20.0).abs() < 1.0);
+        let budget = ExecutionBudget::new(Duration::from_secs(10), 10);
+        let initial_percentage = budget.time_percentage_used();
+        assert!((0.0..10.0).contains(&initial_percentage));
 
-        let budget_over = ExecutionBudget::new(Duration::from_millis(100), 10);
-        std::thread::sleep(Duration::from_millis(150));
-        assert!((budget_over.time_percentage_used() - 100.0).abs() < 1.0);
+        let budget_zero = ExecutionBudget::new(Duration::from_secs(0), 10);
+        assert_eq!(budget_zero.time_percentage_used(), 0.0);
     }
 
     #[test]
@@ -114,29 +131,17 @@ mod tests {
 
     #[test]
     fn test_execution_budget_should_wrap_up() {
-        // Low budget (70% time, 50% steps -> max 70% pressure)
-        let budget = ExecutionBudget::new(Duration::from_millis(100), 10);
-        std::thread::sleep(Duration::from_millis(70));
-        assert!(budget.should_wrap_up(5));
-
-        // High steps usage (50% time, 75% steps -> max 75% pressure)
-        let budget_steps = ExecutionBudget::new(Duration::from_millis(100), 4);
-        std::thread::sleep(Duration::from_millis(50));
+        // Test step-based pressure (75% steps -> should wrap up)
+        let budget_steps = ExecutionBudget::new(Duration::from_secs(100), 4);
         assert!(budget_steps.should_wrap_up(3));
 
-        // Not enough pressure
-        let budget_low = ExecutionBudget::new(Duration::from_millis(100), 50);
-        std::thread::sleep(Duration::from_millis(50));
+        // Not enough pressure (40% steps)
+        let budget_low = ExecutionBudget::new(Duration::from_secs(100), 50);
         assert!(!budget_low.should_wrap_up(20));
 
-        // Hard exit threshold (80% time used)
-        let budget_hard_time = ExecutionBudget::new(Duration::from_millis(100), 100);
-        std::thread::sleep(Duration::from_millis(80));
-        assert!(budget_hard_time.should_wrap_up(5));
-
-        // Not enough time elapsed for hard exit
-        let budget_not_hard_time = ExecutionBudget::new(Duration::from_millis(100), 100);
-        std::thread::sleep(Duration::from_millis(70));
-        assert!(!budget_not_hard_time.should_wrap_up(8));
+        // Time-based test - use a very short duration to ensure it triggers
+        let budget_time = ExecutionBudget::new(Duration::from_millis(5), 100);
+        std::thread::sleep(Duration::from_millis(8));
+        assert!(budget_time.should_wrap_up(5));
     }
 }

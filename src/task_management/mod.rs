@@ -1,9 +1,9 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::time::{Duration};
+use std::time::Duration;
 
 mod execution_budget;
-pub use execution_budget::{ExecutionBudget, BudgetInfo};
+pub use execution_budget::{BudgetInfo, ExecutionBudget};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentType {
@@ -22,12 +22,12 @@ impl AgentType {
 
     pub fn max_steps(&self) -> usize {
         match self {
-            AgentType::Plan => 50,
-            AgentType::Explore => 30,
+            AgentType::Plan => 100,
+            AgentType::Explore => 75,
         }
     }
 
-    pub fn system_message(&self, task_prompt: &str) -> String {
+    pub fn system_message(&self, task_prompt: &str, budget: Option<&ExecutionBudget>) -> String {
         let base = match self {
             AgentType::Plan => {
                 "Analyze the codebase and create an implementation plan. \
@@ -45,7 +45,19 @@ impl AgentType {
             }
         };
 
-        format!("{}\n\nTask: {}", base, task_prompt)
+        let mut message = format!("{}\n\nTask: {}", base, task_prompt);
+
+        if let Some(budget) = budget {
+            let budget_guidance = format!(
+                "\n\n[EXECUTION BUDGET]\nYou have a time limit of {} seconds and a maximum of {} steps to complete this task. \
+                You will receive budget updates as you progress. When approaching your limits, prioritize completing your work efficiently.",
+                budget.max_duration.as_secs(),
+                self.max_steps()
+            );
+            message.push_str(&budget_guidance);
+        }
+
+        message
     }
 }
 
@@ -69,16 +81,6 @@ impl TaskDefinition {
             model: None,
             budget: None,
         }
-    }
-
-    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
-        self.timeout_seconds = Some(timeout_seconds);
-        self
-    }
-
-    pub fn with_max_duration(mut self, timeout_seconds: u64) -> Self {
-        self.timeout_seconds = Some(timeout_seconds);
-        self
     }
 
     pub fn with_model(mut self, model: String) -> Self {
@@ -190,7 +192,7 @@ mod tests {
         assert_eq!(task.timeout_seconds, Some(600));
         assert_eq!(task.model, None);
 
-        let task_with_timeout = task.clone().with_timeout(300);
+        let task_with_timeout = task.clone();
         assert_eq!(task_with_timeout.timeout_seconds, Some(300));
 
         let task_with_model = task.clone().with_model("gpt-4".to_string());

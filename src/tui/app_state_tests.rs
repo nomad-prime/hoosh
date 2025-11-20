@@ -110,12 +110,14 @@ fn active_tool_call_add_subagent_step() {
         is_subagent_task: false,
         bash_output_lines: Vec::new(),
         is_bash_streaming: false,
+        start_time: Instant::now()
     };
 
     let step = SubagentStepSummary {
         step_number: 1,
         action_type: "search".to_string(),
         description: "searching for data".to_string(),
+        budget_pct: 10.0,
     };
 
     tool_call.add_subagent_step(step);
@@ -137,6 +139,7 @@ fn active_tool_call_add_bash_output_line() {
         is_subagent_task: false,
         bash_output_lines: Vec::new(),
         is_bash_streaming: false,
+        start_time: Instant::now()
     };
 
     let line = BashOutputLine {
