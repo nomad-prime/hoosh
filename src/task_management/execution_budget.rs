@@ -139,9 +139,12 @@ mod tests {
         let budget_low = ExecutionBudget::new(Duration::from_secs(100), 50);
         assert!(!budget_low.should_wrap_up(20));
 
-        // Time-based test - use a very short duration to ensure it triggers
-        let budget_time = ExecutionBudget::new(Duration::from_millis(5), 100);
-        std::thread::sleep(Duration::from_millis(8));
+        // Time-based test - use a short duration to ensure it triggers
+        // Note: Using seconds instead of milliseconds because elapsed_seconds() uses as_secs()
+        // We need to sleep for >= 1 second for elapsed_seconds() to return 1
+        let budget_time = ExecutionBudget::new(Duration::from_secs(1), 100);
+        std::thread::sleep(Duration::from_millis(1100));
         assert!(budget_time.should_wrap_up(5));
     }
 }
+

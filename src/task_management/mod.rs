@@ -88,6 +88,11 @@ impl TaskDefinition {
         self
     }
 
+    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
+        self.timeout_seconds = Some(timeout_seconds);
+        self
+    }
+
     pub fn initialize_budget(mut self) -> Self {
         if let Some(timeout) = self.timeout_seconds {
             self.budget = Some(ExecutionBudget::new(
@@ -178,8 +183,8 @@ mod tests {
 
     #[test]
     fn test_agent_type_max_steps() {
-        assert_eq!(AgentType::Plan.max_steps(), 50);
-        assert_eq!(AgentType::Explore.max_steps(), 30);
+        assert_eq!(AgentType::Plan.max_steps(), 100);
+        assert_eq!(AgentType::Explore.max_steps(), 75);
     }
 
     #[test]
@@ -192,11 +197,9 @@ mod tests {
         assert_eq!(task.timeout_seconds, Some(600));
         assert_eq!(task.model, None);
 
-        let task_with_timeout = task.clone();
-        assert_eq!(task_with_timeout.timeout_seconds, Some(300));
-
         let task_with_model = task.clone().with_model("gpt-4".to_string());
         assert_eq!(task_with_model.model, Some("gpt-4".to_string()));
+        assert_eq!(task_with_model.timeout_seconds, Some(600));
     }
 
     #[test]

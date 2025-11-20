@@ -521,12 +521,53 @@ async fn agent_wraps_up_when_budget_low() {
     use crate::task_management::ExecutionBudget;
     use std::time::Duration;
 
+    // Create responses where the first 3 have tool calls (to continue the loop)
+    // and the 4th has content (to complete)
     let backend = Arc::new(MockBackend::new(vec![
-        LlmResponse::content_only("Step 1".to_string()),
+        LlmResponse {
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "nonexistent".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            input_tokens: None,
+            output_tokens: None,
+        },
+        LlmResponse {
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_2".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "nonexistent".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            input_tokens: None,
+            output_tokens: None,
+        },
+        LlmResponse {
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_3".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "nonexistent".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            input_tokens: None,
+            output_tokens: None,
+        },
         LlmResponse::content_only("Final response".to_string()),
     ]));
 
-    let budget = Arc::new(ExecutionBudget::new(Duration::from_millis(50), 2));
+    // Use a budget with 4 max steps, so at step 3 we'll have 75% step pressure
+    let budget = Arc::new(ExecutionBudget::new(Duration::from_secs(100), 4));
     let (event_tx, _) = mpsc::unbounded_channel();
     let tool_registry = Arc::new(ToolRegistry::new());
     let tool_executor = Arc::new(ToolExecutor::new(
@@ -544,14 +585,12 @@ async fn agent_wraps_up_when_budget_low() {
     ));
 
     let agent = Agent::new(backend, tool_registry, tool_executor)
-        .with_max_steps(5)
+        .with_max_steps(10)
         .with_execution_budget(budget)
         .with_event_sender(event_tx);
 
     let mut conversation = Conversation::new();
     conversation.add_user_message("Test".to_string());
-
-    tokio::time::sleep(Duration::from_millis(40)).await;
 
     let result = agent.handle_turn(&mut conversation).await;
     assert!(result.is_ok());
@@ -564,7 +603,8 @@ async fn agent_wraps_up_when_budget_low() {
     });
     assert!(
         has_budget_alert,
-        "Should add budget alert message when budget is low"
+        "Should add budget alert message when budget is low. Messages: {:?}",
+        messages.iter().map(|m| &m.content).collect::<Vec<_>>()
     );
 }
 

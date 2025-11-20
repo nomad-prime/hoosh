@@ -376,7 +376,8 @@ mod tests {
             crate::task_management::AgentType::Plan,
             "long running task".to_string(),
             "long task".to_string(),
-        );
+        )
+        .with_timeout(1); // 1 second timeout, but backend takes 10 seconds
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());
