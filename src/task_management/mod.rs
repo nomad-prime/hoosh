@@ -1,5 +1,9 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::time::{Duration};
+
+mod execution_budget;
+pub use execution_budget::{ExecutionBudget, BudgetInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentType {
@@ -52,6 +56,7 @@ pub struct TaskDefinition {
     pub description: String,
     pub timeout_seconds: Option<u64>,
     pub model: Option<String>,
+    pub budget: Option<ExecutionBudget>,
 }
 
 impl TaskDefinition {
@@ -62,6 +67,7 @@ impl TaskDefinition {
             description,
             timeout_seconds: Some(600),
             model: None,
+            budget: None,
         }
     }
 
@@ -70,8 +76,23 @@ impl TaskDefinition {
         self
     }
 
+    pub fn with_max_duration(mut self, timeout_seconds: u64) -> Self {
+        self.timeout_seconds = Some(timeout_seconds);
+        self
+    }
+
     pub fn with_model(mut self, model: String) -> Self {
         self.model = Some(model);
+        self
+    }
+
+    pub fn initialize_budget(mut self) -> Self {
+        if let Some(timeout) = self.timeout_seconds {
+            self.budget = Some(ExecutionBudget::new(
+                Duration::from_secs(timeout),
+                self.agent_type.max_steps(),
+            ));
+        }
         self
     }
 }
@@ -89,6 +110,7 @@ pub struct TaskResult {
     pub output: String,
     pub events: Vec<TaskEvent>,
     pub token_usage: Option<TokenUsage>,
+    pub budget_info: Option<BudgetInfo>,
 }
 
 impl TaskResult {
@@ -98,6 +120,7 @@ impl TaskResult {
             output,
             events: Vec::new(),
             token_usage: None,
+            budget_info: None,
         }
     }
 
@@ -107,6 +130,7 @@ impl TaskResult {
             output: error,
             events: Vec::new(),
             token_usage: None,
+            budget_info: None,
         }
     }
 
@@ -117,6 +141,11 @@ impl TaskResult {
 
     pub fn with_token_usage(mut self, token_usage: TokenUsage) -> Self {
         self.token_usage = Some(token_usage);
+        self
+    }
+
+    pub fn with_budget_info(mut self, budget_info: BudgetInfo) -> Self {
+        self.budget_info = Some(budget_info);
         self
     }
 }

@@ -639,8 +639,20 @@ impl AppState {
 
     pub fn add_thought(&mut self, content: &str) {
         if !content.is_empty() {
-            self.add_message(format!("\n• {}", content));
+            let content = format!("\n• {}", content);
+
+            let msg_line = MessageLine::Markdown(content.to_string());
+
+            self.add_message_line(msg_line);
         }
+    }
+
+    pub fn add_message_line(&mut self, msg_line: MessageLine) {
+        self.messages.push_back(msg_line.clone());
+        if self.messages.len() > self.max_messages {
+            self.messages.pop_front();
+        }
+        self.pending_messages.push_back(msg_line);
     }
 
     pub fn add_tool_call(&mut self, name: &str) {
@@ -666,11 +678,7 @@ impl AppState {
         self.add_message("".to_string());
 
         let msg_line = MessageLine::Markdown(content.to_string());
-        self.messages.push_back(msg_line.clone());
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
-        }
-        self.pending_messages.push_back(msg_line);
+        self.add_message_line(msg_line);
     }
 
     pub fn add_user_input(&mut self, input: &str) {
