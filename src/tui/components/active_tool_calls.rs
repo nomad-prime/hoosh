@@ -44,7 +44,7 @@ impl Component for ActiveToolCallsComponent {
 
             let meta_info = match tool_call.budget_pct {
                 Some(pct) => format!(" {} • {:.0}% done", timer, pct),
-                None => format!(" {}s", timer),
+                None => format!(" {}", timer),
             };
 
             let mut spans = vec![
