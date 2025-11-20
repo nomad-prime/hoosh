@@ -24,7 +24,6 @@ pub struct SubagentStepSummary {
     pub step_number: usize,
     pub action_type: String,
     pub description: String,
-    pub budget_pct: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -42,11 +41,11 @@ pub struct ActiveToolCall {
     pub preview: Option<String>,
     pub result_summary: Option<String>,
     pub subagent_steps: Vec<SubagentStepSummary>,
-    pub current_step: usize,
     pub is_subagent_task: bool,
     pub bash_output_lines: Vec<BashOutputLine>,
     pub is_bash_streaming: bool,
     pub start_time: Instant,
+    pub budget_pct: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,7 +60,6 @@ pub enum ToolCallStatus {
 impl ActiveToolCall {
     pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
         self.subagent_steps.push(step);
-        self.current_step = self.subagent_steps.len();
     }
 
     pub fn add_bash_output_line(&mut self, line: BashOutputLine) {
@@ -72,7 +70,7 @@ impl ActiveToolCall {
     pub fn elapsed_time(&self) -> String {
         let elapsed = self.start_time.elapsed();
         let total_secs = elapsed.as_secs();
-        
+
         if total_secs < 60 {
             format!("{}s", total_secs)
         } else {
@@ -405,11 +403,11 @@ impl AppState {
             preview: None,
             result_summary: None,
             subagent_steps: Vec::new(),
-            current_step: 0,
             is_subagent_task: false,
             bash_output_lines: Vec::new(),
             is_bash_streaming: false,
             start_time: Instant::now(),
+            budget_pct: None,
         });
     }
 
@@ -623,8 +621,8 @@ impl AppState {
                         step_number,
                         action_type,
                         description,
-                        budget_pct,
                     };
+                    tool_call.budget_pct = Some(budget_pct);
                     tool_call.add_subagent_step(step);
                 }
             }

@@ -36,27 +36,7 @@ impl Component for SubagentResultsComponent {
 
             let total_steps = tool_call.subagent_steps.len();
             let has_more = total_steps > MAX_STEPS;
-
-            // Get the last step to show current budget
-            let last_step = &tool_call.subagent_steps[total_steps - 1];
-            let budget_pct = last_step.budget_pct;
-            let budget_color = if budget_pct >= 80.0 {
-                palette::DESTRUCTIVE
-            } else if budget_pct >= 70.0 {
-                palette::WARNING
-            } else {
-                palette::DIMMED_TEXT
-            };
-
-            // Add budget line at the top
-            lines.push(Line::from(vec![
-                Span::styled("  ", Style::default()),
-                Span::styled(
-                    format!("{:.0}%", budget_pct),
-                    Style::default().fg(budget_color),
-                ),
-            ]));
-
+            
             // Get the last N steps
             let start = total_steps.saturating_sub(MAX_STEPS);
             let recent_steps = &tool_call.subagent_steps[start..];
