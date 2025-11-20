@@ -355,11 +355,7 @@ impl AppState {
 
     pub fn add_message(&mut self, message: String) {
         let msg_line = MessageLine::Plain(message);
-        self.messages.push_back(msg_line.clone());
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
-        }
-        self.pending_messages.push_back(msg_line);
+        self.add_message_line(msg_line);
     }
 
     pub fn add_debug_message(&mut self, message: String) {
@@ -374,11 +370,7 @@ impl AppState {
 
     pub fn add_styled_line(&mut self, line: Line<'static>) {
         let msg_line = MessageLine::Styled(line);
-        self.messages.push_back(msg_line.clone());
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
-        }
-        self.pending_messages.push_back(msg_line);
+        self.add_message_line(msg_line);
     }
 
     pub fn has_pending_messages(&self) -> bool {
@@ -634,11 +626,13 @@ impl AppState {
                     tool_call.add_bash_output_line(bash_line);
                 }
             }
+            AgentEvent::BudgetUpdate { .. } => {}
         }
     }
 
     pub fn add_thought(&mut self, content: &str) {
         if !content.is_empty() {
+            self.add_message("\n".to_string());
             let content = format!("\n• {}", content);
 
             let msg_line = MessageLine::Markdown(content.to_string());
