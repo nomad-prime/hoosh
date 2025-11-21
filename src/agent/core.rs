@@ -130,6 +130,7 @@ impl Agent {
         }
 
         for step in 0..self.max_steps {
+            self.send_event(AgentEvent::StepStarted { step });
             let should_exit = self.handle_budget(conversation, step).await?;
             if should_exit {
                 return Ok(());

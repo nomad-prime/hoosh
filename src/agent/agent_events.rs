@@ -86,4 +86,7 @@ pub enum AgentEvent {
         line_number: usize,
         timestamp: std::time::SystemTime,
     },
+    StepStarted {
+        step: usize,
+    },
 }

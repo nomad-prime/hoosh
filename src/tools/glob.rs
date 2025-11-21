@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use walkdir::WalkDir;
+use ignore::WalkBuilder;
 
 #[derive(Debug, Deserialize)]
 struct GlobArgs {
@@ -46,12 +46,17 @@ impl GlobTool {
         let search_path = args.path.as_deref().unwrap_or(".");
         let mut matches = Vec::new();
 
-        for entry in WalkDir::new(search_path)
+        // Use WalkBuilder which respects .gitignore and other ignore files
+        let walker = WalkBuilder::new(search_path)
             .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if !entry.file_type().is_file() {
+            .git_ignore(true)       // Respect .gitignore files
+            .git_global(true)       // Respect global gitignore
+            .git_exclude(true)      // Respect .git/info/exclude
+            .hidden(false)          // Don't automatically skip hidden files (let .gitignore handle it)
+            .build();
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
                 continue;
             }
 

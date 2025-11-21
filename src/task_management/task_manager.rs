@@ -83,9 +83,14 @@ impl TaskManager {
 
         let event_collector = tokio::spawn(async move {
             let mut collected_events = Vec::new();
-            let mut step_count = 0;
+            let mut current_step = 0;
 
             while let Some(event) = event_rx.recv().await {
+                // Track the actual step number from StepStarted events
+                if let AgentEvent::StepStarted { step } = event {
+                    current_step = step;
+                }
+
                 let event_string = format!("{:?}", event);
                 collected_events.push(TaskEvent {
                     event_type: event_string
@@ -100,15 +105,14 @@ impl TaskManager {
                 if let (Some(tx), Some(tcid)) = (&parent_event_tx, &tool_call_id)
                     && should_emit_to_parent(&event)
                 {
-                    step_count += 1;
                     if let Ok(progress_event) =
-                        transform_to_subagent_event(&event, tcid, step_count, budget_arc.clone())
+                        transform_to_subagent_event(&event, tcid, current_step, budget_arc.clone())
                     {
                         let _ = tx.send(progress_event);
                     }
                 }
             }
-            collected_events
+            (collected_events, current_step)
         });
 
         let execute_result = if let Some(timeout_secs) = task_def.timeout_seconds {
@@ -123,23 +127,24 @@ impl TaskManager {
 
         drop(agent);
 
-        let events = event_collector.await.unwrap_or_else(|_| Vec::new());
+        let (events, final_step) = event_collector.await.unwrap_or_else(|_| (Vec::new(), 0));
+
+        let total_steps = final_step + 1;
 
         if let (Some(tx), Some(tcid)) = (&self.event_tx, &self.tool_call_id) {
             let _ = tx.send(AgentEvent::SubagentTaskComplete {
                 tool_call_id: tcid.clone(),
-                total_steps: events.len(),
+                total_steps,
             });
         }
 
-        // Collect budget info if budget was used
         let budget_info = task_def
             .budget
             .as_ref()
             .map(|b| crate::task_management::BudgetInfo {
                 elapsed_seconds: b.elapsed_seconds(),
                 remaining_seconds: b.remaining_seconds(),
-                steps_completed: events.len(),
+                total_steps,
                 max_steps: task_def.agent_type.max_steps(),
             });
 

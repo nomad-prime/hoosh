@@ -643,6 +643,9 @@ impl AppState {
                     tool_call.add_bash_output_line(bash_line);
                 }
             }
+            AgentEvent::StepStarted { .. } => {
+                // This event is used internally for step tracking, no UI update needed
+            }
         }
     }
 

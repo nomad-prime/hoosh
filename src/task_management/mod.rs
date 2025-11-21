@@ -23,7 +23,7 @@ impl AgentType {
     pub fn max_steps(&self) -> usize {
         match self {
             AgentType::Plan => 100,
-            AgentType::Explore => 75,
+            AgentType::Explore => 10,
         }
     }
 

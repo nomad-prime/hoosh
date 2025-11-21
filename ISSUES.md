@@ -44,3 +44,7 @@ auto scrolling when dialogs open up in custom terminal has a limitation, lets se
 
 
 ### LLM Keeps cd-ing in working directory
+
+
+### Permission Dialog when exploring
+currently does not pause the timer -> we have the methods in execution budget we should pause the timer, when user is in control

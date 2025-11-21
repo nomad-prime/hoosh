@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 pub struct BudgetInfo {
     pub elapsed_seconds: u64,
     pub remaining_seconds: u64,
-    pub steps_completed: usize,
+    pub total_steps: usize,
     pub max_steps: usize,
 }
 
