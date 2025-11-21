@@ -147,4 +147,3 @@ mod tests {
         assert!(budget_time.should_wrap_up(5));
     }
 }
-

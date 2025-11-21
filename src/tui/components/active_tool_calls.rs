@@ -51,10 +51,7 @@ impl Component for ActiveToolCallsComponent {
                 status_indicator,
                 Span::raw(" "),
                 Span::raw(&tool_call.display_name),
-                Span::styled(
-                    meta_info,
-                    Style::default().fg(palette::DIMMED_TEXT),
-                ),
+                Span::styled(meta_info, Style::default().fg(palette::DIMMED_TEXT)),
             ];
 
             match &tool_call.status {

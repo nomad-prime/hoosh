@@ -142,7 +142,7 @@ mod tests {
             "long running task".to_string(),
             "long task".to_string(),
         )
-            .with_timeout(1); // 1 second timeout, but backend takes 10 seconds
+        .with_timeout(1); // 1 second timeout, but backend takes 10 seconds
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());
@@ -198,7 +198,7 @@ mod tests {
             "task with custom model".to_string(),
             "custom model task".to_string(),
         )
-            .with_model("gpt-4".to_string());
+        .with_model("gpt-4".to_string());
 
         let result = task_manager.execute_task(task_def).await;
         assert!(result.is_ok());

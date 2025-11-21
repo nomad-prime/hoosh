@@ -1,16 +1,9 @@
-### Token Management
-
-token usage keeps adding up, truncation might not work correctly, or rather the token calculation is not properly reflected
-
-### What Happens when LLM Backend Errors out
-
-do we set the correct turn and proper agent event? and do we handle the turn properly for errors?
-
-I should try this with proper proxy
 
 ### Subagents
 
 Subagents should only show visually the tool calls, not agents repsonses and thinking
+
+proper summary result under explore and plan
 
 ### Compression
 
@@ -39,8 +32,6 @@ heredoc keeps asking
 
 ### Auto Scroll 
 auto scrolling when dialogs open up in custom terminal has a limitation, lets see if we can remove that height limit
-
-### Explore and Plan agents are timing out
 
 
 ### LLM Keeps cd-ing in working directory

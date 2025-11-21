@@ -73,7 +73,11 @@ impl ToolExecutor {
         self
     }
 
-    pub async fn execute_tool_call(&self, tool_call: &ToolCall) -> ToolCallResponse {
+    pub async fn execute_tool_call(
+        &self,
+        tool_call: &ToolCall,
+        conversation_id: Option<&str>,
+    ) -> ToolCallResponse {
         let tool_name = &tool_call.function.name;
         let tool_call_id = tool_call.id.clone();
 
@@ -146,6 +150,7 @@ impl ToolExecutor {
         let context = crate::tools::ToolExecutionContext {
             tool_call_id: tool_call_id.clone(),
             event_tx: self.event_sender.clone(),
+            parent_conversation_id: conversation_id.map(|s| s.to_string()),
         };
 
         let result = match tool.execute_with_context(&args, Some(context)).await {
@@ -186,11 +191,15 @@ impl ToolExecutor {
         result
     }
 
-    pub async fn execute_tool_calls(&self, tool_calls: &[ToolCall]) -> Vec<ToolCallResponse> {
+    pub async fn execute_tool_calls(
+        &self,
+        tool_calls: &[ToolCall],
+        conversation_id: Option<&str>,
+    ) -> Vec<ToolCallResponse> {
         let mut results = Vec::new();
 
         for tool_call in tool_calls {
-            let result = self.execute_tool_call(tool_call).await;
+            let result = self.execute_tool_call(tool_call, conversation_id).await;
             results.push(result);
         }
 
@@ -312,7 +321,7 @@ mod tests {
             },
         };
 
-        let result = executor.execute_tool_call(&tool_call).await;
+        let result = executor.execute_tool_call(&tool_call, None).await;
         assert!(result.result.is_ok());
         assert!(result.result.unwrap().contains("Hello, World!"));
     }
@@ -337,7 +346,7 @@ mod tests {
             },
         };
 
-        let result = executor.execute_tool_call(&tool_call).await;
+        let result = executor.execute_tool_call(&tool_call, None).await;
         assert!(result.result.is_err());
         assert!(
             result
@@ -369,7 +378,7 @@ mod tests {
             },
         };
 
-        let result = executor.execute_tool_call(&tool_call).await;
+        let result = executor.execute_tool_call(&tool_call, None).await;
         assert!(result.result.is_err());
         let error_msg = result.result.unwrap_err().to_string();
         assert!(

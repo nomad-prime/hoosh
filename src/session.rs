@@ -139,7 +139,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Setup conversation storage and load conversation
     let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
-    let (conversation_id, _conversation_title) = setup_conversation(
+    let conversation_id = setup_conversation(
         &conversation_storage,
         continue_conversation_id,
         &mut app_state,
@@ -269,7 +269,7 @@ fn setup_conversation(
     conversation_storage: &ConversationStorage,
     continue_conversation_id: Option<String>,
     app_state: &mut AppState,
-) -> Result<(String, Option<String>)> {
+) -> Result<String> {
     if let Some(ref conv_id) = continue_conversation_id {
         if !conversation_storage.conversation_exists(conv_id) {
             use crate::console::console;
@@ -287,7 +287,7 @@ fn setup_conversation(
             app_state.add_message(format!("Continuing: {}", metadata.title));
         }
 
-        Ok((conv_id.clone(), Some(metadata.title)))
+        Ok(conv_id.clone())
     } else {
         let conv_id = ConversationStorage::generate_conversation_id();
         conversation_storage
@@ -297,7 +297,7 @@ fn setup_conversation(
                 console().error(&format!("Failed to create conversation: {}", e));
                 e
             })?;
-        Ok((conv_id, None))
+        Ok(conv_id)
     }
 }
 

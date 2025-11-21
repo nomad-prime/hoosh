@@ -157,7 +157,7 @@ impl Agent {
                 }
             };
 
-            match self.process_response(conversation, response, step).await? {
+            match self.process_response(conversation, response).await? {
                 TurnStatus::Continue => continue,
                 TurnStatus::Complete => {
                     self.ensure_title(conversation).await;
@@ -237,7 +237,6 @@ impl Agent {
         &self,
         conversation: &mut Conversation,
         response: LlmResponse,
-        step: usize,
     ) -> Result<TurnStatus> {
         // Record token usage in context manager if available
         if let (Some(input_tokens), Some(output_tokens)) =
@@ -260,7 +259,7 @@ impl Agent {
         if let Some(ref tool_calls) = response.tool_calls
             && !tool_calls.is_empty()
         {
-            return self.handle_tool_calls(conversation, response, step).await;
+            return self.handle_tool_calls(conversation, response).await;
         }
 
         if let Some(content) = response.content {
@@ -277,7 +276,6 @@ impl Agent {
         &self,
         conversation: &mut Conversation,
         response: LlmResponse,
-        _step: usize,
     ) -> Result<TurnStatus> {
         let tool_calls = response
             .tool_calls
@@ -293,7 +291,11 @@ impl Agent {
         self.emit_tool_call_events(&tool_calls);
 
         // Phase 2: Execute tools
-        let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
+        let conversation_id = Some(conversation.id());
+        let tool_results = self
+            .tool_executor
+            .execute_tool_calls(&tool_calls, conversation_id)
+            .await;
 
         // Phase 3: Check for rejections and permission denials
         let rejected_tool_call_names = self.rejected_tool_call_names(&tool_results);

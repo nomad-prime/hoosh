@@ -2,9 +2,9 @@ use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::{Tool, ToolError, ToolResult};
 use async_trait::async_trait;
 use glob::Pattern;
+use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use ignore::WalkBuilder;
 
 #[derive(Debug, Deserialize)]
 struct GlobArgs {
@@ -49,10 +49,10 @@ impl GlobTool {
         // Use WalkBuilder which respects .gitignore and other ignore files
         let walker = WalkBuilder::new(search_path)
             .follow_links(false)
-            .git_ignore(true)       // Respect .gitignore files
-            .git_global(true)       // Respect global gitignore
-            .git_exclude(true)      // Respect .git/info/exclude
-            .hidden(false)          // Don't automatically skip hidden files (let .gitignore handle it)
+            .git_ignore(true) // Respect .gitignore files
+            .git_global(true) // Respect global gitignore
+            .git_exclude(true) // Respect .git/info/exclude
+            .hidden(false) // Don't automatically skip hidden files (let .gitignore handle it)
             .build();
 
         for entry in walker.filter_map(|e| e.ok()) {

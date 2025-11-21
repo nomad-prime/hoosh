@@ -482,6 +482,7 @@ mod tests {
         let context = ToolExecutionContext {
             tool_call_id: "test_call_123".to_string(),
             event_tx: Some(event_tx),
+            parent_conversation_id: None,
         };
 
         let args = json!({
@@ -538,6 +539,7 @@ mod tests {
         let context = ToolExecutionContext {
             tool_call_id: "test_call_456".to_string(),
             event_tx: Some(event_tx),
+            parent_conversation_id: None,
         };
 
         let args = json!({

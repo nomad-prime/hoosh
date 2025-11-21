@@ -36,7 +36,7 @@ impl Component for SubagentResultsComponent {
 
             let total_steps = tool_call.subagent_steps.len();
             let has_more = total_steps > MAX_STEPS;
-            
+
             // Get the last N steps
             let start = total_steps.saturating_sub(MAX_STEPS);
             let recent_steps = &tool_call.subagent_steps[start..];

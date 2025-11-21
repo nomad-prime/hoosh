@@ -11,6 +11,7 @@ use crate::permissions::ToolPermissionDescriptor;
 pub struct ToolExecutionContext {
     pub tool_call_id: String,
     pub event_tx: Option<mpsc::UnboundedSender<crate::agent::AgentEvent>>,
+    pub parent_conversation_id: Option<String>,
 }
 
 /// Core trait for all tools in the hoosh system

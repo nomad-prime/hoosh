@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
+use crate::storage::ConversationStorage;
 use crate::task_management::{ExecutionBudget, TaskDefinition, TaskEvent, TaskResult};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -15,6 +16,7 @@ pub struct TaskManager {
     permission_manager: Arc<PermissionManager>,
     event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     tool_call_id: Option<String>,
+    parent_conversation_id: Option<String>,
 }
 
 impl TaskManager {
@@ -29,6 +31,7 @@ impl TaskManager {
             permission_manager,
             event_tx: None,
             tool_call_id: None,
+            parent_conversation_id: None,
         }
     }
 
@@ -39,6 +42,11 @@ impl TaskManager {
 
     pub fn with_tool_call_id(mut self, id: String) -> Self {
         self.tool_call_id = Some(id);
+        self
+    }
+
+    pub fn with_parent_conversation_id(mut self, id: String) -> Self {
+        self.parent_conversation_id = Some(id);
         self
     }
 
@@ -72,7 +80,15 @@ impl TaskManager {
 
         agent = agent.with_execution_budget(budget_arc.clone());
 
-        let mut conversation = Conversation::new();
+        let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
+
+        let mut conversation = if let (Some(parent_id), Some(tool_call_id)) =
+            (&self.parent_conversation_id, &self.tool_call_id)
+        {
+            Conversation::with_subagent_storage(parent_id, tool_call_id, conversation_storage)?
+        } else {
+            Conversation::new()
+        };
         let system_message = task_def
             .agent_type
             .system_message(&task_def.prompt, task_def.budget.as_ref());
