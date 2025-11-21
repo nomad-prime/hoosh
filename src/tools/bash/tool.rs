@@ -308,16 +308,8 @@ struct BashArgs {
 
 #[async_trait]
 impl Tool for BashTool {
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
-        self.execute_impl(args, None).await
-    }
-
-    async fn execute_with_context(
-        &self,
-        args: &Value,
-        context: Option<ToolExecutionContext>,
-    ) -> ToolResult<String> {
-        self.execute_impl(args, context).await
+    async fn execute(&self, args: &Value, context: &ToolExecutionContext) -> ToolResult<String> {
+        self.execute_impl(args, Some(context.clone())).await
     }
 
     fn name(&self) -> &'static str {
@@ -442,7 +434,13 @@ mod tests {
             "command": "echo 'Hello, World!'"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("Hello, World!"));
         assert!(result.contains("Exit code: 0"));
     }
@@ -454,7 +452,13 @@ mod tests {
             "command": "ls /nonexistent/directory"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("STDERR:"));
         assert!(result.contains("Exit code:"));
         assert!(result.contains("Command failed"));
@@ -467,7 +471,13 @@ mod tests {
             "command": "sleep 5" // This should timeout
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Timeout"));
     }
@@ -508,7 +518,7 @@ mod tests {
         });
 
         // Execute command with context
-        let result = tool.execute_with_context(&args, Some(context)).await;
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
 
         let output = result.unwrap();
@@ -563,7 +573,7 @@ mod tests {
         });
 
         // Execute command with context
-        let result = tool.execute_with_context(&args, Some(context)).await;
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
 
         // Drop the tool to close the event channel
@@ -597,8 +607,14 @@ mod tests {
             "command": "echo 'test output'"
         });
 
-        // Execute without context - should not stream
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        // Execute without streaming event channel
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("test output"));
     }

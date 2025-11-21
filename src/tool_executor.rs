@@ -153,7 +153,7 @@ impl ToolExecutor {
             parent_conversation_id: conversation_id.map(|s| s.to_string()),
         };
 
-        let result = match tool.execute_with_context(&args, Some(context)).await {
+        let result = match tool.execute(&args, &context).await {
             Ok(output) => ToolCallResponse::success(
                 tool_call_id.clone(),
                 tool_name.clone(),

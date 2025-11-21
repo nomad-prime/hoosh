@@ -90,16 +90,12 @@ struct TaskArgs {
 
 #[async_trait]
 impl Tool for TaskTool {
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
-        self.execute_impl(args, None).await
-    }
-
-    async fn execute_with_context(
+    async fn execute(
         &self,
         args: &Value,
-        context: Option<crate::tools::ToolExecutionContext>,
+        context: &crate::tools::ToolExecutionContext,
     ) -> ToolResult<String> {
-        self.execute_impl(args, context).await
+        self.execute_impl(args, Some(context.clone())).await
     }
 
     fn name(&self) -> &'static str {
@@ -257,7 +253,13 @@ mod tests {
             "description": "Feature X planning"
         });
 
-        let result = task_tool.execute(&args).await;
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = task_tool.execute(&args, &context).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Plan created successfully");
     }
@@ -287,7 +289,13 @@ mod tests {
             "description": "Find Rust files"
         });
 
-        let result = task_tool.execute(&args).await;
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = task_tool.execute(&args, &context).await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("matching files"));
     }
@@ -314,7 +322,13 @@ mod tests {
             "description": "Test task"
         });
 
-        let result = task_tool.execute(&args).await;
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = task_tool.execute(&args, &context).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -342,7 +356,13 @@ mod tests {
             "subagent_type": "plan"
         });
 
-        let result = task_tool.execute(&args).await;
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = task_tool.execute(&args, &context).await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -376,7 +396,13 @@ mod tests {
             "model": "gpt-4"
         });
 
-        let result = task_tool.execute(&args).await;
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = task_tool.execute(&args, &context).await;
         assert!(result.is_ok());
     }
 
