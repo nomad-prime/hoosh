@@ -164,7 +164,6 @@ pub struct TokenUsage {
 }
 
 pub mod task_manager;
-mod task_manager_tests;
 
 pub use task_manager::TaskManager;
 

@@ -70,15 +70,14 @@ impl TaskManager {
             .with_event_sender(event_tx.clone()),
         );
 
-        let mut agent = Agent::new(
+        let agent = Agent::new(
             self.backend.clone(),
             self.tool_registry.clone(),
             tool_executor,
         )
         .with_max_steps(task_def.agent_type.max_steps())
-        .with_event_sender(event_tx);
-
-        agent = agent.with_execution_budget(budget_arc.clone());
+        .with_event_sender(event_tx)
+        .with_execution_budget(budget_arc.clone());
 
         let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
 
@@ -120,12 +119,10 @@ impl TaskManager {
 
                 if let (Some(tx), Some(tcid)) = (&parent_event_tx, &tool_call_id)
                     && should_emit_to_parent(&event)
-                {
-                    if let Ok(progress_event) =
+                    && let Ok(progress_event) =
                         transform_to_subagent_event(&event, tcid, current_step, budget_arc.clone())
-                    {
-                        let _ = tx.send(progress_event);
-                    }
+                {
+                    let _ = tx.send(progress_event);
                 }
             }
             (collected_events, current_step)
