@@ -1,5 +1,7 @@
 use crate::permissions::tool_permission::ToolPermissionDescriptor;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -47,6 +49,10 @@ impl PermissionsFile {
         project_root.join(".hoosh").join("permissions.json")
     }
 
+    fn get_lock_path(project_root: &Path) -> PathBuf {
+        project_root.join(".hoosh").join("permissions.lock")
+    }
+
     pub fn save_permissions(&self, project_root: &Path) -> Result<(), anyhow::Error> {
         let path = Self::get_permissions_path(project_root);
 
@@ -54,13 +60,28 @@ impl PermissionsFile {
             std::fs::create_dir_all(parent)?;
         }
 
+        // Acquire exclusive file lock to prevent race conditions with concurrent writes
+        let lock_path = Self::get_lock_path(project_root);
+        let lock_file = File::create(&lock_path)?;
+        lock_file.lock_exclusive()?;
+
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(&path, json)?;
+
+        // Lock is automatically released when lock_file is dropped
         Ok(())
     }
 
     pub fn load_permissions(project_root: &Path) -> Result<PermissionsFile, PermissionLoadError> {
         let path = Self::get_permissions_path(project_root);
+
+        // Acquire shared lock to ensure we don't read while a write is in progress
+        let lock_path = Self::get_lock_path(project_root);
+        if let Ok(lock_file) = File::open(&lock_path) {
+            // Ignore lock errors - file may not exist yet on first run
+            let _ = lock_file.lock_shared();
+        }
+
         let content = std::fs::read_to_string(&path).map_err(PermissionLoadError::Io)?;
         let file: PermissionsFile =
             serde_json::from_str(&content).map_err(PermissionLoadError::Parse)?;
