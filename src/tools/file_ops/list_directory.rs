@@ -171,7 +171,20 @@ impl Tool for ListDirectoryTool {
     }
 
     fn description(&self) -> &'static str {
-        "List the contents of a directory, showing files and subdirectories."
+        "List the contents of a directory, showing files and subdirectories.\n\n\
+        Usage:\n\
+        - Returns directories first (with 📁), then files (with 📄)\n\
+        - File sizes are shown in bytes\n\
+        - Hidden files (starting with .) are excluded by default\n\
+        - Use this instead of bash ls command\n\n\
+        When to use:\n\
+        - Understanding project structure\n\
+        - Finding files in a specific directory\n\
+        - Exploring unfamiliar codebases\n\n\
+        When NOT to use:\n\
+        - Finding files across multiple directories - use glob instead\n\
+        - Reading file contents - use read_file instead\n\
+        - Searching for patterns in files - use grep instead"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -181,12 +194,12 @@ impl Tool for ListDirectoryTool {
                 "path": {
                     "type": "string",
                     "default": "",
-                    "description": "The path to the directory to list (empty or '.' for current directory)"
+                    "description": "The directory path to list. Use \"\" or \".\" for current directory. Examples: \"src\", \"src/components\", \"tests\". Relative to working directory."
                 },
                 "show_hidden": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Whether to show hidden files (those starting with '.')"
+                    "description": "If true, include hidden files/directories (those starting with '.'). Examples: .gitignore, .env, .github/"
                 }
             },
             "required": []

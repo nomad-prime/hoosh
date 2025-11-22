@@ -321,11 +321,25 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &'static str {
-        "Execute bash commands safely with timeout and security restrictions. \
-        You are already in the project directory - do not cd into it.
-        Only use cd if you need to access files in a different directory.
-        Only use Bash if the other tools do not give you the functionalities you need. Bash should be last resort.
-        "
+        "Execute bash commands with timeout and security restrictions.\n\n\
+        IMPORTANT: This tool is for terminal operations ONLY. Do NOT use it for:\n\
+        - Reading files - use read_file instead of cat/head/tail\n\
+        - Editing files - use edit_file instead of sed/awk\n\
+        - Writing files - use write_file instead of echo > or cat <<EOF\n\
+        - Finding files - use glob instead of find\n\
+        - Searching content - use grep tool instead of grep/rg commands\n\
+        - Listing directories - use list_directory instead of ls\n\n\
+        Appropriate uses for bash:\n\
+        - Build commands: cargo build, cargo test, npm run, make\n\
+        - Git operations: git status, git diff, git commit\n\
+        - Package managers: cargo add, npm install, pip install\n\
+        - Running tests: cargo test, pytest, npm test\n\
+        - Linting: cargo clippy, eslint, rustfmt\n\n\
+        Usage notes:\n\
+        - You are already in the project directory - do not cd into it\n\
+        - Commands timeout after 30 seconds by default (max 300s)\n\
+        - Always quote file paths with spaces: cd \"path with spaces\"\n\
+        - Avoid interactive commands (-i flags) as they are not supported"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -334,13 +348,13 @@ impl Tool for BashTool {
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The bash command to execute"
+                    "description": "The bash command to execute. Examples: \"cargo build --release\", \"git status\", \"cargo test -- --nocapture\", \"npm run build\". Avoid find/grep/cat - use specialized tools instead."
                 },
                 "timeout_override": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 300,
-                    "description": "Optional: timeout in seconds (max 300 seconds)"
+                    "description": "Optional: timeout in seconds (1-300). Default is 30s. Use higher values for long-running commands like builds or test suites. Example: timeout_override=120 for 2 minutes."
                 }
             },
             "required": ["command"]

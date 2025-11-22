@@ -91,7 +91,20 @@ impl Tool for WriteFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Write content to a file. Can create parent directories if needed."
+        "Write content to a file, creating it if it doesn't exist or overwriting if it does.\n\n\
+        Usage:\n\
+        - If the file exists, you MUST read it first with read_file before overwriting\n\
+        - This tool will completely replace the file contents\n\
+        - Use create_dirs=true to automatically create parent directories\n\
+        - ALWAYS prefer edit_file for modifying existing files (cleaner diffs)\n\n\
+        When to use:\n\
+        - Creating entirely new files that don't exist yet\n\
+        - Complete rewrites when edit_file would be too complex\n\
+        - Writing generated content or configuration files\n\n\
+        When NOT to use:\n\
+        - Making small changes to existing files - use edit_file instead\n\
+        - When you haven't read an existing file first\n\
+        - Creating documentation files unless explicitly requested"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -100,19 +113,19 @@ impl Tool for WriteFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The path to the file to write (relative to working directory)"
+                    "description": "The path to the file to write. Examples: \"src/new_module.rs\", \"config/settings.toml\", \"tests/new_test.rs\""
                 },
                 "content": {
                     "type": "string",
-                    "description": "The content to write to the file. If not provided, an empty file will be created."
+                    "description": "The complete content to write to the file. This will replace the entire file contents. NEVER omit this parameter - always provide the full content."
                 },
                 "create_dirs": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Whether to create parent directories if they don't exist"
+                    "description": "If true, create parent directories if they don't exist. Example: writing to \"src/new_dir/file.rs\" with create_dirs=true will create \"src/new_dir/\" first."
                 }
             },
-            "required": ["path"]
+            "required": ["path", "content"]
         })
     }
 

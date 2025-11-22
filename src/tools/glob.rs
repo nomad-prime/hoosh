@@ -101,7 +101,29 @@ impl Tool for GlobTool {
     }
 
     fn description(&self) -> &'static str {
-        "Fast file pattern matching tool for finding files by name patterns (e.g., **/*.js, **/src/**/*.rs)"
+        "Fast file pattern matching tool that works with any codebase size.\n\n\
+        Usage:\n\
+        - Use glob patterns like \"**/*.rs\" or \"src/**/*.ts\" to find files\n\
+        - Returns matching file paths sorted by modification time (most recent first)\n\
+        - Automatically respects .gitignore rules\n\n\
+        Pattern syntax:\n\
+        - * matches any characters except path separator\n\
+        - ** matches any characters including path separators (recursive)\n\
+        - ? matches exactly one character\n\
+        - [abc] matches any character in brackets\n\n\
+        Examples:\n\
+        - \"**/*.rs\" - all Rust files in project\n\
+        - \"src/**/*.ts\" - TypeScript files under src/\n\
+        - \"**/test_*.py\" - Python test files anywhere\n\
+        - \"*.toml\" - TOML files in current directory only\n\n\
+        When to use:\n\
+        - Finding files by name or extension\n\
+        - Discovering project structure\n\
+        - Locating configuration files\n\n\
+        When NOT to use:\n\
+        - Searching for content inside files - use grep instead\n\
+        - Reading file contents - use read_file instead\n\
+        - Listing a single directory - use list_directory instead"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -110,11 +132,11 @@ impl Tool for GlobTool {
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "The glob pattern to match files against (e.g., **/*.rs, **/src/**/*.ts)"
+                    "description": "The glob pattern to match files against. Examples: \"**/*.rs\" (all Rust files), \"src/**/*.ts\" (TypeScript in src), \"**/Cargo.toml\" (all Cargo.toml files), \"*.json\" (JSON in current dir only)"
                 },
                 "path": {
                     "type": "string",
-                    "description": "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided."
+                    "description": "Optional: directory to search in. Defaults to current working directory if omitted. Examples: \"src\", \"tests\", \"src/components\". IMPORTANT: Simply omit this field for default behavior - do not set to null or undefined."
                 }
             },
             "required": ["pattern"]

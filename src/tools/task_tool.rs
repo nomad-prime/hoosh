@@ -107,10 +107,25 @@ impl Tool for TaskTool {
     }
 
     fn description(&self) -> &'static str {
-        "Launch a specialized sub-agent to handle complex tasks autonomously. \
+        "Launch a specialized sub-agent to handle complex, multi-step tasks autonomously.\n\n\
         Available agent types:\n\
-        - plan: Analyzes codebases and creates implementation plans (max 50 steps)\n\
-        - explore: Quickly searches and understands codebases (max 30 steps)"
+        - plan: Analyzes codebases and creates detailed implementation plans. Use for complex feature planning, architecture decisions, or multi-file refactoring strategies. (max 100 steps, 600s timeout)\n\
+        - explore: Fast agent for codebase exploration and research. Use for finding files, understanding code structure, or answering questions about the codebase. (max 75 steps, 300s timeout)\n\n\
+        Usage:\n\
+        - Write a detailed, self-contained prompt describing exactly what the agent should do\n\
+        - The agent runs autonomously and returns a final report - you cannot interact with it\n\
+        - Specify what information the agent should return in its final response\n\
+        - Launch multiple agents in parallel when tasks are independent\n\n\
+        When to use:\n\
+        - Complex searches that may require multiple rounds of globbing/grepping\n\
+        - Research tasks requiring exploration of unfamiliar code\n\
+        - Planning multi-step implementations\n\
+        - When you're not confident you'll find the right match quickly\n\n\
+        When NOT to use:\n\
+        - Reading a specific file path you already know - use read_file directly\n\
+        - Searching for a specific class/function definition - use grep directly\n\
+        - Simple file operations - use the dedicated tools instead\n\
+        - Tasks that can be done in 1-2 tool calls"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -120,19 +135,19 @@ impl Tool for TaskTool {
                 "subagent_type": {
                     "type": "string",
                     "enum": ["plan", "explore"],
-                    "description": "The type of specialized agent to use"
+                    "description": "Agent type: \"explore\" for codebase research/search, \"plan\" for implementation planning. Choose based on task complexity."
                 },
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the agent to perform autonomously"
+                    "description": "Detailed task description for the agent. Be specific about: what to search for, what files to examine, what information to return. Example: \"Find all files that handle user authentication. Look for login functions, session management, and JWT handling. Return file paths and brief descriptions of each.\""
                 },
                 "description": {
                     "type": "string",
-                    "description": "A short (3-5 word) description of the task"
+                    "description": "Short (3-5 word) task label for display. Examples: \"Find auth handlers\", \"Explore API structure\", \"Plan refactoring\""
                 },
                 "model": {
                     "type": "string",
-                    "description": "Optional model to use (inherits from parent if not specified)"
+                    "description": "Optional: override the model used by this agent. If not specified, inherits from parent. Use smaller models for simple exploration tasks."
                 }
             },
             "required": ["subagent_type", "prompt", "description"]

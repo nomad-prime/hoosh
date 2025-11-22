@@ -289,14 +289,9 @@ fn setup_conversation(
 
         Ok(conv_id.clone())
     } else {
+        // Just generate ID - conversation will be created in load_or_create_conversation
+        // with the system message included
         let conv_id = ConversationStorage::generate_conversation_id();
-        conversation_storage
-            .create_conversation(&conv_id)
-            .map_err(|e| {
-                use crate::console::console;
-                console().error(&format!("Failed to create conversation: {}", e));
-                e
-            })?;
         Ok(conv_id)
     }
 }

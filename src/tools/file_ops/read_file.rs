@@ -120,7 +120,20 @@ impl Tool for ReadFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read the contents of a file. Supports optional line range selection."
+        "Read the contents of a file from the local filesystem.\n\n\
+        Usage:\n\
+        - You MUST read a file before editing it with edit_file or overwriting with write_file\n\
+        - By default, reads the entire file. Use start_line/end_line for large files\n\
+        - Results include line numbers for easy reference when editing\n\
+        - Use this instead of bash commands like cat, head, or tail\n\n\
+        When to use:\n\
+        - Reading source code before making changes\n\
+        - Examining configuration files\n\
+        - Understanding file contents before suggesting modifications\n\n\
+        When NOT to use:\n\
+        - To find files by name - use glob instead\n\
+        - To search for patterns across files - use grep instead\n\
+        - To list directory contents - use list_directory instead"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -129,17 +142,17 @@ impl Tool for ReadFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The path to the file to read (relative to working directory)"
+                    "description": "The path to the file to read. Can be relative (e.g., \"src/main.rs\") or absolute. Examples: \"Cargo.toml\", \"src/lib.rs\", \"tests/integration_test.rs\""
                 },
                 "start_line": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Optional: starting line number (1-indexed)"
+                    "description": "Optional: starting line number (1-indexed). Use for large files to read specific sections. Example: start_line=100 reads from line 100 onwards"
                 },
                 "end_line": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Optional: ending line number (1-indexed)"
+                    "description": "Optional: ending line number (1-indexed, inclusive). Must be >= start_line. Example: start_line=100, end_line=150 reads lines 100-150"
                 }
             },
             "required": ["path"]
