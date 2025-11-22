@@ -264,7 +264,7 @@ impl SingleCommandPattern {
             // Always safe (information only)
             "ls" | "pwd" | "whoami" | "date" | "echo" | "which" | "type" | "hostname" => {
                 !full_command.contains('>')
-            },
+            }
 
             // Safe read-only text processing (unless redirecting output)
             "cat" | "head" | "tail" | "less" | "more" | "grep" | "wc" | "sort" | "uniq"

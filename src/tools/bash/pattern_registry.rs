@@ -125,7 +125,11 @@ mod tests {
         // RedirectionPattern has priority 70, CommandChainPattern has 60
         // So redirection should win
         assert!(!result.safe, "Redirection commands should not be safe");
-        assert!(result.pattern.contains(":>"), "Pattern should be redirection pattern, got: {}", result.pattern);
+        assert!(
+            result.pattern.contains(":>"),
+            "Pattern should be redirection pattern, got: {}",
+            result.pattern
+        );
     }
 
     #[test]
@@ -133,7 +137,7 @@ mod tests {
         let registry = BashCommandPatternRegistry::new();
         // This command has both redirection AND command chaining
         let cmd = r#"echo "Project: Demo Script" > data.txt && echo "Status: Active" >> data.txt && cat data.txt"#;
-        let result = registry.matches_pattern("echo:*",cmd);
+        let result = registry.matches_pattern("echo:*", cmd);
 
         assert!(!result, "Should only match simple command patterns")
     }

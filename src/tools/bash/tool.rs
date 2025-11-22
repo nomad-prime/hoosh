@@ -5,7 +5,7 @@ use crate::tools::bash::BashCommandPatternRegistry;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -404,7 +404,9 @@ impl Tool for BashTool {
             builder = builder.into_read_only();
         }
 
-        builder.build().expect("Failed to build BashTool permission descriptor")
+        builder
+            .build()
+            .expect("Failed to build BashTool permission descriptor")
     }
 }
 
