@@ -1,6 +1,6 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
-use crate::tools::{Tool, ToolError, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -78,7 +78,7 @@ struct WriteFileArgs {
 
 #[async_trait]
 impl Tool for WriteFileTool {
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
+    async fn execute(&self, args: &Value, _context: &ToolExecutionContext) -> ToolResult<String> {
         self.execute_impl(args).await
     }
 
@@ -267,7 +267,13 @@ mod tests {
             "content": content
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("Successfully wrote"));
 
         let written_content = fs::read_to_string(temp_dir.path().join("new_file.txt"))

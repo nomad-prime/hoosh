@@ -1,9 +1,5 @@
 use super::*;
 
-// ============================================================================
-// CompletionState Tests
-// ============================================================================
-
 #[test]
 fn completion_state_new_initializes_correctly() {
     let state = CompletionState::new(0);
@@ -81,10 +77,6 @@ fn completion_state_scroll_offset_updates_when_scrolling() {
     assert_eq!(state.scroll_offset, 6); // 15 - (10 - 1) = 6
 }
 
-// ============================================================================
-// ApprovalDialogState Tests
-// ============================================================================
-
 #[test]
 fn approval_dialog_new_initializes_correctly() {
     let dialog = ApprovalDialogState::new("call123".to_string(), "bash".to_string());
@@ -93,10 +85,6 @@ fn approval_dialog_new_initializes_correctly() {
     assert_eq!(dialog.selected_index, 0);
 }
 
-// ============================================================================
-// ActiveToolCall Tests
-// ============================================================================
-
 #[test]
 fn active_tool_call_add_subagent_step() {
     let mut tool_call = ActiveToolCall {
@@ -104,12 +92,13 @@ fn active_tool_call_add_subagent_step() {
         display_name: "test".to_string(),
         status: ToolCallStatus::Starting,
         preview: None,
+        budget_pct: None,
         result_summary: None,
         subagent_steps: Vec::new(),
-        current_step: 0,
         is_subagent_task: false,
         bash_output_lines: Vec::new(),
         is_bash_streaming: false,
+        start_time: Instant::now(),
     };
 
     let step = SubagentStepSummary {
@@ -121,7 +110,6 @@ fn active_tool_call_add_subagent_step() {
     tool_call.add_subagent_step(step);
     assert_eq!(tool_call.subagent_steps.len(), 1);
     assert_eq!(tool_call.subagent_steps[0].step_number, 1);
-    assert_eq!(tool_call.current_step, 1);
 }
 
 #[test]
@@ -133,10 +121,11 @@ fn active_tool_call_add_bash_output_line() {
         preview: None,
         result_summary: None,
         subagent_steps: Vec::new(),
-        current_step: 0,
         is_subagent_task: false,
         bash_output_lines: Vec::new(),
         is_bash_streaming: false,
+        budget_pct: None,
+        start_time: Instant::now(),
     };
 
     let line = BashOutputLine {
@@ -184,10 +173,6 @@ fn app_state_default_creates_new() {
     assert_eq!(state.agent_state, AgentState::Idle);
 }
 
-// ============================================================================
-// AppState Tests - Animation
-// ============================================================================
-
 #[test]
 fn app_state_tick_animation_increments() {
     let mut state = AppState::new();
@@ -195,10 +180,6 @@ fn app_state_tick_animation_increments() {
     state.tick_animation();
     assert_eq!(state.animation_frame, initial.wrapping_add(1));
 }
-
-// ============================================================================
-// AppState Tests - Autopilot
-// ============================================================================
 
 #[test]
 fn app_state_toggle_autopilot() {
@@ -223,10 +204,6 @@ fn app_state_toggle_autopilot() {
             .load(std::sync::atomic::Ordering::Relaxed)
     );
 }
-
-// ============================================================================
-// AppState Tests - Completion
-// ============================================================================
 
 #[test]
 fn app_state_is_completing_returns_correct_state() {
@@ -302,10 +279,6 @@ fn app_state_apply_completion_without_state() {
     assert_eq!(result, None);
 }
 
-// ============================================================================
-// AppState Tests - Approval Dialog
-// ============================================================================
-
 #[test]
 fn app_state_show_approval_dialog() {
     let mut state = AppState::new();
@@ -344,10 +317,6 @@ fn app_state_select_approval_options() {
         0
     );
 }
-
-// ============================================================================
-// AppState Tests - Messages
-// ============================================================================
 
 #[test]
 fn app_state_add_message() {
@@ -420,10 +389,6 @@ fn app_state_clear_input() {
     assert!(state.get_input_text().is_empty());
 }
 
-// ============================================================================
-// AppState Tests - Tool Calls
-// ============================================================================
-
 #[test]
 fn app_state_add_active_tool_call() {
     let mut state = AppState::new();
@@ -487,10 +452,6 @@ fn app_state_clear_active_tool_calls() {
     state.clear_active_tool_calls();
     assert!(state.active_tool_calls.is_empty());
 }
-
-// ============================================================================
-// AppState Tests - Helper Methods
-// ============================================================================
 
 #[test]
 fn app_state_add_thought() {

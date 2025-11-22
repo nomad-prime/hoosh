@@ -5,6 +5,8 @@ development environment.
 
 > **Hoosh** (هوش) means "intelligence", "intellect", or "mind" in Persian.
 
+NOTE: HOOSH is still in development and does not support backward compatibility with previous versions. 
+
 ## Features
 
 - **Multi-backend Support**: Support for multiple AI providers

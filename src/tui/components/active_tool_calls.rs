@@ -40,10 +40,18 @@ impl Component for ActiveToolCallsComponent {
                 }
             };
 
+            let timer = tool_call.elapsed_time();
+
+            let meta_info = match tool_call.budget_pct {
+                Some(pct) => format!(" {} • {:.0}% done", timer, pct),
+                None => format!(" {}", timer),
+            };
+
             let mut spans = vec![
                 status_indicator,
                 Span::raw(" "),
                 Span::raw(&tool_call.display_name),
+                Span::styled(meta_info, Style::default().fg(palette::DIMMED_TEXT)),
             ];
 
             match &tool_call.status {

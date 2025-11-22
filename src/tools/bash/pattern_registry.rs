@@ -10,6 +10,7 @@ impl BashCommandPatternRegistry {
             Box::new(HeredocPattern),
             Box::new(SubshellPattern),
             Box::new(PipelinePattern),
+            Box::new(RedirectionPattern),
             Box::new(CommandChainPattern),
             Box::new(SingleCommandPattern),
         ];
@@ -33,6 +34,15 @@ impl BashCommandPatternRegistry {
             persistent_message: "don't ask me again for bash in this project".to_string(),
             safe: false,
         }
+    }
+
+    pub fn matches_pattern(&self, pattern: &str, command: &str) -> bool {
+        for p in &self.patterns {
+            if p.matches(command) {
+                return p.matches_pattern(pattern, command);
+            }
+        }
+        false
     }
 }
 
@@ -103,6 +113,33 @@ mod tests {
         assert!(registry.analyze_command("find . -name '*.rs'").safe);
         assert!(registry.analyze_command("cat README.md").safe);
         assert!(registry.analyze_command("pwd").safe);
+    }
+
+    #[test]
+    fn test_redirection_with_command_chain() {
+        let registry = BashCommandPatternRegistry::new();
+        // This command has both redirection AND command chaining
+        let cmd = r#"echo "Project: Demo Script" > data.txt && echo "Status: Active" >> data.txt && cat data.txt"#;
+        let result = registry.analyze_command(cmd);
+
+        // RedirectionPattern has priority 70, CommandChainPattern has 60
+        // So redirection should win
+        assert!(!result.safe, "Redirection commands should not be safe");
+        assert!(
+            result.pattern.contains(":>"),
+            "Pattern should be redirection pattern, got: {}",
+            result.pattern
+        );
+    }
+
+    #[test]
+    fn test_redirection_with_command_chain_and_single_command_pattern() {
+        let registry = BashCommandPatternRegistry::new();
+        // This command has both redirection AND command chaining
+        let cmd = r#"echo "Project: Demo Script" > data.txt && echo "Status: Active" >> data.txt && cat data.txt"#;
+        let result = registry.matches_pattern("echo:*", cmd);
+
+        assert!(!result, "Should only match simple command patterns")
     }
 
     #[test]

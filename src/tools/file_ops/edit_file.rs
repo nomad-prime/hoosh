@@ -1,6 +1,6 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
-use crate::tools::{Tool, ToolError, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -131,7 +131,7 @@ struct EditFileArgs {
 
 #[async_trait]
 impl Tool for EditFileTool {
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
+    async fn execute(&self, args: &Value, _context: &ToolExecutionContext) -> ToolResult<String> {
         self.execute_impl(args).await
     }
 
@@ -390,7 +390,16 @@ mod tests {
             "new_string": "Rust"
         });
 
-        let result = tool.execute(&args).await.expect("Failed to execute tool");
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool
+            .execute(&args, &context)
+            .await
+            .expect("Failed to execute tool");
         assert!(result.contains("Successfully edited"));
         assert!(result.contains("replaced 1 occurrence"));
 
@@ -418,7 +427,16 @@ mod tests {
             "replace_all": true
         });
 
-        let result = tool.execute(&args).await.expect("Failed to execute tool");
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool
+            .execute(&args, &context)
+            .await
+            .expect("Failed to execute tool");
         assert!(result.contains("Successfully edited"));
         assert!(result.contains("replaced 3 occurrences"));
 
@@ -445,7 +463,13 @@ mod tests {
             "new_string": "qux"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_err());
         let error = result.expect_err("Expected error but got success");
         assert!(error.to_string().contains("appears 2 times"));
@@ -467,7 +491,13 @@ mod tests {
             "new_string": "Hello"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(error.to_string().contains("String not found"));
@@ -488,7 +518,13 @@ mod tests {
             "new_string": "World"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(error.to_string().contains("must be different"));
@@ -509,7 +545,13 @@ mod tests {
             "new_string": "fn main() {\n    println!(\"Goodbye\");\n}"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("Successfully edited"));
 
         let modified_content = fs::read_to_string(&test_file).await.unwrap();

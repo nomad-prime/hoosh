@@ -5,7 +5,8 @@ use tokio::sync::mpsc;
 use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
-use crate::task_management::{TaskDefinition, TaskEvent, TaskResult};
+use crate::storage::ConversationStorage;
+use crate::task_management::{ExecutionBudget, TaskDefinition, TaskEvent, TaskResult};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -15,6 +16,7 @@ pub struct TaskManager {
     permission_manager: Arc<PermissionManager>,
     event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     tool_call_id: Option<String>,
+    parent_conversation_id: Option<String>,
 }
 
 impl TaskManager {
@@ -29,6 +31,7 @@ impl TaskManager {
             permission_manager,
             event_tx: None,
             tool_call_id: None,
+            parent_conversation_id: None,
         }
     }
 
@@ -42,8 +45,20 @@ impl TaskManager {
         self
     }
 
+    pub fn with_parent_conversation_id(mut self, id: String) -> Self {
+        self.parent_conversation_id = Some(id);
+        self
+    }
+
     pub async fn execute_task(&self, task_def: TaskDefinition) -> Result<TaskResult> {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+        let task_def = task_def.initialize_budget();
+        let budget_arc = task_def
+            .budget
+            .as_ref()
+            .map(|b| Arc::new(b.clone()))
+            .expect("Budget should be defined");
 
         // The tool_registry passed to TaskManager is already the subagent registry
         // (without task tool) to prevent infinite recursion
@@ -61,10 +76,21 @@ impl TaskManager {
             tool_executor,
         )
         .with_max_steps(task_def.agent_type.max_steps())
-        .with_event_sender(event_tx);
+        .with_event_sender(event_tx)
+        .with_execution_budget(budget_arc.clone());
 
-        let mut conversation = Conversation::new();
-        let system_message = task_def.agent_type.system_message(&task_def.prompt);
+        let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
+
+        let mut conversation = if let (Some(parent_id), Some(tool_call_id)) =
+            (&self.parent_conversation_id, &self.tool_call_id)
+        {
+            Conversation::with_subagent_storage(parent_id, tool_call_id, conversation_storage)?
+        } else {
+            Conversation::new()
+        };
+        let system_message = task_def
+            .agent_type
+            .system_message(&task_def.prompt, task_def.budget.as_ref());
         conversation.add_user_message(system_message);
 
         let parent_event_tx = self.event_tx.clone();
@@ -72,9 +98,14 @@ impl TaskManager {
 
         let event_collector = tokio::spawn(async move {
             let mut collected_events = Vec::new();
-            let mut step_count = 0;
+            let mut current_step = 0;
 
             while let Some(event) = event_rx.recv().await {
+                // Track the actual step number from StepStarted events
+                if let AgentEvent::StepStarted { step } = event {
+                    current_step = step;
+                }
+
                 let event_string = format!("{:?}", event);
                 collected_events.push(TaskEvent {
                     event_type: event_string
@@ -88,16 +119,13 @@ impl TaskManager {
 
                 if let (Some(tx), Some(tcid)) = (&parent_event_tx, &tool_call_id)
                     && should_emit_to_parent(&event)
+                    && let Ok(progress_event) =
+                        transform_to_subagent_event(&event, tcid, current_step, budget_arc.clone())
                 {
-                    step_count += 1;
-                    if let Ok(progress_event) =
-                        transform_to_subagent_event(&event, tcid, step_count)
-                    {
-                        let _ = tx.send(progress_event);
-                    }
+                    let _ = tx.send(progress_event);
                 }
             }
-            collected_events
+            (collected_events, current_step)
         });
 
         let execute_result = if let Some(timeout_secs) = task_def.timeout_seconds {
@@ -112,14 +140,26 @@ impl TaskManager {
 
         drop(agent);
 
-        let events = event_collector.await.unwrap_or_else(|_| Vec::new());
+        let (events, final_step) = event_collector.await.unwrap_or_else(|_| (Vec::new(), 0));
+
+        let total_steps = final_step + 1;
 
         if let (Some(tx), Some(tcid)) = (&self.event_tx, &self.tool_call_id) {
             let _ = tx.send(AgentEvent::SubagentTaskComplete {
                 tool_call_id: tcid.clone(),
-                total_steps: events.len(),
+                total_steps,
             });
         }
+
+        let budget_info = task_def
+            .budget
+            .as_ref()
+            .map(|b| crate::task_management::BudgetInfo {
+                elapsed_seconds: b.elapsed_seconds(),
+                remaining_seconds: b.remaining_seconds(),
+                total_steps,
+                max_steps: task_def.agent_type.max_steps(),
+            });
 
         match execute_result {
             Ok(Ok(())) => {
@@ -131,12 +171,28 @@ impl TaskManager {
                     .and_then(|m| m.content.clone())
                     .unwrap_or_else(|| "Task completed without final message".to_string());
 
-                Ok(TaskResult::success(final_response).with_events(events))
+                let mut result = TaskResult::success(final_response).with_events(events);
+                if let Some(info) = budget_info {
+                    result = result.with_budget_info(info);
+                }
+                Ok(result)
             }
             Ok(Err(e)) => {
-                Ok(TaskResult::failure(format!("Task failed: {}", e)).with_events(events))
+                let mut result =
+                    TaskResult::failure(format!("Task failed: {}", e)).with_events(events);
+                if let Some(info) = budget_info {
+                    result = result.with_budget_info(info);
+                }
+                Ok(result)
             }
-            Err(_) => Ok(TaskResult::failure("Task timed out".to_string()).with_events(events)),
+            Err(_) => {
+                let mut result =
+                    TaskResult::failure("Task timed out".to_string()).with_events(events);
+                if let Some(info) = budget_info {
+                    result = result.with_budget_info(info);
+                }
+                Ok(result)
+            }
         }
     }
 }
@@ -155,6 +211,7 @@ fn transform_to_subagent_event(
     event: &AgentEvent,
     tool_call_id: &str,
     step_number: usize,
+    budget: Arc<ExecutionBudget>,
 ) -> Result<AgentEvent, String> {
     let (action_type, description) = match event {
         AgentEvent::AssistantThought(content) => {
@@ -182,318 +239,18 @@ fn transform_to_subagent_event(
         _ => return Err("Event not bridged".to_string()),
     };
 
+    let budget_pct = budget.percentage_used(step_number);
+
     Ok(AgentEvent::SubagentStepProgress {
         tool_call_id: tool_call_id.to_string(),
         step_number,
         action_type: action_type.to_string(),
         description,
         timestamp: std::time::SystemTime::now(),
+        budget_pct,
     })
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::agent::Conversation;
-    use crate::backends::LlmResponse;
-    use crate::backends::MockBackend;
-    use crate::task_management::{TaskDefinition, TaskManager};
-    use crate::{LlmBackend, PermissionManager, ToolRegistry};
-    use anyhow::Result;
-    use async_trait::async_trait;
-    use std::sync::Arc;
-    use tokio::sync::mpsc;
-
-    // Mock backend that delays to test timeout
-    struct DelayedMockBackend;
-
-    #[async_trait]
-    impl LlmBackend for DelayedMockBackend {
-        async fn send_message(&self, message: &str) -> Result<String> {
-            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            Ok(format!("Delayed response to: {}", message))
-        }
-
-        async fn send_message_with_tools(
-            &self,
-            _conversation: &Conversation,
-            _tools: &ToolRegistry,
-        ) -> Result<LlmResponse, crate::backends::LlmError> {
-            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            Ok(LlmResponse::content_only("Delayed response".to_string()))
-        }
-
-        fn backend_name(&self) -> &str {
-            "delayed-mock"
-        }
-
-        fn model_name(&self) -> &str {
-            "delayed-mock-model"
-        }
-    }
-
-    // Mock backend that returns errors
-    struct ErrorMockBackend;
-
-    #[async_trait]
-    impl LlmBackend for ErrorMockBackend {
-        async fn send_message(&self, _message: &str) -> Result<String> {
-            anyhow::bail!("Simulated backend error")
-        }
-
-        async fn send_message_with_tools(
-            &self,
-            _conversation: &Conversation,
-            _tools: &ToolRegistry,
-        ) -> Result<LlmResponse, crate::backends::LlmError> {
-            Err(crate::backends::LlmError::Other {
-                message: "Simulated backend error".to_string(),
-            })
-        }
-
-        fn backend_name(&self) -> &str {
-            "error-mock"
-        }
-
-        fn model_name(&self) -> &str {
-            "error-mock-model"
-        }
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_execute_simple_task() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Plan,
-            "analyze the code".to_string(),
-            "code analysis".to_string(),
-        );
-
-        let result = task_manager.execute_task(task_def).await;
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert!(result.success);
-        // MockBackend echoes the system message, so check it contains the task prompt
-        assert!(result.output.contains("analyze the code"));
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_execute_explore_task() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Explore,
-            "find all rust files".to_string(),
-            "find rust files".to_string(),
-        );
-
-        let result = task_manager.execute_task(task_def).await;
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert!(result.success);
-        // MockBackend echoes the system message, so check it contains the task prompt
-        assert!(result.output.contains("find all rust files"));
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_timeout() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        // Use DelayedMockBackend that takes 10 seconds, with timeout of 1 second
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(DelayedMockBackend);
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Plan,
-            "long running task".to_string(),
-            "long task".to_string(),
-        )
-        .with_timeout(1);
-
-        let result = task_manager.execute_task(task_def).await;
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert!(!result.success);
-        assert!(result.output.contains("Task timed out"));
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_backend_error() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        // Use ErrorMockBackend that always returns errors
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(ErrorMockBackend);
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Plan,
-            "task that will fail".to_string(),
-            "failing task".to_string(),
-        );
-
-        let result = task_manager.execute_task(task_def).await;
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert!(!result.success);
-        assert!(result.output.contains("Task failed"));
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_with_custom_model() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
-
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager);
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Plan,
-            "task with custom model".to_string(),
-            "custom model task".to_string(),
-        )
-        .with_model("gpt-4".to_string());
-
-        let result = task_manager.execute_task(task_def).await;
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert!(result.success);
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_uses_subagent_registry() {
-        use crate::tools::SubAgentToolProvider;
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
-
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        // Create a subagent registry (without task tool to prevent recursion)
-        let subagent_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
-            SubAgentToolProvider::new(std::path::PathBuf::from(".")),
-        )));
-
-        // Verify task tool is NOT in subagent registry
-        assert!(subagent_registry.get_tool("task").is_none());
-        // But other tools should be present
-        assert!(subagent_registry.get_tool("read_file").is_some());
-
-        let task_manager = TaskManager::new(mock_backend, subagent_registry, permission_manager);
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Plan,
-            "test task".to_string(),
-            "test".to_string(),
-        );
-
-        let result = task_manager.execute_task(task_def).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_task_manager_bridges_subagent_events() {
-        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
-
-        let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
-        let tool_registry = Arc::new(ToolRegistry::new());
-        let (event_tx, _) = mpsc::unbounded_channel();
-        let (_, response_rx) = mpsc::unbounded_channel();
-        let permission_manager =
-            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
-
-        let (parent_tx, mut parent_rx) = mpsc::unbounded_channel();
-
-        let task_manager = TaskManager::new(mock_backend, tool_registry, permission_manager)
-            .with_event_sender(parent_tx)
-            .with_tool_call_id("test-task-123".to_string());
-
-        let task_def = TaskDefinition::new(
-            crate::task_management::AgentType::Plan,
-            "test task for event bridging".to_string(),
-            "test".to_string(),
-        );
-
-        tokio::spawn(async move {
-            let _ = task_manager.execute_task(task_def).await;
-        });
-
-        let mut found_progress = false;
-        let mut found_complete = false;
-
-        while let Some(event) = parent_rx.recv().await {
-            match event {
-                crate::agent::AgentEvent::SubagentStepProgress {
-                    tool_call_id,
-                    step_number,
-                    action_type,
-                    description,
-                    ..
-                } => {
-                    assert_eq!(tool_call_id, "test-task-123");
-                    assert!(step_number > 0);
-                    assert!(!action_type.is_empty());
-                    assert!(!description.is_empty());
-                    found_progress = true;
-                }
-                crate::agent::AgentEvent::SubagentTaskComplete {
-                    tool_call_id,
-                    total_steps,
-                } => {
-                    assert_eq!(tool_call_id, "test-task-123");
-                    assert!(total_steps > 0);
-                    found_complete = true;
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        assert!(
-            found_progress || found_complete,
-            "Should receive subagent events"
-        );
-    }
-}
+#[path = "task_manager_tests.rs"]
+mod tests;

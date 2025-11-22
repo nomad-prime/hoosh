@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use indexmap::IndexSet;
 
 pub struct BashCommandParser;
 
@@ -25,7 +25,7 @@ impl BashCommandParser {
             None => return vec![], // Unbalanced quotes or parse error -> Unsafe to run
         };
 
-        let mut commands = HashSet::new();
+        let mut commands = IndexSet::new();
         let mut expect_command = true;
 
         for token in tokens {
@@ -52,9 +52,7 @@ impl BashCommandParser {
             // We ignore them until we hit a control operator.
         }
 
-        let mut result: Vec<String> = commands.into_iter().collect();
-        result.sort();
-        result
+        commands.into_iter().collect()
     }
 
     pub fn contains_heredoc(input: &str) -> bool {
@@ -138,6 +136,14 @@ mod tests {
         let cmds = BashCommandParser::extract_base_commands(
             "cd /tmp && RUST_BACKTRACE=1 ./app | grep error",
         );
-        assert_eq!(cmds, vec!["./app", "cd", "grep"]);
+        assert_eq!(cmds, vec!["cd", "./app", "grep"]);
+    }
+
+    #[test]
+    fn test_echo_cat_command() {
+        let cmds = BashCommandParser::extract_base_commands(
+            "echo \"Hello! This is a test message written using bash.\" > test_message.txt && cat test_message.txt ",
+        );
+        assert_eq!(cmds, vec!["echo", "cat"]);
     }
 }

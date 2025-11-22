@@ -113,7 +113,7 @@ impl Conversation {
             "temp_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs()
         );
         Self {
@@ -123,8 +123,6 @@ impl Conversation {
         }
     }
 
-    /// Create a new conversation with persistent storage
-    /// This will automatically persist all messages as they're added
     pub fn with_storage(id: String, storage: Arc<ConversationStorage>) -> Result<Self> {
         let metadata = storage.create_conversation(&id)?;
         Ok(Self {
@@ -134,7 +132,6 @@ impl Conversation {
         })
     }
 
-    /// Load an existing conversation from storage
     pub fn load(id: &str, storage: Arc<ConversationStorage>) -> Result<Self> {
         let metadata = storage.load_metadata(id)?;
         let messages = storage.load_messages(id)?;
@@ -145,14 +142,18 @@ impl Conversation {
         })
     }
 
-    /// Create an in-memory conversation with a specific ID
-    /// Useful for testing with predictable IDs
-    pub fn new_with_id(id: String) -> Self {
-        Self {
-            metadata: ConversationMetadata::new(id),
+    pub fn with_subagent_storage(
+        parent_conversation_id: &str,
+        tool_call_id: &str,
+        storage: Arc<ConversationStorage>,
+    ) -> Result<Self> {
+        let subagent_id = format!("{}/subagent-{}", parent_conversation_id, tool_call_id);
+        let metadata = storage.create_conversation(&subagent_id)?;
+        Ok(Self {
+            metadata,
             messages: Vec::new(),
-            storage: None,
-        }
+            storage: Some(storage),
+        })
     }
 
     pub fn add_system_message(&mut self, content: String) {

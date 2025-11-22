@@ -9,6 +9,7 @@ use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use std::collections::VecDeque;
+use std::time::Instant;
 use tui_textarea::TextArea;
 
 #[derive(Clone)]
@@ -40,10 +41,11 @@ pub struct ActiveToolCall {
     pub preview: Option<String>,
     pub result_summary: Option<String>,
     pub subagent_steps: Vec<SubagentStepSummary>,
-    pub current_step: usize,
     pub is_subagent_task: bool,
     pub bash_output_lines: Vec<BashOutputLine>,
     pub is_bash_streaming: bool,
+    pub start_time: Instant,
+    pub budget_pct: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -58,12 +60,24 @@ pub enum ToolCallStatus {
 impl ActiveToolCall {
     pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
         self.subagent_steps.push(step);
-        self.current_step = self.subagent_steps.len();
     }
 
     pub fn add_bash_output_line(&mut self, line: BashOutputLine) {
         self.bash_output_lines.push(line);
         self.is_bash_streaming = true;
+    }
+
+    pub fn elapsed_time(&self) -> String {
+        let elapsed = self.start_time.elapsed();
+        let total_secs = elapsed.as_secs();
+
+        if total_secs < 60 {
+            format!("{}s", total_secs)
+        } else {
+            let mins = total_secs / 60;
+            let secs = total_secs % 60;
+            format!("{}m{}s", mins, secs)
+        }
     }
 }
 
@@ -355,11 +369,7 @@ impl AppState {
 
     pub fn add_message(&mut self, message: String) {
         let msg_line = MessageLine::Plain(message);
-        self.messages.push_back(msg_line.clone());
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
-        }
-        self.pending_messages.push_back(msg_line);
+        self.add_message_line(msg_line);
     }
 
     pub fn add_debug_message(&mut self, message: String) {
@@ -374,11 +384,7 @@ impl AppState {
 
     pub fn add_styled_line(&mut self, line: Line<'static>) {
         let msg_line = MessageLine::Styled(line);
-        self.messages.push_back(msg_line.clone());
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
-        }
-        self.pending_messages.push_back(msg_line);
+        self.add_message_line(msg_line);
     }
 
     pub fn has_pending_messages(&self) -> bool {
@@ -397,10 +403,11 @@ impl AppState {
             preview: None,
             result_summary: None,
             subagent_steps: Vec::new(),
-            current_step: 0,
             is_subagent_task: false,
             bash_output_lines: Vec::new(),
             is_bash_streaming: false,
+            start_time: Instant::now(),
+            budget_pct: None,
         });
     }
 
@@ -605,6 +612,7 @@ impl AppState {
                 step_number,
                 action_type,
                 description,
+                budget_pct,
                 ..
             } => {
                 if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
@@ -614,6 +622,7 @@ impl AppState {
                         action_type,
                         description,
                     };
+                    tool_call.budget_pct = Some(budget_pct);
                     tool_call.add_subagent_step(step);
                 }
             }
@@ -634,13 +643,28 @@ impl AppState {
                     tool_call.add_bash_output_line(bash_line);
                 }
             }
+            AgentEvent::StepStarted { .. } => {
+                // This event is used internally for step tracking, no UI update needed
+            }
         }
     }
 
     pub fn add_thought(&mut self, content: &str) {
         if !content.is_empty() {
-            self.add_message(format!("\n• {}", content));
+            let content = format!("\n• {}", content);
+
+            let msg_line = MessageLine::Markdown(content.to_string());
+
+            self.add_message_line(msg_line);
         }
+    }
+
+    pub fn add_message_line(&mut self, msg_line: MessageLine) {
+        self.messages.push_back(msg_line.clone());
+        if self.messages.len() > self.max_messages {
+            self.messages.pop_front();
+        }
+        self.pending_messages.push_back(msg_line);
     }
 
     pub fn add_tool_call(&mut self, name: &str) {
@@ -666,11 +690,7 @@ impl AppState {
         self.add_message("".to_string());
 
         let msg_line = MessageLine::Markdown(content.to_string());
-        self.messages.push_back(msg_line.clone());
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
-        }
-        self.pending_messages.push_back(msg_line);
+        self.add_message_line(msg_line);
     }
 
     pub fn add_user_input(&mut self, input: &str) {
