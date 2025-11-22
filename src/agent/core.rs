@@ -325,8 +325,15 @@ impl Agent {
     fn emit_tool_call_events(&self, tool_calls: &[ToolCall]) {
         let tool_call_info: Vec<(String, String)> = tool_calls
             .iter()
-            .map(|tc| {
-                let display = if let Some(tool) = self.tool_registry.get_tool(&tc.function.name) {
+            .filter_map(|tc| {
+                let tool = self.tool_registry.get_tool(&tc.function.name);
+
+                // Skip hidden tools - they shouldn't appear in the UI
+                if tool.map(|t| t.is_hidden()).unwrap_or(false) {
+                    return None;
+                }
+
+                let display = if let Some(tool) = tool {
                     if let Ok(args) = serde_json::from_str(&tc.function.arguments) {
                         tool.format_call_display(&args)
                     } else {
@@ -335,11 +342,13 @@ impl Agent {
                 } else {
                     tc.function.name.clone()
                 };
-                (tc.id.clone(), display)
+                Some((tc.id.clone(), display))
             })
             .collect();
 
-        self.send_event(AgentEvent::ToolCalls(tool_call_info));
+        if !tool_call_info.is_empty() {
+            self.send_event(AgentEvent::ToolCalls(tool_call_info));
+        }
     }
 
     fn rejected_tool_call_names(&self, tool_call_responses: &[ToolCallResponse]) -> Vec<String> {

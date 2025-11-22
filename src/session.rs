@@ -1,12 +1,14 @@
 use anyhow::Result;
+use chrono::Local;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::agent::Conversation;
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{register_default_commands, CommandRegistry};
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
@@ -17,6 +19,7 @@ use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
+use crate::tools::todo_state::TodoState;
 use crate::tools::ToolRegistry;
 use crate::tui::app_loop::{
     ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
@@ -42,6 +45,7 @@ pub struct SessionConfig {
     pub config: AppConfig,
     pub continue_conversation_id: Option<String>,
     pub working_dir: PathBuf,
+    pub todo_state: TodoState,
 }
 
 impl SessionConfig {
@@ -52,6 +56,7 @@ impl SessionConfig {
         tool_registry: ToolRegistry,
         config: AppConfig,
         continue_conversation_id: Option<String>,
+        todo_state: TodoState,
     ) -> Self {
         let working_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self {
@@ -62,6 +67,7 @@ impl SessionConfig {
             config,
             continue_conversation_id,
             working_dir,
+            todo_state,
         }
     }
 
@@ -81,6 +87,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         config,
         continue_conversation_id,
         working_dir,
+        todo_state,
     } = session_config;
 
     // Initialize app state with history
@@ -150,6 +157,8 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         Arc::clone(&conversation_storage),
         &conversation_id,
         default_agent.as_ref(),
+        &backend,
+        &working_dir,
     )?;
     let conversation = Arc::new(tokio::sync::Mutex::new(conversation));
 
@@ -207,6 +216,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         input_handlers,
         working_dir: working_dir_display,
         config,
+        todo_state,
     };
 
     let event_loop_context = EventLoopContext {
@@ -296,10 +306,74 @@ fn setup_conversation(
     }
 }
 
+fn get_git_status(working_dir: &Path) -> String {
+    match Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(working_dir)
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let status = String::from_utf8_lossy(&output.stdout);
+            if status.trim().is_empty() {
+                "No uncommitted changes".to_string()
+            } else {
+                format!("Modifications:\n{}", status.trim())
+            }
+        }
+        _ => "Git status unavailable".to_string(),
+    }
+}
+
+fn get_platform() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "darwin"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else {
+        "unknown"
+    }
+}
+
+fn generate_environment_context(
+    backend: &Arc<dyn LlmBackend>,
+    working_dir: &Path,
+) -> Result<String> {
+    let now = Local::now();
+    let date = now.format("%Y-%m-%d").to_string();
+    let platform = get_platform();
+    let pwd = working_dir
+        .to_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| ".".to_string());
+    let git_status = get_git_status(working_dir);
+    let model_info = format!("{} ({})", backend.model_name(), backend.backend_name());
+
+    let context = format!(
+        r#"
+**Environment Context**
+
+- **Working Directory**: {}
+- **Date**: {}
+- **Platform**: {}
+- **Model**: {}
+
+**Git Status**:
+{}
+"#,
+        pwd, date, platform, model_info, git_status
+    );
+
+    Ok(context)
+}
+
 fn load_or_create_conversation(
     conversation_storage: Arc<ConversationStorage>,
     conversation_id: &str,
     default_agent: Option<&crate::agent_definition::AgentDefinition>,
+    backend: &Arc<dyn LlmBackend>,
+    working_dir: &Path,
 ) -> Result<Conversation> {
     // Try to load existing conversation
     if conversation_storage.conversation_exists(conversation_id) {
@@ -318,6 +392,11 @@ fn load_or_create_conversation(
     if let Some(agent) = default_agent {
         conv.add_system_message(agent.content.clone());
     }
+
+    // Add environment context system prompt for new conversations
+    let env_context = generate_environment_context(backend, working_dir)?;
+    conv.add_system_message(env_context);
+
     Ok(conv)
 }
 

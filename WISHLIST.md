@@ -1,14 +1,5 @@
 ### Wishes
 
-### SYSTEM PROMPT  Include environment context in system prompt
-
-add dynamically after conversation starts
-- Guidelines for code editing, git operations, and security
-- Environment info showing I'm in pwd
-- The current date (2025-11-22) and platform (darwin)
-- Git status showing modifications to src/tui/app_state.rs
-- Model info (Claude Sonnet 4.5)
-
 ### Approval and switch to autopilot option
 
 ### better status bar -> for explore -> explore and not executing tools

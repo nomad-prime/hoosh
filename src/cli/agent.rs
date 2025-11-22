@@ -1,5 +1,6 @@
 use crate::backends::backend_factory::create_backend;
 use crate::session::{SessionConfig, initialize_session};
+use crate::tools::todo_state::TodoState;
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
 use crate::{
@@ -31,8 +32,12 @@ pub async fn handle_agent(
 
     let backend_arc = Arc::from(backend);
 
-    let tool_registry =
-        ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(working_dir.clone())));
+    // Create shared todo state for the session
+    let todo_state = TodoState::new();
+
+    let tool_registry = ToolRegistry::new().with_provider(Arc::new(
+        BuiltinToolProvider::with_todo_state(working_dir.clone(), todo_state.clone()),
+    ));
 
     let terminal = init_terminal()?;
     let terminal = match init_permission::run(
@@ -77,6 +82,7 @@ pub async fn handle_agent(
         tool_registry,
         config.clone(),
         continue_conversation_id,
+        todo_state,
     )
     .with_working_dir(working_dir);
 

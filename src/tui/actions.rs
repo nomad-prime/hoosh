@@ -62,6 +62,7 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
     let tool_executor = Arc::clone(&event_loop_context.system_resources.tool_executor);
     let event_tx = event_loop_context.channels.event_tx.clone();
     let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
+    let todo_state = event_loop_context.runtime.todo_state.clone();
 
     tokio::spawn(async move {
         let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
@@ -69,6 +70,18 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
         {
             let mut conv = conversation.lock().await;
             conv.add_user_message(expanded_input.clone());
+
+            // Inject todo state as a system reminder in the user message
+            if let Some(todo_reminder) = todo_state.format_for_llm().await {
+                // Add the todo reminder as part of the user's message context
+                let last_idx = conv.messages.len() - 1;
+                if let Some(msg) = conv.messages.get_mut(last_idx)
+                    && let Some(content) = &mut msg.content
+                {
+                    content.push_str("\n\n");
+                    content.push_str(&todo_reminder);
+                }
+            }
         }
 
         let mut conv = conversation.lock().await;

@@ -61,8 +61,15 @@ impl AppLayout for Layout<AppState> {
             acc + height
         });
 
+        // Calculate todo list visibility and height
+        let todo_list_visible = !app.todos.is_empty();
+        // +2 for top and bottom border
+        let todo_list_height = (app.todos.len().min(10) as u16) + 2;
+
         let mut builder = LayoutBuilder::new()
             .spacer(1)
+            .todo_list(todo_list_height, todo_list_visible)
+            .spacer_if(1, todo_list_visible)
             .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
             .subagent_results(subagent_results_height, subagent_results_visible)
             .bash_results(bash_results_height, bash_results_visible)
