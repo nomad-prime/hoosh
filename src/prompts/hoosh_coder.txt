@@ -227,7 +227,13 @@ When using the `write_file` tool, you MUST always provide ALL required parameter
 
 When writing large files, split the content into multiple chunks and if needed use the `edit_file` tool to add content in subsequent turns.
 
-# Final Reminder
+## Git commits:
+- Only commit when explicitly asked
+- Never skip hooks unless requested
+- Never force push to main/master
+- Check authorship before amending
+
+# Reminder
 
 **Your goal is to help efficiently and then return control to the user by ending with a text-only response.**
 
