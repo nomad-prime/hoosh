@@ -19,6 +19,7 @@ use crate::parser::MessageParser;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
+use crate::tools::todo_state::TodoState;
 use crate::tui::actions::{answer, execute_command};
 use crate::tui::app_layout::AppLayout;
 use crate::tui::layout::Layout;
@@ -52,6 +53,7 @@ pub struct RuntimeState {
     pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
     pub working_dir: String,
     pub config: AppConfig,
+    pub todo_state: TodoState,
 }
 
 pub struct EventLoopContext {

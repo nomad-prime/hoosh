@@ -139,8 +139,9 @@ impl ToolExecutor {
             }
         }
 
-        // Emit execution started event
-        if let Some(sender) = &self.event_sender {
+        // Emit execution started event (skip for hidden tools)
+        let is_hidden = tool.is_hidden();
+        if !is_hidden && let Some(sender) = &self.event_sender {
             let _ = sender.send(AgentEvent::ToolExecutionStarted {
                 tool_call_id: tool_call_id.clone(),
                 tool_name: tool_name.clone(),
@@ -168,24 +169,26 @@ impl ToolExecutor {
             ),
         };
 
-        // Emit tool result event with summary
-        if let Some(sender) = &self.event_sender {
-            let summary = match &result.result {
-                Ok(output) => tool.result_summary(output),
-                Err(e) => format!("Error: {}", e),
-            };
-            let _ = sender.send(AgentEvent::ToolResult {
-                tool_call_id: tool_call_id.clone(),
-                tool_name: display_name.clone(),
-                summary,
-            });
-        }
+        // Emit tool result and completion events (skip for hidden tools)
+        if !is_hidden {
+            if let Some(sender) = &self.event_sender {
+                let summary = match &result.result {
+                    Ok(output) => tool.result_summary(output),
+                    Err(e) => format!("Error: {}", e),
+                };
+                let _ = sender.send(AgentEvent::ToolResult {
+                    tool_call_id: tool_call_id.clone(),
+                    tool_name: display_name.clone(),
+                    summary,
+                });
+            }
 
-        if let Some(sender) = &self.event_sender {
-            let _ = sender.send(AgentEvent::ToolExecutionCompleted {
-                tool_call_id: tool_call_id.clone(),
-                tool_name: tool_name.clone(),
-            });
+            if let Some(sender) = &self.event_sender {
+                let _ = sender.send(AgentEvent::ToolExecutionCompleted {
+                    tool_call_id: tool_call_id.clone(),
+                    tool_name: tool_name.clone(),
+                });
+            }
         }
 
         result

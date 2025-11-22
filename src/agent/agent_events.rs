@@ -1,4 +1,5 @@
 use crate::permissions::ToolPermissionDescriptor;
+use crate::tools::todo_write::TodoItem;
 
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
@@ -88,5 +89,8 @@ pub enum AgentEvent {
     },
     StepStarted {
         step: usize,
+    },
+    TodoUpdate {
+        todos: Vec<TodoItem>,
     },
 }
