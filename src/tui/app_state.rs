@@ -651,8 +651,6 @@ impl AppState {
 
     pub fn add_thought(&mut self, content: &str) {
         if !content.is_empty() {
-            let content = format!("{}", content);
-
             let msg_line = MessageLine::Markdown(content.to_string());
 
             self.add_message("\n".to_string());

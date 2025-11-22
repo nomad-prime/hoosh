@@ -249,7 +249,27 @@ impl Tool for GrepTool {
     }
 
     fn description(&self) -> &'static str {
-        "Search code using regex patterns. Built on ripgrep for fast, accurate searches across large codebases."
+        "Search code using regex patterns. Built on ripgrep for fast, accurate searches.\n\n\
+        Usage:\n\
+        - Supports full regex syntax (e.g., \"log.*Error\", \"fn\\s+\\w+\")\n\
+        - Filter by file type with 'type' (e.g., \"rust\", \"python\") or 'glob' (e.g., \"*.rs\")\n\
+        - Output modes: \"files_with_matches\" (default), \"content\" (shows lines), \"count\"\n\n\
+        Pattern syntax (ripgrep):\n\
+        - Literal strings match directly: \"TODO\" finds TODO\n\
+        - Regex: \"fn\\s+\\w+\" matches function definitions\n\
+        - Escape special chars: use \"interface\\{\\}\" to find \"interface{}\"\n\
+        - Multiline: set multiline=true for patterns spanning lines\n\n\
+        Examples:\n\
+        - Find function definitions: pattern=\"fn \\w+\", type=\"rust\"\n\
+        - Find TODOs with context: pattern=\"TODO\", output_mode=\"content\", -C=2\n\
+        - Find imports: pattern=\"^use \", glob=\"*.rs\"\n\n\
+        When to use:\n\
+        - Searching for patterns or text in code\n\
+        - Finding function/class/variable definitions\n\
+        - Locating specific strings across the codebase\n\n\
+        When NOT to use:\n\
+        - Finding files by name/extension - use glob instead\n\
+        - Reading entire file contents - use read_file instead"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -258,58 +278,57 @@ impl Tool for GrepTool {
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "Regex pattern to search for (ripgrep syntax)"
+                    "description": "Regex pattern to search for (ripgrep syntax). Examples: \"TODO\", \"fn \\w+\", \"impl.*Trait\", \"^use \". Escape special regex chars with backslash."
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory or file to search in (defaults to current directory)"
+                    "description": "Directory or file to search in. Defaults to current directory. Examples: \"src\", \"src/main.rs\", \"tests/\""
                 },
                 "output_mode": {
                     "type": "string",
                     "enum": ["files_with_matches", "content", "count"],
-                    "description": "Output format",
-                    "default": "files_with_matches"
+                    "description": "Output format: \"files_with_matches\" (file paths only, default), \"content\" (matching lines with context), \"count\" (match counts per file)"
                 },
                 "glob": {
                     "type": "string",
-                    "description": "File pattern: *.rs, **/*.{ts,tsx}"
+                    "description": "File pattern filter. Examples: \"*.rs\", \"**/*.{ts,tsx}\", \"!*.test.js\" (exclude). More flexible than 'type' parameter."
                 },
                 "type": {
                     "type": "string",
-                    "description": "File type filter: rust, python, javascript"
+                    "description": "Built-in file type filter. Examples: \"rust\", \"python\", \"js\", \"ts\", \"go\", \"java\". More efficient than glob for standard types."
                 },
                 "-i": {
                     "type": "boolean",
-                    "description": "Case insensitive search"
+                    "description": "Case insensitive search. Example: pattern=\"error\" with -i=true matches \"Error\", \"ERROR\", \"error\""
                 },
                 "-n": {
                     "type": "boolean",
-                    "description": "Show line numbers (default: true)",
+                    "description": "Show line numbers in output (default: true). Only applies to output_mode=\"content\"",
                     "default": true
                 },
                 "-A": {
                     "type": "integer",
-                    "description": "Lines of context after match"
+                    "description": "Show N lines AFTER each match. Only applies to output_mode=\"content\". Example: -A=3 shows 3 lines after"
                 },
                 "-B": {
                     "type": "integer",
-                    "description": "Lines of context before match"
+                    "description": "Show N lines BEFORE each match. Only applies to output_mode=\"content\". Example: -B=2 shows 2 lines before"
                 },
                 "-C": {
                     "type": "integer",
-                    "description": "Lines of context before and after match"
+                    "description": "Show N lines BEFORE and AFTER each match. Shorthand for setting both -A and -B. Example: -C=2 shows 2 lines of context"
                 },
                 "multiline": {
                     "type": "boolean",
-                    "description": "Enable multi-line pattern matching"
+                    "description": "Enable multi-line pattern matching where '.' matches newlines. Use for patterns spanning multiple lines like \"struct \\{[\\s\\S]*?\\}\""
                 },
                 "head_limit": {
                     "type": "integer",
-                    "description": "Limit to first N results"
+                    "description": "Limit output to first N matches. Useful for large codebases. Example: head_limit=20"
                 },
                 "offset": {
                     "type": "integer",
-                    "description": "Skip first N results"
+                    "description": "Skip first N matches before returning results. Use with head_limit for pagination."
                 }
             },
             "required": ["pattern"]

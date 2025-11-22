@@ -1,6 +1,6 @@
 ### Wishes
 
-### SYSTEM PROMPT
+### SYSTEM PROMPT  Include environment context in system prompt
 
 add dynamically after conversation starts
 - Guidelines for code editing, git operations, and security

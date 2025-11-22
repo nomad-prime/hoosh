@@ -144,7 +144,26 @@ impl Tool for EditFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Edit a file by replacing exact string matches. Use this for surgical edits to existing files."
+        "Perform exact string replacements in files.\n\n\
+        Usage:\n\
+        - You MUST read the file with read_file before editing. This tool will fail otherwise.\n\
+        - Provide the exact string to find (old_string) and its replacement (new_string)\n\
+        - Preserve exact indentation from the file - match tabs/spaces precisely\n\
+        - ALWAYS prefer editing existing files over creating new ones with write_file\n\n\
+        Important behaviors:\n\
+        - The edit will FAIL if old_string is not unique in the file (appears multiple times)\n\
+        - To replace all occurrences, set replace_all=true\n\
+        - To make a match unique, include more surrounding context in old_string\n\
+        - old_string and new_string must be different\n\n\
+        When to use:\n\
+        - Making targeted changes to existing code\n\
+        - Fixing bugs in specific functions\n\
+        - Adding imports, fields, or methods to existing structures\n\
+        - Renaming variables or functions (with replace_all=true)\n\n\
+        When NOT to use:\n\
+        - Creating entirely new files - use write_file instead\n\
+        - When you haven't read the file first - read it with read_file\n\
+        - For files you want to completely rewrite - use write_file instead"
     }
 
     fn parameter_schema(&self) -> Value {
@@ -153,20 +172,20 @@ impl Tool for EditFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The path to the file to edit (relative to working directory)"
+                    "description": "The path to the file to edit. Examples: \"src/main.rs\", \"Cargo.toml\", \"src/lib.rs\""
                 },
                 "old_string": {
                     "type": "string",
-                    "description": "The exact string to find and replace (must be unique unless replace_all=true)"
+                    "description": "The exact string to find and replace. Must match precisely including whitespace and indentation. Include surrounding context to make the match unique. Example: \"fn old_name(\" or \"    let x = 5;\""
                 },
                 "new_string": {
                     "type": "string",
-                    "description": "The replacement string (must be different from old_string)"
+                    "description": "The replacement string. Must be different from old_string. Preserve indentation to maintain code formatting. Example: \"fn new_name(\" or \"    let x = 10;\""
                 },
                 "replace_all": {
                     "type": "boolean",
                     "default": false,
-                    "description": "If true, replace all occurrences. If false (default), the string must be unique in the file."
+                    "description": "If true, replace ALL occurrences of old_string. Use for renaming variables/functions across a file. If false (default), old_string must appear exactly once."
                 }
             },
             "required": ["path", "old_string", "new_string"]
