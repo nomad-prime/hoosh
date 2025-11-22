@@ -5,7 +5,7 @@ use crate::tools::bash::BashCommandPatternRegistry;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -387,33 +387,24 @@ impl Tool for BashTool {
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
         let target_str = target.unwrap_or("*");
-
-        // Use the pattern registry to analyze the command
         let registry = BashCommandPatternRegistry::new();
         let pattern_result = registry.analyze_command(target_str);
 
-        if pattern_result.safe {
-            return ToolPermissionBuilder::new(self, target_str)
-                .into_read_only()
-                .with_approval_title(" Bash Command ")
-                .with_approval_prompt("Can I run this bash command?".to_string())
-                .with_command_preview(target_str.to_string())
-                .with_persistent_approval("don't ask me again for bash in this project".to_string())
-                .with_suggested_pattern("*".to_string())
-                .with_pattern_matcher(Arc::new(BashPatternMatcher))
-                .build()
-                .expect("Failed to build BashTool permission descriptor");
-        }
-
-        ToolPermissionBuilder::new(self, target_str)
+        // Build descriptor with safety info, but let ToolExecutor decide approval
+        let mut builder = ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
-            .with_approval_prompt("Can I run this bash command?".to_string())
+            .with_approval_prompt("Can I run this bash command?")
             .with_command_preview(target_str.to_string())
             .with_persistent_approval(pattern_result.persistent_message)
             .with_suggested_pattern(pattern_result.pattern)
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
-            .build()
-            .expect("Failed to build BashTool permission descriptor")
+            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()));
+
+        // Mark as read-only if safe (for ToolExecutor to auto-approve)
+        if pattern_result.safe {
+            builder = builder.into_read_only();
+        }
+
+        builder.build().expect("Failed to build BashTool permission descriptor")
     }
 }
 
@@ -527,8 +518,8 @@ mod tests {
         assert!(output.contains("line3"));
         assert!(output.contains("Exit code: 0"));
 
-        // Drop the tool to close the event channel
-        drop(tool);
+        // Drop the context to close the event channel
+        drop(context);
 
         // Check that events were emitted
         let events = events_collector.await.unwrap();
@@ -576,8 +567,8 @@ mod tests {
         let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
 
-        // Drop the tool to close the event channel
-        drop(tool);
+        // Drop the context to close the event channel
+        drop(context);
 
         // Check that we got both stdout and stderr events
         let events = events_collector.await.unwrap();

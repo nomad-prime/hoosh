@@ -239,19 +239,19 @@ mod tests {
         let tool = BashTool::new();
 
         let desc1 = ToolPermissionBuilder::new(&tool, "cargo build")
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()))
             .build()
             .unwrap();
         let desc2 = ToolPermissionBuilder::new(&tool, "cargo build --release")
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()))
             .build()
             .unwrap();
         let desc3 = ToolPermissionBuilder::new(&tool, "cargo check")
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()))
             .build()
             .unwrap();
         let desc4 = ToolPermissionBuilder::new(&tool, "npm build")
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()))
             .build()
             .unwrap();
 

@@ -1,6 +1,6 @@
 [package]
 name = "hoosh"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 repository = "https://github.com/nomad-prime/hoosh"
 
@@ -63,5 +63,3 @@ httpmock = "0.7"
 [profile.dist]
 inherits = "release"
 lto = "thin"
-
-
