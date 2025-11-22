@@ -216,9 +216,13 @@ impl TogetherAiBackend {
             return Err(Self::http_error_to_llm_error(status, error_text));
         }
 
-        let response_data: ChatCompletionResponse =
-            response.json().await.map_err(|e| LlmError::Other {
-                message: format!("Failed to parse response: {}", e),
+        let response_str = response.text().await.map_err(|e| LlmError::Other {
+            message: format!("Failed to read response: {}", e),
+        })?;
+
+        let response_data: ChatCompletionResponse = serde_json::from_str(&response_str.to_string())
+            .map_err(|e| LlmError::RecoverableByLlm {
+                message: format!("Failed to parse response: {}, {}", e, response_str),
             })?;
 
         response_data
@@ -278,9 +282,13 @@ impl TogetherAiBackend {
             return Err(Self::http_error_to_llm_error(status, error_text));
         }
 
-        let response_data: ChatCompletionResponse =
-            response.json().await.map_err(|e| LlmError::Other {
-                message: format!("Failed to parse response: {}", e),
+        let response_str = response.text().await.map_err(|e| LlmError::Other {
+            message: format!("Failed to read response: {}", e),
+        })?;
+
+        let response_data: ChatCompletionResponse = serde_json::from_str(&response_str.to_string())
+            .map_err(|e| LlmError::RecoverableByLlm {
+                message: format!("Failed to parse response: {}, {}", e, response_str),
             })?;
 
         let (input_tokens, output_tokens) = if let Some(usage) = response_data.usage {

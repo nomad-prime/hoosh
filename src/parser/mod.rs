@@ -120,7 +120,15 @@ impl MessageParser {
             args["end_line"] = serde_json::Value::Number(serde_json::Number::from(end));
         }
 
-        self.read_file_tool.execute(&args).await.map_err(Into::into)
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "parser".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+        self.read_file_tool
+            .execute(&args, &context)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn expand_message(&self, message: &str) -> Result<String> {

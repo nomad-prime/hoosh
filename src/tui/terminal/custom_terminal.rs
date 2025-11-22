@@ -520,7 +520,6 @@ where
     /// the area of the screen above the viewport upwards.
     ///
     /// Before:
-    /// ```ignore
     /// +---------------------+
     /// | pre-existing line 1 |
     /// | pre-existing line 2 |
@@ -530,10 +529,8 @@ where
     /// |                     |
     /// |                     |
     /// +---------------------+
-    /// ```
     ///
     /// After inserting 2 lines:
-    /// ```ignore
     /// +---------------------+
     /// | pre-existing line 1 |
     /// | pre-existing line 2 |
@@ -543,10 +540,8 @@ where
     /// |       viewport      |
     /// +---------------------+
     /// +---------------------+
-    /// ```
     ///
     /// After inserting 2 more lines:
-    /// ```ignore
     /// +---------------------+
     /// | pre-existing line 2 |
     /// |   inserted line 1   |
@@ -556,7 +551,6 @@ where
     /// +---------------------+
     /// |       viewport      |
     /// +---------------------+
-    /// ```
     ///
     /// If more lines are inserted than there is space on the screen, then the top lines will go
     /// directly into the terminal's scrollback buffer. At the limit, if the viewport takes up the

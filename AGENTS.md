@@ -321,3 +321,4 @@ pub mod palette {
 - Consider `rayon` for parallel processing of large datasets
 - Profile with `cargo bench` for performance-critical paths
 - Use `tokio-console` for async debugging in development
+- In unit tests only use sleeps in millisecond so the tests stay fast

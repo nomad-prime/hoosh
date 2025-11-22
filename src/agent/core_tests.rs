@@ -441,3 +441,208 @@ async fn agent_response_only_has_content_completes() {
         Some("Final answer".to_string())
     );
 }
+
+#[tokio::test]
+async fn agent_with_execution_budget() {
+    use crate::task_management::ExecutionBudget;
+    use std::time::Duration;
+
+    let backend = Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+        "Response within budget".to_string(),
+    )]));
+
+    let budget = Arc::new(ExecutionBudget::new(Duration::from_secs(60), 10));
+    let tool_registry = Arc::new(ToolRegistry::new());
+    let tool_executor = Arc::new(ToolExecutor::new(
+        tool_registry.clone(),
+        Arc::new(PermissionManager::new(
+            {
+                let (tx, _) = mpsc::unbounded_channel();
+                tx
+            },
+            {
+                let (_, rx) = mpsc::unbounded_channel();
+                rx
+            },
+        )),
+    ));
+
+    let agent = Agent::new(backend, tool_registry, tool_executor)
+        .with_max_steps(5)
+        .with_execution_budget(budget);
+
+    let mut conversation = Conversation::new();
+    conversation.add_user_message("Test message".to_string());
+
+    let result = agent.handle_turn(&mut conversation).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn agent_handles_budget_tracking() {
+    use crate::task_management::ExecutionBudget;
+    use std::time::Duration;
+
+    let backend = Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+        "Response".to_string(),
+    )]));
+
+    let budget = Arc::new(ExecutionBudget::new(Duration::from_secs(60), 10));
+    let (event_tx, _event_rx) = mpsc::unbounded_channel();
+    let tool_registry = Arc::new(ToolRegistry::new());
+    let tool_executor = Arc::new(ToolExecutor::new(
+        tool_registry.clone(),
+        Arc::new(PermissionManager::new(
+            {
+                let (tx, _) = mpsc::unbounded_channel();
+                tx
+            },
+            {
+                let (_, rx) = mpsc::unbounded_channel();
+                rx
+            },
+        )),
+    ));
+
+    let agent = Agent::new(backend, tool_registry, tool_executor)
+        .with_max_steps(5)
+        .with_execution_budget(budget)
+        .with_event_sender(event_tx);
+
+    let mut conversation = Conversation::new();
+    conversation.add_user_message("Test".to_string());
+
+    let result = agent.handle_turn(&mut conversation).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn agent_wraps_up_when_budget_low() {
+    use crate::task_management::ExecutionBudget;
+    use std::time::Duration;
+
+    // Create responses where the first 3 have tool calls (to continue the loop)
+    // and the 4th has content (to complete)
+    let backend = Arc::new(MockBackend::new(vec![
+        LlmResponse {
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "nonexistent".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            input_tokens: None,
+            output_tokens: None,
+        },
+        LlmResponse {
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_2".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "nonexistent".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            input_tokens: None,
+            output_tokens: None,
+        },
+        LlmResponse {
+            content: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call_3".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "nonexistent".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            input_tokens: None,
+            output_tokens: None,
+        },
+        LlmResponse::content_only("Final response".to_string()),
+    ]));
+
+    // Use a budget with 4 max steps, so at step 3 we'll have 75% step pressure
+    let budget = Arc::new(ExecutionBudget::new(Duration::from_secs(100), 4));
+    let (event_tx, _) = mpsc::unbounded_channel();
+    let tool_registry = Arc::new(ToolRegistry::new());
+    let tool_executor = Arc::new(ToolExecutor::new(
+        tool_registry.clone(),
+        Arc::new(PermissionManager::new(
+            {
+                let (tx, _) = mpsc::unbounded_channel();
+                tx
+            },
+            {
+                let (_, rx) = mpsc::unbounded_channel();
+                rx
+            },
+        )),
+    ));
+
+    let agent = Agent::new(backend, tool_registry, tool_executor)
+        .with_max_steps(10)
+        .with_execution_budget(budget)
+        .with_event_sender(event_tx);
+
+    let mut conversation = Conversation::new();
+    conversation.add_user_message("Test".to_string());
+
+    let result = agent.handle_turn(&mut conversation).await;
+    assert!(result.is_ok());
+
+    let messages = conversation.get_messages_for_api();
+    let has_budget_alert = messages.iter().any(|m| {
+        m.content
+            .as_ref()
+            .is_some_and(|c| c.contains("BUDGET ALERT"))
+    });
+    assert!(
+        has_budget_alert,
+        "Should add budget alert message when budget is low. Messages: {:?}",
+        messages.iter().map(|m| &m.content).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn agent_handles_budget_exhaustion() {
+    use crate::task_management::ExecutionBudget;
+    use std::time::Duration;
+
+    let backend = Arc::new(MockBackend::new(vec![
+        LlmResponse::content_only("Working...".to_string()),
+        LlmResponse::content_only("Summary of work done".to_string()),
+    ]));
+
+    let budget = Arc::new(ExecutionBudget::new(Duration::from_millis(10), 5));
+    let tool_registry = Arc::new(ToolRegistry::new());
+    let tool_executor = Arc::new(ToolExecutor::new(
+        tool_registry.clone(),
+        Arc::new(PermissionManager::new(
+            {
+                let (tx, _) = mpsc::unbounded_channel();
+                tx
+            },
+            {
+                let (_, rx) = mpsc::unbounded_channel();
+                rx
+            },
+        )),
+    ));
+
+    let agent = Agent::new(backend, tool_registry, tool_executor)
+        .with_max_steps(10)
+        .with_execution_budget(budget);
+
+    let mut conversation = Conversation::new();
+    conversation.add_user_message("Long task".to_string());
+
+    tokio::time::sleep(Duration::from_millis(15)).await;
+
+    let result = agent.handle_turn(&mut conversation).await;
+    assert!(result.is_ok());
+}

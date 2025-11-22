@@ -7,6 +7,7 @@ use crate::agent::{Conversation, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
+use crate::task_management::ExecutionBudget;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -31,6 +32,7 @@ pub struct Agent {
     max_steps: usize,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     context_manager: Option<Arc<ContextManager>>,
+    execution_budget: Option<Arc<ExecutionBudget>>,
 }
 
 impl Agent {
@@ -46,6 +48,7 @@ impl Agent {
             max_steps: 1000,
             event_sender: None,
             context_manager: None,
+            execution_budget: None,
         }
     }
 
@@ -61,6 +64,11 @@ impl Agent {
 
     pub fn with_context_manager(mut self, context_manager: Arc<ContextManager>) -> Self {
         self.context_manager = Some(context_manager);
+        self
+    }
+
+    pub fn with_execution_budget(mut self, budget: Arc<ExecutionBudget>) -> Self {
+        self.execution_budget = Some(budget);
         self
     }
 
@@ -117,11 +125,16 @@ impl Agent {
 
         // Apply context compression if configured
         if let Some(context_manager) = &self.context_manager {
-            self.apply_context_compression(conversation, context_manager)
+            self.apply_context_strategies(conversation, context_manager)
                 .await?;
         }
 
         for step in 0..self.max_steps {
+            self.send_event(AgentEvent::StepStarted { step });
+            let should_exit = self.handle_budget(conversation, step).await?;
+            if should_exit {
+                return Ok(());
+            }
             let response = match self
                 .backend
                 .send_message_with_tools_and_events(
@@ -144,7 +157,7 @@ impl Agent {
                 }
             };
 
-            match self.process_response(conversation, response, step).await? {
+            match self.process_response(conversation, response).await? {
                 TurnStatus::Continue => continue,
                 TurnStatus::Complete => {
                     self.ensure_title(conversation).await;
@@ -158,7 +171,47 @@ impl Agent {
         Ok(())
     }
 
-    async fn apply_context_compression(
+    async fn handle_budget(&self, conversation: &mut Conversation, step: usize) -> Result<bool> {
+        if let Some(budget) = &self.execution_budget {
+            let remaining = budget.remaining_seconds();
+
+            if budget.should_wrap_up(step) {
+                let wrap_up_message = format!(
+                    "BUDGET ALERT: You have approximately {} seconds and {} steps remaining. \
+                Please prioritize wrapping up your work and providing a final answer.",
+                    remaining,
+                    self.max_steps.saturating_sub(step)
+                );
+                conversation.add_system_message(wrap_up_message);
+            }
+
+            if remaining == 0 {
+                self.send_event(AgentEvent::Error("Time budget exhausted".to_string()));
+                let conclusion_message = "Time budget has been exhausted. Please provide a brief summary of what you've accomplished so far.";
+                conversation.add_user_message(conclusion_message.to_string());
+
+                let response = self
+                    .backend
+                    .send_message_with_tools_and_events(
+                        conversation,
+                        &self.tool_registry,
+                        self.event_sender.clone(),
+                    )
+                    .await?;
+
+                if let Some(content) = response.content {
+                    self.send_event(AgentEvent::FinalResponse(content.clone()));
+                    conversation.add_assistant_message(Some(content), None);
+                }
+
+                self.ensure_title(conversation).await;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    async fn apply_context_strategies(
         &self,
         conversation: &mut Conversation,
         context_manager: &ContextManager,
@@ -172,7 +225,7 @@ impl Agent {
 
         if context_manager.should_warn_about_pressure_value(pressure_after) {
             self.send_event(AgentEvent::TokenPressureWarning {
-                current_pressure: pressure_after, // Show POST-compression pressure
+                current_pressure: pressure_after,
                 threshold: context_manager.config.warning_threshold,
             });
         }
@@ -184,7 +237,6 @@ impl Agent {
         &self,
         conversation: &mut Conversation,
         response: LlmResponse,
-        step: usize,
     ) -> Result<TurnStatus> {
         // Record token usage in context manager if available
         if let (Some(input_tokens), Some(output_tokens)) =
@@ -207,7 +259,7 @@ impl Agent {
         if let Some(ref tool_calls) = response.tool_calls
             && !tool_calls.is_empty()
         {
-            return self.handle_tool_calls(conversation, response, step).await;
+            return self.handle_tool_calls(conversation, response).await;
         }
 
         if let Some(content) = response.content {
@@ -224,7 +276,6 @@ impl Agent {
         &self,
         conversation: &mut Conversation,
         response: LlmResponse,
-        _step: usize,
     ) -> Result<TurnStatus> {
         let tool_calls = response
             .tool_calls
@@ -240,7 +291,11 @@ impl Agent {
         self.emit_tool_call_events(&tool_calls);
 
         // Phase 2: Execute tools
-        let tool_results = self.tool_executor.execute_tool_calls(&tool_calls).await;
+        let conversation_id = Some(conversation.id());
+        let tool_results = self
+            .tool_executor
+            .execute_tool_calls(&tool_calls, conversation_id)
+            .await;
 
         // Phase 3: Check for rejections and permission denials
         let rejected_tool_call_names = self.rejected_tool_call_names(&tool_results);

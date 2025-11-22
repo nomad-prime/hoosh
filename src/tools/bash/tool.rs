@@ -308,16 +308,8 @@ struct BashArgs {
 
 #[async_trait]
 impl Tool for BashTool {
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
-        self.execute_impl(args, None).await
-    }
-
-    async fn execute_with_context(
-        &self,
-        args: &Value,
-        context: Option<ToolExecutionContext>,
-    ) -> ToolResult<String> {
-        self.execute_impl(args, context).await
+    async fn execute(&self, args: &Value, context: &ToolExecutionContext) -> ToolResult<String> {
+        self.execute_impl(args, Some(context.clone())).await
     }
 
     fn name(&self) -> &'static str {
@@ -395,31 +387,24 @@ impl Tool for BashTool {
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
         let target_str = target.unwrap_or("*");
-
-        // Use the pattern registry to analyze the command
         let registry = BashCommandPatternRegistry::new();
         let pattern_result = registry.analyze_command(target_str);
 
-        if pattern_result.safe {
-            return ToolPermissionBuilder::new(self, target_str)
-                .into_read_only()
-                .with_approval_title(" Bash Command ")
-                .with_approval_prompt("Can I run this bash command?".to_string())
-                .with_command_preview(target_str.to_string())
-                .with_persistent_approval("don't ask me again for bash in this project".to_string())
-                .with_suggested_pattern("*".to_string())
-                .with_pattern_matcher(Arc::new(BashPatternMatcher))
-                .build()
-                .expect("Failed to build BashTool permission descriptor");
-        }
-
-        ToolPermissionBuilder::new(self, target_str)
+        // Build descriptor with safety info, but let ToolExecutor decide approval
+        let mut builder = ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
-            .with_approval_prompt("Can I run this bash command?".to_string())
+            .with_approval_prompt("Can I run this bash command?")
             .with_command_preview(target_str.to_string())
             .with_persistent_approval(pattern_result.persistent_message)
             .with_suggested_pattern(pattern_result.pattern)
-            .with_pattern_matcher(Arc::new(BashPatternMatcher))
+            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()));
+
+        // Mark as read-only if safe (for ToolExecutor to auto-approve)
+        if pattern_result.safe {
+            builder = builder.into_read_only();
+        }
+
+        builder
             .build()
             .expect("Failed to build BashTool permission descriptor")
     }
@@ -442,7 +427,13 @@ mod tests {
             "command": "echo 'Hello, World!'"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("Hello, World!"));
         assert!(result.contains("Exit code: 0"));
     }
@@ -454,7 +445,13 @@ mod tests {
             "command": "ls /nonexistent/directory"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("STDERR:"));
         assert!(result.contains("Exit code:"));
         assert!(result.contains("Command failed"));
@@ -467,7 +464,13 @@ mod tests {
             "command": "sleep 5" // This should timeout
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Timeout"));
     }
@@ -482,6 +485,7 @@ mod tests {
         let context = ToolExecutionContext {
             tool_call_id: "test_call_123".to_string(),
             event_tx: Some(event_tx),
+            parent_conversation_id: None,
         };
 
         let args = json!({
@@ -507,7 +511,7 @@ mod tests {
         });
 
         // Execute command with context
-        let result = tool.execute_with_context(&args, Some(context)).await;
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
 
         let output = result.unwrap();
@@ -516,8 +520,8 @@ mod tests {
         assert!(output.contains("line3"));
         assert!(output.contains("Exit code: 0"));
 
-        // Drop the tool to close the event channel
-        drop(tool);
+        // Drop the context to close the event channel
+        drop(context);
 
         // Check that events were emitted
         let events = events_collector.await.unwrap();
@@ -538,6 +542,7 @@ mod tests {
         let context = ToolExecutionContext {
             tool_call_id: "test_call_456".to_string(),
             event_tx: Some(event_tx),
+            parent_conversation_id: None,
         };
 
         let args = json!({
@@ -561,11 +566,11 @@ mod tests {
         });
 
         // Execute command with context
-        let result = tool.execute_with_context(&args, Some(context)).await;
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
 
-        // Drop the tool to close the event channel
-        drop(tool);
+        // Drop the context to close the event channel
+        drop(context);
 
         // Check that we got both stdout and stderr events
         let events = events_collector.await.unwrap();
@@ -595,8 +600,14 @@ mod tests {
             "command": "echo 'test output'"
         });
 
-        // Execute without context - should not stream
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        // Execute without streaming event channel
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("test output"));
     }

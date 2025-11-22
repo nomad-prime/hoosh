@@ -11,23 +11,14 @@ use crate::permissions::ToolPermissionDescriptor;
 pub struct ToolExecutionContext {
     pub tool_call_id: String,
     pub event_tx: Option<mpsc::UnboundedSender<crate::agent::AgentEvent>>,
+    pub parent_conversation_id: Option<String>,
 }
 
 /// Core trait for all tools in the hoosh system
 #[async_trait]
 pub trait Tool: Send + Sync {
-    /// Execute the tool with the given arguments
-    async fn execute(&self, args: &Value) -> ToolResult<String>;
-
-    /// Execute with tool execution context (optional)
-    /// Falls back to execute() if not implemented
-    async fn execute_with_context(
-        &self,
-        args: &Value,
-        _context: Option<ToolExecutionContext>,
-    ) -> ToolResult<String> {
-        self.execute(args).await
-    }
+    /// Execute the tool with the given arguments and execution context
+    async fn execute(&self, args: &Value, context: &ToolExecutionContext) -> ToolResult<String>;
 
     /// Get the tool's name (used for identification)
     fn name(&self) -> &'static str;
@@ -239,7 +230,11 @@ mod tests {
             })
         }
 
-        async fn execute(&self, _args: &Value) -> error::ToolResult<String> {
+        async fn execute(
+            &self,
+            _args: &Value,
+            _context: &ToolExecutionContext,
+        ) -> error::ToolResult<String> {
             Ok(self.response.to_string())
         }
 

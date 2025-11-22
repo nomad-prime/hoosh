@@ -169,7 +169,7 @@ mod tests {
             CommandResult::Success(msg) => {
                 assert_eq!(msg, "Conversation too short to compact (< 30 messages)");
             }
-            _ => panic!("Expected Success result"),
+            _ => panic!("Expected CommandResult::Success, but got {:?}", result),
         }
     }
 }

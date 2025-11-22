@@ -1,6 +1,6 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::security::PathValidator;
-use crate::tools::{Tool, ToolError, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -107,7 +107,7 @@ struct ReadFileArgs {
 
 #[async_trait]
 impl Tool for ReadFileTool {
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
+    async fn execute(&self, args: &Value, _context: &ToolExecutionContext) -> ToolResult<String> {
         self.execute_impl(args).await
     }
 
@@ -196,7 +196,13 @@ mod tests {
             "path": "test.txt"
         });
 
-        let result = tool.execute(&args).await.unwrap();
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await.unwrap();
         assert_eq!(result, content);
     }
 }

@@ -1,5 +1,5 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -316,7 +316,7 @@ impl Tool for GrepTool {
         })
     }
 
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
+    async fn execute(&self, args: &Value, _context: &ToolExecutionContext) -> ToolResult<String> {
         let args: GrepArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "grep".to_string(),
@@ -531,7 +531,13 @@ mod tests {
             "output_mode": "content"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok(), "Execution should succeed");
 
         let result_str = result.unwrap();
@@ -558,7 +564,13 @@ mod tests {
             "path": "src/tools/grep.rs"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok());
     }
 
@@ -582,7 +594,13 @@ mod tests {
             "output_mode": "content"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
 
         // Clean up
         let _ = fs::remove_file("test_grep_temp.txt");
@@ -635,7 +653,13 @@ mod tests {
             "output_mode": "content"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
 
         // Clean up
         let _ = fs::remove_file(filename);
@@ -686,7 +710,13 @@ mod tests {
             "output_mode": "content"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
 
         // Clean up
         let _ = fs::remove_file(&filename);

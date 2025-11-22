@@ -1,10 +1,10 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use glob::Pattern;
+use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use walkdir::WalkDir;
 
 #[derive(Debug, Deserialize)]
 struct GlobArgs {
@@ -46,12 +46,17 @@ impl GlobTool {
         let search_path = args.path.as_deref().unwrap_or(".");
         let mut matches = Vec::new();
 
-        for entry in WalkDir::new(search_path)
+        // Use WalkBuilder which respects .gitignore and other ignore files
+        let walker = WalkBuilder::new(search_path)
             .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if !entry.file_type().is_file() {
+            .git_ignore(true) // Respect .gitignore files
+            .git_global(true) // Respect global gitignore
+            .git_exclude(true) // Respect .git/info/exclude
+            .hidden(false) // Don't automatically skip hidden files (let .gitignore handle it)
+            .build();
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
                 continue;
             }
 
@@ -116,7 +121,7 @@ impl Tool for GlobTool {
         })
     }
 
-    async fn execute(&self, args: &Value) -> ToolResult<String> {
+    async fn execute(&self, args: &Value, _context: &ToolExecutionContext) -> ToolResult<String> {
         let args: GlobArgs =
             serde_json::from_value(args.clone()).map_err(|e| ToolError::InvalidArguments {
                 tool: "glob".to_string(),
@@ -267,7 +272,13 @@ mod tests {
             "path": "."
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_ok(), "Execution should succeed");
     }
 
@@ -278,7 +289,13 @@ mod tests {
             "pattern": "[invalid"
         });
 
-        let result = tool.execute(&args).await;
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
         assert!(result.is_err());
     }
 }

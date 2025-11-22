@@ -49,13 +49,15 @@ impl Component for SubagentResultsComponent {
                     Span::styled("    ", Style::default())
                 };
 
-                lines.push(Line::from(vec![
+                let step_spans = vec![
                     prefix,
                     Span::styled(
                         step.description.to_string(),
                         Style::default().fg(palette::DIMMED_TEXT),
                     ),
-                ]));
+                ];
+
+                lines.push(Line::from(step_spans));
             }
 
             // Show ellipsis at the bottom if there are more steps

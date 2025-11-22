@@ -1,6 +1,6 @@
 [package]
 name = "hoosh"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 repository = "https://github.com/nomad-prime/hoosh"
 
@@ -25,6 +25,7 @@ anyhow = "1.0"
 thiserror = "2.0.16"
 async-trait = "0.1"
 regex = "1.0"
+indexmap = "2.0"
 colored = "2.0"
 ratatui = { version = "0.29.0", features = [
     "scrolling-regions",
@@ -47,10 +48,12 @@ dirs = "6.0.0"
 jsonschema = "0.18"
 glob = "0.3.3"
 walkdir = "2.0"
+ignore = "0.4"
 which = "6.0"
 pulldown-cmark = "0.11"
 syntect = "5.2"
 shlex = "1.3.0"
+fs2 = "0.4"
 
 [dev-dependencies]
 tempfile = "3.0"
@@ -60,5 +63,3 @@ httpmock = "0.7"
 [profile.dist]
 inherits = "release"
 lto = "thin"
-
-

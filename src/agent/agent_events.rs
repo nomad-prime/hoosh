@@ -73,6 +73,7 @@ pub enum AgentEvent {
         action_type: String,
         description: String,
         timestamp: std::time::SystemTime,
+        budget_pct: f32,
     },
     SubagentTaskComplete {
         tool_call_id: String,
@@ -84,5 +85,8 @@ pub enum AgentEvent {
         stream_type: String,
         line_number: usize,
         timestamp: std::time::SystemTime,
+    },
+    StepStarted {
+        step: usize,
     },
 }
