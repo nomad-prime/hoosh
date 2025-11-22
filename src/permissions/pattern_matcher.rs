@@ -99,10 +99,11 @@ mod tests {
     #[test]
     fn test_bash_pattern_matcher_compound() {
         let matcher = BashPatternMatcher::new();
-        assert!(matcher.matches("cargo:*|npm:*", "cargo build && npm install"));
-        assert!(!matcher.matches("cargo:*|npm:*", "cargo build"));
-        assert!(!matcher.matches("cargo:*|npm:*", "npm install"));
-        assert!(!matcher.matches("cargo:*|npm:*", "rustc --version"));
+        // Use & for chain patterns (&&, ||, ;)
+        assert!(matcher.matches("cargo:*&npm:*", "cargo build && npm install"));
+        assert!(!matcher.matches("cargo:*&npm:*", "cargo build"));
+        assert!(!matcher.matches("cargo:*&npm:*", "npm install"));
+        assert!(!matcher.matches("cargo:*&npm:*", "rustc --version"));
     }
 
     #[test]

@@ -201,6 +201,24 @@ impl BashCommandPattern for CommandChainPattern {
     }
 
     fn matches_pattern(&self, pattern: &str, command: &str) -> bool {
+        // Handle compound chain patterns like "cargo:*&npm:*" (uses & for chains)
+        if pattern.contains('&') {
+            let pattern_commands: Vec<&str> = pattern
+                .split('&')
+                .map(|p| p.trim().trim_end_matches(":*").trim_end_matches('*'))
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            let target_commands = BashCommandParser::extract_base_commands(command);
+
+            // All pattern commands must be present in the target
+            return pattern_commands.iter().all(|pattern_cmd| {
+                target_commands
+                    .iter()
+                    .any(|target_cmd| target_cmd == pattern_cmd)
+            });
+        }
+
         // Chain patterns that collapse to single command use ":*" suffix
         if let Some(prefix) = pattern.strip_suffix(":*") {
             let clean_target = command.trim();
@@ -238,10 +256,16 @@ impl BashCommandPattern for CommandChainPattern {
             }
         } else {
             let display = base_commands.join(", ");
+            // Use & for chain patterns (not | which is for pipelines)
+            let pattern = base_commands
+                .iter()
+                .map(|cmd| format!("{}:*", cmd))
+                .collect::<Vec<_>>()
+                .join("&");
 
             CommandPatternResult {
                 description: display.clone(),
-                pattern: "*".to_string(),
+                pattern,
                 persistent_message: format!(
                     "don't ask me again for \"{}\" command combinations in this project",
                     display
@@ -292,6 +316,21 @@ impl BashCommandPattern for SingleCommandPattern {
     }
 
     fn matches_pattern(&self, pattern: &str, command: &str) -> bool {
+        // Single command patterns should NOT match complex commands
+        // Reject if command contains redirections, pipes, chains, or subshells
+        if command.contains('>') || command.contains('<') {
+            return false;
+        }
+        if command.contains('|') {
+            return false;
+        }
+        if command.contains("&&") || command.contains("||") || command.contains(';') {
+            return false;
+        }
+        if BashCommandParser::contains_subshell(command) {
+            return false;
+        }
+
         if let Some(prefix) = pattern.strip_suffix(":*") {
             let clean_target = command.trim();
             if let Some(rest) = clean_target.strip_prefix(prefix) {
