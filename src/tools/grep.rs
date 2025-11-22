@@ -118,7 +118,8 @@ impl GrepTool {
         let output_mode = args.get_output_mode();
         match output_mode {
             OutputMode::FilesWithMatches => {
-                cmd.arg("--files-with-matches");
+                // NOTE: --files-with-matches is incompatible with --json, so we don't use it.
+                // Instead, we extract unique file paths from the JSON output in parse_output.
             }
             OutputMode::Content => {
                 if args.should_show_line_numbers() {
@@ -176,6 +177,8 @@ impl GrepTool {
 
     async fn parse_output(&self, args: &GrepArgs, output: String) -> ToolResult<GrepResult> {
         let mut matches = Vec::new();
+        let output_mode = args.get_output_mode();
+        let mut unique_files = std::collections::HashSet::new();
 
         for line in output.lines() {
             if line.trim().is_empty() {
@@ -193,29 +196,44 @@ impl GrepTool {
             let Some(path_obj) = msg.get("data").and_then(|d| d.get("path")) else {
                 continue;
             };
-            let Some(line_num) = msg.get("data").and_then(|d| d.get("line_number")) else {
-                continue;
-            };
-            let Some(lines_obj) = msg.get("data").and_then(|d| d.get("lines")) else {
-                continue;
-            };
 
             let Some(path_str) = path_obj.get("text").and_then(|t| t.as_str()) else {
                 continue;
             };
-            let Some(line_u64) = line_num.as_u64() else {
-                continue;
-            };
-            let Some(content) = lines_obj.get("text").and_then(|t| t.as_str()) else {
-                continue;
-            };
 
-            matches.push(Match {
-                path: path_str.to_string(),
-                line_number: Some(line_u64 as u32),
-                content: Some(content.to_string()),
-                count: None,
-            });
+            // For FilesWithMatches mode, extract unique file paths only
+            if matches!(output_mode, OutputMode::FilesWithMatches) {
+                if unique_files.insert(path_str.to_string()) {
+                    matches.push(Match {
+                        path: path_str.to_string(),
+                        line_number: None,
+                        content: None,
+                        count: None,
+                    });
+                }
+            } else {
+                // For Content and Count modes, extract full match information
+                let Some(line_num) = msg.get("data").and_then(|d| d.get("line_number")) else {
+                    continue;
+                };
+                let Some(lines_obj) = msg.get("data").and_then(|d| d.get("lines")) else {
+                    continue;
+                };
+
+                let Some(line_u64) = line_num.as_u64() else {
+                    continue;
+                };
+                let Some(content) = lines_obj.get("text").and_then(|t| t.as_str()) else {
+                    continue;
+                };
+
+                matches.push(Match {
+                    path: path_str.to_string(),
+                    line_number: Some(line_u64 as u32),
+                    content: Some(content.to_string()),
+                    count: None,
+                });
+            }
         }
 
         let total_count = matches.len();
@@ -842,5 +860,72 @@ mod tests {
         };
 
         assert!(!args.should_show_line_numbers());
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_with_matches_default_mode() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        if which::which("rg").is_err() {
+            eprintln!("ripgrep not found, skipping integration test");
+            return;
+        }
+
+        // Use unique filename to avoid test conflicts
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let filename = format!("test_grep_files_with_matches_{}.txt", timestamp);
+
+        // Create a test file
+        let test_content = "matches_pattern test data\nfoo bar\nmatches_pattern again\n";
+        fs::write(&filename, test_content).expect("Failed to create test file");
+
+        let tool = GrepTool::new();
+        // Note: no output_mode specified, defaults to FilesWithMatches
+        let args = json!({
+            "pattern": "matches_pattern",
+            "path": &filename
+        });
+
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = tool.execute(&args, &context).await;
+
+        // Clean up
+        let _ = fs::remove_file(&filename);
+
+        assert!(
+            result.is_ok(),
+            "Execution should succeed: {:?}",
+            result.err()
+        );
+
+        let result_str = result.unwrap();
+        println!("Grep result for FilesWithMatches mode: {}", result_str);
+
+        let grep_result: GrepResult =
+            serde_json::from_str(&result_str).expect("Should deserialize result");
+
+        // We should find 1 file (even though pattern appears twice)
+        assert_eq!(
+            grep_result.matches.len(),
+            1,
+            "FilesWithMatches should return unique files only, but found {}: {:?}",
+            grep_result.matches.len(),
+            grep_result.matches
+        );
+
+        // Verify the match has path but no line number or content
+        assert!(!grep_result.matches[0].path.is_empty());
+        assert!(grep_result.matches[0].path.contains(&filename));
+        assert_eq!(grep_result.matches[0].line_number, None);
+        assert_eq!(grep_result.matches[0].content, None);
     }
 }
