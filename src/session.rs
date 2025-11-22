@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::agent::Conversation;
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{register_default_commands, CommandRegistry};
+use crate::commands::{CommandRegistry, register_default_commands};
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
@@ -19,8 +19,8 @@ use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
-use crate::tools::todo_state::TodoState;
 use crate::tools::ToolRegistry;
+use crate::tools::todo_state::TodoState;
 use crate::tui::app_loop::{
     ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
 };
