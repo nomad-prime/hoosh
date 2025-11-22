@@ -4,6 +4,7 @@ use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
+use crate::tools::todo_write::{TodoItem, TodoStatus};
 use crate::tui::palette;
 use rand::Rng;
 use ratatui::style::{Modifier, Style};
@@ -184,6 +185,7 @@ pub struct AppState {
     pub output_tokens: usize,
     pub total_cost: f64,
     pub active_tool_calls: Vec<ActiveToolCall>,
+    pub todos: Vec<TodoItem>,
 }
 
 impl AppState {
@@ -220,6 +222,7 @@ impl AppState {
             output_tokens: 0,
             total_cost: 0.0,
             active_tool_calls: Vec::new(),
+            todos: Vec::new(),
         }
     }
 
@@ -645,6 +648,18 @@ impl AppState {
             }
             AgentEvent::StepStarted { .. } => {
                 // This event is used internally for step tracking, no UI update needed
+            }
+            AgentEvent::TodoUpdate { todos } => {
+                // If all todos are completed, auto-clear after updating
+                let all_completed =
+                    !todos.is_empty() && todos.iter().all(|t| t.status == TodoStatus::Completed);
+
+                if all_completed {
+                    // Clear the list when all items are done
+                    self.todos = Vec::new();
+                } else {
+                    self.todos = todos;
+                }
             }
         }
     }

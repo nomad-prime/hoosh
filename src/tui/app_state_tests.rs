@@ -458,7 +458,8 @@ fn app_state_add_thought() {
     let mut state = AppState::new();
     state.add_thought("thinking...");
 
-    assert_eq!(state.messages.len(), 1);
+    // add_thought adds a newline message first, then the content
+    assert_eq!(state.messages.len(), 2);
 }
 
 #[test]

@@ -63,6 +63,10 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    fn is_hidden(&self) -> bool {
+        false
+    }
+
     /// Get the complete tool schema in OpenAI function calling format
     fn tool_schema(&self) -> Value {
         json!({
@@ -85,6 +89,8 @@ pub mod provider;
 pub mod subagent_provider;
 pub mod task_tool;
 pub mod task_tool_provider;
+pub mod todo_state;
+pub mod todo_write;
 
 pub use bash::BashTool;
 pub use error::{ToolError, ToolResult};
@@ -95,6 +101,8 @@ pub use provider::{BuiltinToolProvider, ToolProvider};
 pub use subagent_provider::SubAgentToolProvider;
 pub use task_tool::TaskTool;
 pub use task_tool_provider::TaskToolProvider;
+pub use todo_state::TodoState;
+pub use todo_write::TodoWriteTool;
 
 /// Tool registry for managing available tools through providers
 #[derive(Clone)]
