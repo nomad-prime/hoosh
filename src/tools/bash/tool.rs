@@ -5,7 +5,7 @@ use crate::tools::bash::BashCommandPatternRegistry;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -28,11 +28,9 @@ impl BashTool {
         }
     }
 
-    pub fn with_working_directory(working_dir: PathBuf) -> Self {
-        Self {
-            working_directory: working_dir,
-            timeout_seconds: 30,
-        }
+    pub fn with_working_directory(mut self, working_dir: PathBuf) -> Self {
+        self.working_directory = working_dir;
+        self
     }
 
     pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {

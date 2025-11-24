@@ -17,6 +17,8 @@ pub mod task_management;
 pub mod tool_executor;
 pub mod tools;
 pub mod tui;
+pub mod skill_management;
+pub mod system_reminders;
 
 pub use agent::{
     Agent, AgentEvent, Conversation, ConversationMessage, ToolCall, ToolCallResponse,
@@ -31,14 +33,15 @@ pub use backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use backends::{TogetherAiBackend, TogetherAiConfig};
 pub use commands::{
-    Command, CommandContext, CommandRegistry, CommandResult, register_default_commands,
+    register_default_commands, Command, CommandContext, CommandRegistry, CommandResult,
 };
 pub use config::{AgentConfig, AppConfig, BackendConfig};
-pub use console::{Console, VerbosityLevel, console, init_console};
+pub use console::{console, init_console, Console, VerbosityLevel};
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;
 pub use permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 pub use security::PathValidator;
+pub use skill_management::{Skill, SkillManager};
 pub use storage::{ConversationMetadata, ConversationStorage};
 pub use tool_executor::ToolExecutor;
 pub use tools::{BuiltinToolProvider, SubAgentToolProvider, TaskToolProvider, Tool, ToolRegistry};
