@@ -4,9 +4,6 @@ use anyhow::Result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Periodic strategy that re-injects core instructions when conversation grows beyond a token threshold.
-/// This helps maintain focus on the agent's core mission across long conversations.
-///
 /// The strategy tracks the token count at the last reminder injection and re-injects when
 /// the conversation has grown by approximately `token_interval` tokens.
 pub struct PeriodicCoreReminderStrategy {

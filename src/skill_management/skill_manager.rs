@@ -102,10 +102,16 @@ impl SkillManager {
             return String::new();
         }
 
-        let mut summary = "<available_skills>\nProject-specific utilities in .hoosh/skill/. Read any skill file before using.\n".to_string();
+        let mut summary =
+            "<available_skills>\n".to_string();
+
+        summary.push_str("Project-specific utilities in <PWD>/.hoosh/skills/. ");
+        summary.push_str("ALWAYS check these skills first before using bash commands. ");
+        summary.push_str("Read the skill file to understand what it does, then execute it.\n\n");
 
         for skill in skills {
             summary.push_str(&format!("- **{}**: ", skill.name));
+            summary.push_str(&format!("path: {} \n", skill.path.display()));
             if !skill.description.is_empty() {
                 summary.push_str(&skill.description);
             } else {
