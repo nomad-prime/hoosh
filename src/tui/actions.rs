@@ -3,7 +3,6 @@ use tokio::task::JoinHandle;
 
 use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
-use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
 use crate::tui::app_loop::EventLoopContext;
 
 pub fn execute_command(input: String, event_loop_context: &crate::tui::app_loop::EventLoopContext) {
@@ -61,6 +60,7 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
     let backend = Arc::clone(&event_loop_context.system_resources.backend);
     let tool_registry = Arc::clone(&event_loop_context.system_resources.tool_registry);
     let tool_executor = Arc::clone(&event_loop_context.system_resources.tool_executor);
+    let system_reminder = Arc::clone(&event_loop_context.system_resources.system_reminder);
     let event_tx = event_loop_context.channels.event_tx.clone();
     let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
     let todo_state = event_loop_context.runtime.todo_state.clone();
@@ -86,13 +86,6 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
         }
 
         let mut conv = conversation.lock().await;
-
-        // Create system reminders
-        let core_instructions =
-            "Focus on completing the task efficiently. Remember to check your progress regularly."
-                .to_string();
-        let reminder_strategy = Box::new(PeriodicCoreReminderStrategy::new(10, core_instructions));
-        let system_reminder = Arc::new(SystemReminder::new().add_strategy(reminder_strategy));
 
         let agent = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx.clone())

@@ -32,6 +32,7 @@ pub struct SystemResources {
     pub tool_executor: Arc<ToolExecutor>,
     pub agent_manager: Arc<AgentDefinitionManager>,
     pub command_registry: Arc<CommandRegistry>,
+    pub system_reminder: Arc<crate::system_reminders::SystemReminder>,
 }
 
 pub struct ConversationState {
