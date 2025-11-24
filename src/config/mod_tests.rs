@@ -67,6 +67,7 @@ fn agent_config_has_file_and_optional_fields() {
         file: "test.txt".to_string(),
         description: Some("Test agent".to_string()),
         tags: vec!["coding".to_string(), "debug".to_string()],
+        core_instructions_file: None,
     };
 
     assert_eq!(agent.file, "test.txt");
@@ -80,6 +81,7 @@ fn agent_config_tags_default_to_empty() {
         file: "test.txt".to_string(),
         description: None,
         tags: vec![],
+        core_instructions_file: None,
     };
 
     assert!(agent.tags.is_empty());
@@ -381,6 +383,7 @@ fn merge_overwrites_agents() {
             file: "old.txt".to_string(),
             description: None,
             tags: vec![],
+            core_instructions_file: None,
         },
     );
 
@@ -391,6 +394,7 @@ fn merge_overwrites_agents() {
             file: "new.txt".to_string(),
             description: Some("Updated".to_string()),
             tags: vec![],
+            core_instructions_file: None,
         },
     );
 
@@ -547,6 +551,7 @@ fn serialize_agent_config_to_toml() {
         file: "coder.txt".to_string(),
         description: Some("Coding assistant".to_string()),
         tags: vec!["coding".to_string(), "rust".to_string()],
+        core_instructions_file: None,
     };
 
     let toml = toml::to_string(&agent).unwrap();
@@ -682,6 +687,7 @@ fn clone_agent_config() {
         file: "test.txt".to_string(),
         description: Some("Test".to_string()),
         tags: vec!["tag1".to_string()],
+        core_instructions_file: None,
     };
 
     let cloned = agent.clone();
@@ -689,6 +695,7 @@ fn clone_agent_config() {
     assert_eq!(agent.file, cloned.file);
     assert_eq!(agent.description, cloned.description);
     assert_eq!(agent.tags, cloned.tags);
+    assert_eq!(agent.core_instructions_file, cloned.core_instructions_file);
 }
 
 #[test]
@@ -723,6 +730,7 @@ fn debug_format_agent_config() {
         file: "test.txt".to_string(),
         description: None,
         tags: vec![],
+        core_instructions_file: None,
     };
 
     let debug_str = format!("{:?}", agent);

@@ -188,8 +188,9 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     app_state.register_completer(Box::new(command_completer));
 
     // Build system reminder
+    let agent_name_for_instructions = default_agent.as_ref().map(|a| a.name.as_str());
     let core_instructions = config
-        .load_core_instructions()
+        .load_core_instructions(agent_name_for_instructions)
         .unwrap_or_else(|_| "Focus on completing the task efficiently.".to_string());
     let token_threshold = config.get_core_reminder_token_threshold();
     let periodic_strategy = Box::new(PeriodicCoreReminderStrategy::new(

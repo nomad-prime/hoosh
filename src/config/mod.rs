@@ -35,6 +35,8 @@ pub struct AgentConfig {
     pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub core_instructions_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -52,8 +54,6 @@ pub struct AppConfig {
     pub context_manager: Option<ContextManagerConfig>,
     #[serde(default)]
     pub core_reminder_token_threshold: Option<usize>,
-    #[serde(default)]
-    pub core_instructions_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -82,12 +82,14 @@ impl Default for AppConfig {
 
         for file_name in DEFAULT_AGENT_FILES {
             let agent_name = file_name.strip_suffix(".txt").unwrap_or(file_name);
+            let core_instructions_file = Some(format!("{}_core_instructions.txt", agent_name));
             agents.insert(
                 agent_name.to_string(),
                 AgentConfig {
                     file: file_name.to_string(),
                     description: None,
                     tags: vec![],
+                    core_instructions_file,
                 },
             );
         }
@@ -100,7 +102,6 @@ impl Default for AppConfig {
             agents,
             context_manager: None,
             core_reminder_token_threshold: None,
-            core_instructions_file: None,
         }
     }
 }
@@ -270,15 +271,20 @@ impl AppConfig {
         self.context_manager.clone().unwrap_or_default()
     }
 
-    pub fn load_core_instructions(&self) -> ConfigResult<String> {
-        if let Some(custom_file) = &self.core_instructions_file {
+    pub fn load_core_instructions(&self, agent_name: Option<&str>) -> ConfigResult<String> {
+        // First, try agent-specific core instructions file
+        if let Some(agent) = agent_name
+            && let Some(agent_config) = self.agents.get(agent)
+            && let Some(custom_file) = &agent_config.core_instructions_file
+        {
             let agents_dir = Self::agents_dir()?;
             let path = agents_dir.join(custom_file);
-            return fs::read_to_string(&path)
-                .map_err(ConfigError::IoError)
-                .map(|s| s.trim().to_string());
+            if let Ok(content) = fs::read_to_string(&path) {
+                return Ok(content.trim().to_string());
+            }
         }
 
+        // Fall back to built-in core instructions
         Ok(include_str!("../prompts/hoosh_core_instructions.txt")
             .trim()
             .to_string())
@@ -296,7 +302,7 @@ impl AppConfig {
     }
 
     pub fn get_core_reminder_token_threshold(&self) -> usize {
-        self.core_reminder_token_threshold.unwrap_or(10000)
+        self.core_reminder_token_threshold.unwrap_or(20000)
     }
 
     pub fn config_path() -> ConfigResult<PathBuf> {
@@ -348,9 +354,6 @@ impl AppConfig {
             self.core_reminder_token_threshold = other.core_reminder_token_threshold;
         }
 
-        if other.core_instructions_file.is_some() {
-            self.core_instructions_file = other.core_instructions_file;
-        }
     }
 
     pub fn ensure_project_config() -> ConfigResult<()> {

@@ -80,6 +80,26 @@ impl AgentDefinitionManager {
                 "hoosh_core_instructions.txt",
                 include_str!("../prompts/hoosh_core_instructions.txt"),
             ),
+            (
+                "hoosh_coder_core_instructions.txt",
+                include_str!("../prompts/hoosh_coder_core_instructions.txt"),
+            ),
+            (
+                "hoosh_planner_core_instructions.txt",
+                include_str!("../prompts/hoosh_planner_core_instructions.txt"),
+            ),
+            (
+                "hoosh_reviewer_core_instructions.txt",
+                include_str!("../prompts/hoosh_reviewer_core_instructions.txt"),
+            ),
+            (
+                "hoosh_troubleshooter_core_instructions.txt",
+                include_str!("../prompts/hoosh_troubleshooter_core_instructions.txt"),
+            ),
+            (
+                "hoosh_assistant_core_instructions.txt",
+                include_str!("../prompts/hoosh_assistant_core_instructions.txt"),
+            ),
         ];
 
         for (file_name, content) in default_prompts {

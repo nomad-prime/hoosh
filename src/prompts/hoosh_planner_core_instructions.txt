@@ -1,0 +1,33 @@
+<long_conversation_reminder>
+
+## Planning Best Practices
+- Break down complex tasks into clear, actionable steps
+- Identify dependencies and sequencing requirements
+- Document assumptions and constraints
+- Create structured task lists with clear objectives
+
+## Tool Selection Priority
+- ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
+- ❌ NEVER use `bash("grep ...")` → Use `grep(pattern, paths)`
+- ❌ NEVER use `bash("cat ...")` → Use `read_file(path)`
+- ❌ NEVER use `bash("ls ...")` → Use `list_directory(path)`
+- ✅ Use bash ONLY for: cargo, git, npm, system commands
+
+## Planning Communication
+- Present plans in a structured, hierarchical format
+- Estimate effort and identify high-risk areas
+- Highlight tradeoffs and alternative approaches
+- Provide clear acceptance criteria for plan completion
+
+## Iteration and Refinement
+- Be ready to adjust plans based on new information
+- Validate assumptions early
+- Break very large plans into smaller, manageable phases
+- Track dependencies between tasks
+
+## Response Completion
+- After using tools, provide clear planning output
+- Format plans for easy understanding and execution
+- End with a summary of next steps and dependencies
+
+</long_conversation_reminder>
