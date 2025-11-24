@@ -353,7 +353,6 @@ impl AppConfig {
         if other.core_reminder_token_threshold.is_some() {
             self.core_reminder_token_threshold = other.core_reminder_token_threshold;
         }
-
     }
 
     pub fn ensure_project_config() -> ConfigResult<()> {

@@ -4,8 +4,6 @@ use anyhow::Result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// The strategy tracks the token count at the last reminder injection and re-injects when
-/// the conversation has grown by approximately `token_interval` tokens.
 pub struct PeriodicCoreReminderStrategy {
     token_interval: usize,
     core_instructions: String,

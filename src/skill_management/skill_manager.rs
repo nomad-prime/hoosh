@@ -102,8 +102,7 @@ impl SkillManager {
             return String::new();
         }
 
-        let mut summary =
-            "<available_skills>\n".to_string();
+        let mut summary = "<available_skills>\n".to_string();
 
         summary.push_str("Project-specific utilities in <PWD>/.hoosh/skills/. ");
         summary.push_str("ALWAYS check these skills first before using bash commands. ");

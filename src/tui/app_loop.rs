@@ -149,9 +149,6 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
                 app.add_debug_message(msg);
             }
         }
-        AgentEvent::AgentSwitched { new_agent_name } => {
-            context.conversation_state.current_agent_name = new_agent_name;
-        }
         other_event => {
             app.handle_agent_event(other_event);
         }
