@@ -13,6 +13,8 @@ pub struct AgentDefinition {
     pub file: String,
     pub description: Option<String>,
     pub tags: Vec<String>,
+    #[serde(skip)]
+    pub core_instructions: String,
 }
 
 pub struct AgentDefinitionManager {
@@ -20,13 +22,19 @@ pub struct AgentDefinitionManager {
 }
 
 impl AgentDefinition {
-    pub fn from_config(name: String, config: AgentConfig, content: String) -> Self {
+    pub fn from_config(
+        name: String,
+        config: AgentConfig,
+        content: String,
+        core_instructions: String,
+    ) -> Self {
         Self {
             name,
             content,
             file: config.file,
             description: config.description,
             tags: config.tags,
+            core_instructions,
         }
     }
 }
@@ -122,7 +130,16 @@ impl AgentDefinitionManager {
         // Check custom agents first
         if let Some(agent_config) = self.config.agents.get(name) {
             return self.load_agent_content(agent_config).ok().map(|content| {
-                AgentDefinition::from_config(name.to_string(), agent_config.clone(), content)
+                let core_instructions = self
+                    .config
+                    .load_core_instructions(Some(name))
+                    .unwrap_or_else(|_| "Focus on completing the task efficiently.".to_string());
+                AgentDefinition::from_config(
+                    name.to_string(),
+                    agent_config.clone(),
+                    content,
+                    core_instructions,
+                )
             });
         }
 
@@ -154,7 +171,18 @@ impl AgentDefinitionManager {
             .iter()
             .filter_map(|(name, agent_config)| {
                 self.load_agent_content(agent_config).ok().map(|content| {
-                    AgentDefinition::from_config(name.clone(), agent_config.clone(), content)
+                    let core_instructions = self
+                        .config
+                        .load_core_instructions(Some(name))
+                        .unwrap_or_else(|_| {
+                            "Focus on completing the task efficiently.".to_string()
+                        });
+                    AgentDefinition::from_config(
+                        name.clone(),
+                        agent_config.clone(),
+                        content,
+                        core_instructions,
+                    )
                 })
             })
             .collect()
