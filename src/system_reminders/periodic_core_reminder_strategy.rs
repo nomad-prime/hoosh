@@ -1,19 +1,26 @@
 use crate::Conversation;
 use crate::system_reminders::{ReminderContext, ReminderStrategy, SideEffectResult};
 use anyhow::Result;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// Periodic strategy that re-injects core instructions when conversation grows beyond a token threshold.
 /// This helps maintain focus on the agent's core mission across long conversations.
+/// 
+/// The strategy tracks the token count at the last reminder injection and re-injects when
+/// the conversation has grown by approximately `token_interval` tokens.
 pub struct PeriodicCoreReminderStrategy {
-    token_threshold: usize,
+    token_interval: usize,
     core_instructions: String,
+    last_reminder_token_count: Arc<AtomicUsize>,
 }
 
 impl PeriodicCoreReminderStrategy {
-    pub fn new(token_threshold: usize, core_instructions: String) -> Self {
+    pub fn new(token_interval: usize, core_instructions: String) -> Self {
         Self {
-            token_threshold,
+            token_interval,
             core_instructions,
+            last_reminder_token_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -25,8 +32,12 @@ impl ReminderStrategy for PeriodicCoreReminderStrategy {
         conversation: &mut Conversation,
         _context: &ReminderContext,
     ) -> Result<SideEffectResult> {
-        if conversation.estimate_token() > self.token_threshold {
+        let current_tokens = conversation.estimate_token();
+        let last_tokens = self.last_reminder_token_count.load(Ordering::SeqCst);
+        
+        if current_tokens.saturating_sub(last_tokens) > self.token_interval {
             conversation.add_system_message(self.core_instructions.clone());
+            self.last_reminder_token_count.store(current_tokens, Ordering::SeqCst);
         }
 
         Ok(SideEffectResult::Continue)
@@ -59,19 +70,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_no_reminder_below_threshold() {
+    async fn test_no_reminder_below_interval() {
         let strategy = PeriodicCoreReminderStrategy::new(10000, "Test message".to_string());
         let mut conversation = Conversation::new();
+        conversation.add_user_message("x".repeat(100));
         let context = create_context();
 
         let result = strategy.apply(&mut conversation, &context).await;
 
         assert!(result.is_ok());
-        assert_eq!(conversation.get_messages_for_api().len(), 0);
+        // Only initial message, no reminder yet since growth < interval
+        assert_eq!(conversation.get_messages_for_api().len(), 1);
     }
 
     #[tokio::test]
-    async fn test_reminder_above_threshold() {
+    async fn test_reminder_after_token_growth() {
         let instructions = "Critical reminder".to_string();
         let strategy = PeriodicCoreReminderStrategy::new(100, instructions.clone());
         let mut conversation = Conversation::new();
@@ -82,9 +95,54 @@ mod tests {
 
         assert!(result.is_ok());
         let messages = conversation.get_messages_for_api();
+        // Should have user message + reminder
         assert!(messages.len() >= 2);
         assert_eq!(messages.last().unwrap().role, "system");
-        assert_eq!(messages.last().unwrap().content, Some(instructions));
+        assert_eq!(messages.last().unwrap().content, Some(instructions.clone()));
+    }
+
+    #[tokio::test]
+    async fn test_no_duplicate_reminders() {
+        let instructions = "Critical reminder".to_string();
+        let strategy = PeriodicCoreReminderStrategy::new(100, instructions.clone());
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("x".repeat(500));
+
+        let context = create_context();
+        
+        // First apply - should add reminder
+        let _ = strategy.apply(&mut conversation, &context).await;
+        let count_after_first = conversation.get_messages_for_api().len();
+
+        // Second apply - should NOT add another reminder (growth since last is 0)
+        let _ = strategy.apply(&mut conversation, &context).await;
+        let count_after_second = conversation.get_messages_for_api().len();
+
+        assert_eq!(count_after_first, count_after_second);
+    }
+
+    #[tokio::test]
+    async fn test_reminder_after_more_growth() {
+        let instructions = "Critical reminder".to_string();
+        let strategy = PeriodicCoreReminderStrategy::new(100, instructions.clone());
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("x".repeat(500));
+
+        let context = create_context();
+        
+        // First apply - should add reminder
+        let _ = strategy.apply(&mut conversation, &context).await;
+        let count_after_first = conversation.get_messages_for_api().len();
+
+        // Add more messages to trigger another reminder
+        conversation.add_user_message("y".repeat(500));
+        
+        // Second apply - should add another reminder (growth > interval)
+        let _ = strategy.apply(&mut conversation, &context).await;
+        let count_after_second = conversation.get_messages_for_api().len();
+
+        assert!(count_after_second > count_after_first);
+        assert_eq!(conversation.get_messages_for_api().last().unwrap().role, "system");
     }
 
     #[tokio::test]
