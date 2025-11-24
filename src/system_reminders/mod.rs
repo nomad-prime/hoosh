@@ -1,4 +1,5 @@
-mod periodic_core_reminder_strategy;
+pub mod periodic_core_reminder_strategy;
+pub use periodic_core_reminder_strategy::PeriodicCoreReminderStrategy;
 
 use anyhow::Result;
 
@@ -31,6 +32,12 @@ pub trait ReminderStrategy: Send + Sync {
 
 pub struct SystemReminder {
     strategies: Vec<Box<dyn ReminderStrategy>>,
+}
+
+impl Default for SystemReminder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SystemReminder {

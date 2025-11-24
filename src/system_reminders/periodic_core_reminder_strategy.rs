@@ -24,7 +24,7 @@ impl ReminderStrategy for PeriodicCoreReminderStrategy {
         conversation: &mut Conversation,
         _agent: &Agent,
     ) -> Result<SideEffectResult> {
-        if ctx.step > 0 && ctx.step % self.interval == 0 {
+        if ctx.step > 0 && ctx.step.is_multiple_of(self.interval) {
             conversation.add_system_message(self.core_instructions.clone());
         }
 

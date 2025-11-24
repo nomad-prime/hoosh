@@ -12,13 +12,13 @@ pub mod parser;
 pub mod permissions;
 pub mod security;
 pub mod session;
+pub mod skill_management;
 pub mod storage;
+pub mod system_reminders;
 pub mod task_management;
 pub mod tool_executor;
 pub mod tools;
 pub mod tui;
-pub mod skill_management;
-pub mod system_reminders;
 
 pub use agent::{
     Agent, AgentEvent, Conversation, ConversationMessage, ToolCall, ToolCallResponse,
@@ -33,10 +33,10 @@ pub use backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use backends::{TogetherAiBackend, TogetherAiConfig};
 pub use commands::{
-    register_default_commands, Command, CommandContext, CommandRegistry, CommandResult,
+    Command, CommandContext, CommandRegistry, CommandResult, register_default_commands,
 };
 pub use config::{AgentConfig, AppConfig, BackendConfig};
-pub use console::{console, init_console, Console, VerbosityLevel};
+pub use console::{Console, VerbosityLevel, console, init_console};
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;
 pub use permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};

@@ -34,9 +34,11 @@ impl ToolProvider for SubAgentToolProvider {
             Arc::new(ListDirectoryTool::with_working_directory(
                 self.working_directory.clone(),
             )),
-            Arc::new(BashTool::new().with_working_directory(
-                self.working_directory.clone(),
-            ).with_timeout(120)),
+            Arc::new(
+                BashTool::new()
+                    .with_working_directory(self.working_directory.clone())
+                    .with_timeout(120),
+            ),
             Arc::new(GlobTool::new()),
             Arc::new(GrepTool::new()),
         ]

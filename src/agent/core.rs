@@ -150,11 +150,11 @@ impl Agent {
                 .iter()
                 .map(|m| m.content.as_ref().map(|c| c.len() / 4).unwrap_or(0))
                 .sum::<usize>();
-            
+
             let reminder_result = self
                 .apply_system_reminders(conversation, step, total_tokens)
                 .await?;
-            
+
             if matches!(reminder_result, SideEffectResult::ExitTurn) {
                 self.ensure_title(conversation).await;
                 return Ok(());

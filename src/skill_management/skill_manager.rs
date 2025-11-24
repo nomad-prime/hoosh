@@ -239,10 +239,7 @@ mod tests {
         fs::create_dir_all(&skills_dir)?;
 
         let skill1_path = skills_dir.join("skill1.sh");
-        fs::write(
-            &skill1_path,
-            "#!/bin/bash\n# First skill\necho 'skill1'",
-        )?;
+        fs::write(&skill1_path, "#!/bin/bash\n# First skill\necho 'skill1'")?;
 
         let skill2_path = skills_dir.join("skill2.py");
         fs::write(
@@ -320,10 +317,7 @@ mod tests {
         fs::create_dir_all(&skills_dir)?;
 
         let nodesc_path = skills_dir.join("nodesc.sh");
-        fs::write(
-            &nodesc_path,
-            "#!/bin/bash\necho 'no description'",
-        )?;
+        fs::write(&nodesc_path, "#!/bin/bash\necho 'no description'")?;
 
         #[cfg(unix)]
         {

@@ -3,6 +3,7 @@ use tokio::task::JoinHandle;
 
 use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
+use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
 use crate::tui::app_loop::EventLoopContext;
 
 pub fn execute_command(input: String, event_loop_context: &crate::tui::app_loop::EventLoopContext) {
@@ -85,9 +86,18 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
         }
 
         let mut conv = conversation.lock().await;
+
+        // Create system reminders
+        let core_instructions =
+            "Focus on completing the task efficiently. Remember to check your progress regularly."
+                .to_string();
+        let reminder_strategy = Box::new(PeriodicCoreReminderStrategy::new(10, core_instructions));
+        let system_reminder = Arc::new(SystemReminder::new().add_strategy(reminder_strategy));
+
         let agent = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx.clone())
-            .with_context_manager(context_manager);
+            .with_context_manager(context_manager)
+            .with_system_reminder(system_reminder);
 
         // Error is already sent as AgentEvent::Error from within handle_turn
         let _ = agent.handle_turn(&mut conv).await;
