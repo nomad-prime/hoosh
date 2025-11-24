@@ -18,7 +18,9 @@ use crate::history::PromptHistory;
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
-use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder, TodoReminderStrategy};
+use crate::system_reminders::{
+    PeriodicCoreReminderStrategy, SkillReminderStrategy, SystemReminder, TodoReminderStrategy,
+};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 use crate::tools::todo_state::TodoState;
@@ -195,10 +197,12 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         core_instructions,
     ));
     let todo_strategy = Box::new(TodoReminderStrategy::new(todo_state.clone()));
+    let skill_strategy = Box::new(SkillReminderStrategy::new(working_dir.clone()));
     let system_reminder = Arc::new(
         SystemReminder::new()
             .add_strategy(periodic_strategy)
-            .add_strategy(todo_strategy),
+            .add_strategy(todo_strategy)
+            .add_strategy(skill_strategy),
     );
 
     // Build system resources
