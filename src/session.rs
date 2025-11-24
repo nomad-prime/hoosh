@@ -189,9 +189,9 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     let core_instructions = config
         .load_core_instructions()
         .unwrap_or_else(|_| "Focus on completing the task efficiently.".to_string());
-    let interval = config.get_core_instructions_interval();
+    let token_threshold = config.get_core_reminder_token_threshold();
     let periodic_strategy = Box::new(PeriodicCoreReminderStrategy::new(
-        interval,
+        token_threshold,
         core_instructions,
     ));
     let todo_strategy = Box::new(TodoReminderStrategy::new(todo_state.clone()));

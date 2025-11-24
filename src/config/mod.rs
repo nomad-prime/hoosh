@@ -51,7 +51,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub context_manager: Option<ContextManagerConfig>,
     #[serde(default)]
-    pub core_instructions_interval: Option<usize>,
+    pub core_reminder_token_threshold: Option<usize>,
     #[serde(default)]
     pub core_instructions_file: Option<String>,
 }
@@ -71,7 +71,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub context_manager: Option<ContextManagerConfig>,
     #[serde(default)]
-    pub core_instructions_interval: Option<usize>,
+    pub core_reminder_token_threshold: Option<usize>,
     #[serde(default)]
     pub core_instructions_file: Option<String>,
 }
@@ -99,7 +99,7 @@ impl Default for AppConfig {
             default_agent: Some("hoosh_coder".to_string()),
             agents,
             context_manager: None,
-            core_instructions_interval: None,
+            core_reminder_token_threshold: None,
             core_instructions_file: None,
         }
     }
@@ -295,8 +295,8 @@ impl AppConfig {
         Ok(path)
     }
 
-    pub fn get_core_instructions_interval(&self) -> usize {
-        self.core_instructions_interval.unwrap_or(10)
+    pub fn get_core_reminder_token_threshold(&self) -> usize {
+        self.core_reminder_token_threshold.unwrap_or(10000)
     }
 
     pub fn config_path() -> ConfigResult<PathBuf> {
@@ -344,8 +344,8 @@ impl AppConfig {
             self.context_manager = other.context_manager;
         }
 
-        if other.core_instructions_interval.is_some() {
-            self.core_instructions_interval = other.core_instructions_interval;
+        if other.core_reminder_token_threshold.is_some() {
+            self.core_reminder_token_threshold = other.core_reminder_token_threshold;
         }
 
         if other.core_instructions_file.is_some() {

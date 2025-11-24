@@ -1,12 +1,12 @@
 use crate::Conversation;
 use crate::system_reminders::{ReminderContext, ReminderStrategy, SideEffectResult};
 use anyhow::Result;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Periodic strategy that re-injects core instructions when conversation grows beyond a token threshold.
 /// This helps maintain focus on the agent's core mission across long conversations.
-/// 
+///
 /// The strategy tracks the token count at the last reminder injection and re-injects when
 /// the conversation has grown by approximately `token_interval` tokens.
 pub struct PeriodicCoreReminderStrategy {
@@ -34,10 +34,11 @@ impl ReminderStrategy for PeriodicCoreReminderStrategy {
     ) -> Result<SideEffectResult> {
         let current_tokens = conversation.estimate_token();
         let last_tokens = self.last_reminder_token_count.load(Ordering::SeqCst);
-        
+
         if current_tokens.saturating_sub(last_tokens) > self.token_interval {
             conversation.add_system_message(self.core_instructions.clone());
-            self.last_reminder_token_count.store(current_tokens, Ordering::SeqCst);
+            self.last_reminder_token_count
+                .store(current_tokens, Ordering::SeqCst);
         }
 
         Ok(SideEffectResult::Continue)
@@ -109,7 +110,7 @@ mod tests {
         conversation.add_user_message("x".repeat(500));
 
         let context = create_context();
-        
+
         // First apply - should add reminder
         let _ = strategy.apply(&mut conversation, &context).await;
         let count_after_first = conversation.get_messages_for_api().len();
@@ -129,20 +130,23 @@ mod tests {
         conversation.add_user_message("x".repeat(500));
 
         let context = create_context();
-        
+
         // First apply - should add reminder
         let _ = strategy.apply(&mut conversation, &context).await;
         let count_after_first = conversation.get_messages_for_api().len();
 
         // Add more messages to trigger another reminder
         conversation.add_user_message("y".repeat(500));
-        
+
         // Second apply - should add another reminder (growth > interval)
         let _ = strategy.apply(&mut conversation, &context).await;
         let count_after_second = conversation.get_messages_for_api().len();
 
         assert!(count_after_second > count_after_first);
-        assert_eq!(conversation.get_messages_for_api().last().unwrap().role, "system");
+        assert_eq!(
+            conversation.get_messages_for_api().last().unwrap().role,
+            "system"
+        );
     }
 
     #[tokio::test]
