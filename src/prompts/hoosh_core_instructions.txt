@@ -1,4 +1,4 @@
-# CRITICAL REMINDERS
+<long_conversation_reminder>
 
 ## Tool Selection Priority
 - ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
@@ -31,3 +31,5 @@
 - Wait for results before next command
 - NEVER chain commands with && or ||
 - Explain what you learned after each command
+
+</long_conversation_reminder>

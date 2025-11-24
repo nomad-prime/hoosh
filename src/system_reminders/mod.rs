@@ -13,8 +13,6 @@ pub enum SideEffectResult {
 }
 
 pub struct ReminderContext {
-    pub step: usize,
-    pub max_steps: usize,
     pub total_tokens: usize,
 }
 
@@ -22,7 +20,6 @@ pub struct ReminderContext {
 pub trait ReminderStrategy: Send + Sync {
     async fn apply(
         &self,
-        ctx: &ReminderContext,
         conversation: &mut Conversation,
         agent: &Agent,
     ) -> Result<SideEffectResult>;
@@ -54,12 +51,11 @@ impl SystemReminder {
 
     pub async fn apply(
         &self,
-        ctx: &ReminderContext,
         conversation: &mut Conversation,
         agent: &Agent,
     ) -> Result<SideEffectResult> {
         for strategy in &self.strategies {
-            let result = strategy.apply(ctx, conversation, agent).await?;
+            let result = strategy.apply(conversation, agent).await?;
 
             if matches!(result, SideEffectResult::ExitTurn) {
                 return Ok(SideEffectResult::ExitTurn);

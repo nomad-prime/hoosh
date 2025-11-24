@@ -190,7 +190,10 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         .load_core_instructions()
         .unwrap_or_else(|_| "Focus on completing the task efficiently.".to_string());
     let interval = config.get_core_instructions_interval();
-    let reminder_strategy = Box::new(PeriodicCoreReminderStrategy::new(interval, core_instructions));
+    let reminder_strategy = Box::new(PeriodicCoreReminderStrategy::new(
+        interval,
+        core_instructions,
+    ));
     let system_reminder = Arc::new(SystemReminder::new().add_strategy(reminder_strategy));
 
     // Build system resources

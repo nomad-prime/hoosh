@@ -7,7 +7,7 @@ use crate::agent::{Conversation, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
-use crate::system_reminders::{ReminderContext, SideEffectResult, SystemReminder};
+use crate::system_reminders::{SideEffectResult, SystemReminder};
 use crate::task_management::ExecutionBudget;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -144,16 +144,7 @@ impl Agent {
                 return Ok(());
             }
 
-            // Apply system reminders
-            let total_tokens = conversation
-                .messages
-                .iter()
-                .map(|m| m.content.as_ref().map(|c| c.len() / 4).unwrap_or(0))
-                .sum::<usize>();
-
-            let reminder_result = self
-                .apply_system_reminders(conversation, step, total_tokens)
-                .await?;
+            let reminder_result = self.apply_system_reminders(conversation).await?;
 
             if matches!(reminder_result, SideEffectResult::ExitTurn) {
                 self.ensure_title(conversation).await;
@@ -261,16 +252,9 @@ impl Agent {
     async fn apply_system_reminders(
         &self,
         conversation: &mut Conversation,
-        step: usize,
-        total_tokens: usize,
     ) -> Result<SideEffectResult> {
         if let Some(reminder) = &self.system_reminder {
-            let ctx = ReminderContext {
-                step,
-                max_steps: self.max_steps,
-                total_tokens,
-            };
-            reminder.apply(&ctx, conversation, self).await
+            reminder.apply(conversation, self).await
         } else {
             Ok(SideEffectResult::Continue)
         }
