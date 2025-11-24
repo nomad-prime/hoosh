@@ -7,8 +7,7 @@ use crate::agent::{Conversation, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
-use crate::system_reminders::{SideEffectResult, SystemReminder};
-use crate::task_management::ExecutionBudget;
+use crate::system_reminders::{ReminderContext, SideEffectResult, SystemReminder};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 
@@ -33,7 +32,6 @@ pub struct Agent {
     max_steps: usize,
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     context_manager: Option<Arc<ContextManager>>,
-    execution_budget: Option<Arc<ExecutionBudget>>,
     system_reminder: Option<Arc<SystemReminder>>,
 }
 
@@ -50,7 +48,6 @@ impl Agent {
             max_steps: 1000,
             event_sender: None,
             context_manager: None,
-            execution_budget: None,
             system_reminder: None,
         }
     }
@@ -67,11 +64,6 @@ impl Agent {
 
     pub fn with_context_manager(mut self, context_manager: Arc<ContextManager>) -> Self {
         self.context_manager = Some(context_manager);
-        self
-    }
-
-    pub fn with_execution_budget(mut self, budget: Arc<ExecutionBudget>) -> Self {
-        self.execution_budget = Some(budget);
         self
     }
 
@@ -139,14 +131,32 @@ impl Agent {
 
         for step in 0..self.max_steps {
             self.send_event(AgentEvent::StepStarted { step });
-            let should_exit = self.handle_budget(conversation, step).await?;
-            if should_exit {
-                return Ok(());
-            }
 
-            let reminder_result = self.apply_system_reminders(conversation).await?;
+            let reminder_result = self.apply_system_reminders(conversation, step).await?;
 
-            if matches!(reminder_result, SideEffectResult::ExitTurn) {
+            if let SideEffectResult::ExitTurn {
+                inject_user_message,
+                error_message,
+            } = reminder_result
+            {
+                if let Some(err_msg) = error_message {
+                    self.send_event(AgentEvent::Error(err_msg));
+                }
+                if let Some(user_msg) = inject_user_message {
+                    conversation.add_user_message(user_msg);
+                    let response = self
+                        .backend
+                        .send_message_with_tools_and_events(
+                            conversation,
+                            &self.tool_registry,
+                            self.event_sender.clone(),
+                        )
+                        .await?;
+                    if let Some(content) = response.content {
+                        self.send_event(AgentEvent::FinalResponse(content.clone()));
+                        conversation.add_assistant_message(Some(content), None);
+                    }
+                }
                 self.ensure_title(conversation).await;
                 return Ok(());
             }
@@ -187,46 +197,6 @@ impl Agent {
         Ok(())
     }
 
-    async fn handle_budget(&self, conversation: &mut Conversation, step: usize) -> Result<bool> {
-        if let Some(budget) = &self.execution_budget {
-            let remaining = budget.remaining_seconds();
-
-            if budget.should_wrap_up(step) {
-                let wrap_up_message = format!(
-                    "BUDGET ALERT: You have approximately {} seconds and {} steps remaining. \
-                Please prioritize wrapping up your work and providing a final answer.",
-                    remaining,
-                    self.max_steps.saturating_sub(step)
-                );
-                conversation.add_system_message(wrap_up_message);
-            }
-
-            if remaining == 0 {
-                self.send_event(AgentEvent::Error("Time budget exhausted".to_string()));
-                let conclusion_message = "Time budget has been exhausted. Please provide a brief summary of what you've accomplished so far.";
-                conversation.add_user_message(conclusion_message.to_string());
-
-                let response = self
-                    .backend
-                    .send_message_with_tools_and_events(
-                        conversation,
-                        &self.tool_registry,
-                        self.event_sender.clone(),
-                    )
-                    .await?;
-
-                if let Some(content) = response.content {
-                    self.send_event(AgentEvent::FinalResponse(content.clone()));
-                    conversation.add_assistant_message(Some(content), None);
-                }
-
-                self.ensure_title(conversation).await;
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
     async fn apply_context_strategies(
         &self,
         conversation: &mut Conversation,
@@ -252,9 +222,11 @@ impl Agent {
     async fn apply_system_reminders(
         &self,
         conversation: &mut Conversation,
+        step: usize,
     ) -> Result<SideEffectResult> {
         if let Some(reminder) = &self.system_reminder {
-            reminder.apply(conversation, self).await
+            let context = ReminderContext { agent_step: step };
+            reminder.apply(conversation, &context).await
         } else {
             Ok(SideEffectResult::Continue)
         }

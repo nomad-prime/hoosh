@@ -1,19 +1,26 @@
+pub mod budget_reminder_strategy;
 pub mod periodic_core_reminder_strategy;
+pub mod todo_reminder_strategy;
+
+pub use budget_reminder_strategy::BudgetReminderStrategy;
 pub use periodic_core_reminder_strategy::PeriodicCoreReminderStrategy;
+pub use todo_reminder_strategy::TodoReminderStrategy;
 
 use anyhow::Result;
 
-use crate::agent::Agent;
 use crate::agent::Conversation;
 
 #[derive(Debug)]
 pub enum SideEffectResult {
     Continue,
-    ExitTurn,
+    ExitTurn {
+        inject_user_message: Option<String>,
+        error_message: Option<String>,
+    },
 }
 
 pub struct ReminderContext {
-    pub total_tokens: usize,
+    pub agent_step: usize,
 }
 
 #[async_trait::async_trait]
@@ -21,7 +28,7 @@ pub trait ReminderStrategy: Send + Sync {
     async fn apply(
         &self,
         conversation: &mut Conversation,
-        agent: &Agent,
+        context: &ReminderContext,
     ) -> Result<SideEffectResult>;
 
     fn name(&self) -> &'static str;
@@ -52,13 +59,13 @@ impl SystemReminder {
     pub async fn apply(
         &self,
         conversation: &mut Conversation,
-        agent: &Agent,
+        context: &ReminderContext,
     ) -> Result<SideEffectResult> {
         for strategy in &self.strategies {
-            let result = strategy.apply(conversation, agent).await?;
+            let result = strategy.apply(conversation, context).await?;
 
-            if matches!(result, SideEffectResult::ExitTurn) {
-                return Ok(SideEffectResult::ExitTurn);
+            if matches!(result, SideEffectResult::ExitTurn { .. }) {
+                return Ok(result);
             }
         }
 

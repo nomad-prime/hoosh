@@ -1,5 +1,5 @@
-use crate::system_reminders::{ReminderStrategy, SideEffectResult};
-use crate::{Agent, Conversation};
+use crate::Conversation;
+use crate::system_reminders::{ReminderContext, ReminderStrategy, SideEffectResult};
 use anyhow::Result;
 
 /// Periodic strategy that re-injects core instructions when conversation grows beyond a token threshold.
@@ -23,7 +23,7 @@ impl ReminderStrategy for PeriodicCoreReminderStrategy {
     async fn apply(
         &self,
         conversation: &mut Conversation,
-        _agent: &Agent,
+        _context: &ReminderContext,
     ) -> Result<SideEffectResult> {
         if conversation.estimate_token() > self.token_threshold {
             conversation.add_system_message(self.core_instructions.clone());
@@ -40,65 +40,9 @@ impl ReminderStrategy for PeriodicCoreReminderStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backends::{LlmBackend, LlmError, LlmResponse};
-    use async_trait::async_trait;
 
-    struct MockBackend;
-
-    #[async_trait]
-    impl LlmBackend for MockBackend {
-        async fn send_message(&self, _message: &str) -> Result<String> {
-            Ok("mock response".to_string())
-        }
-
-        async fn send_message_with_tools(
-            &self,
-            _conversation: &Conversation,
-            _tools: &crate::tools::ToolRegistry,
-        ) -> Result<LlmResponse, LlmError> {
-            Ok(LlmResponse::content_only("mock".to_string()))
-        }
-
-        async fn send_message_with_tools_and_events(
-            &self,
-            _conversation: &Conversation,
-            _tools: &crate::tools::ToolRegistry,
-            _event_sender: Option<tokio::sync::mpsc::UnboundedSender<crate::AgentEvent>>,
-        ) -> Result<LlmResponse, LlmError> {
-            Ok(LlmResponse::content_only("mock".to_string()))
-        }
-
-        fn backend_name(&self) -> &str {
-            "mock"
-        }
-
-        fn model_name(&self) -> &str {
-            "mock-model"
-        }
-
-        fn pricing(&self) -> Option<crate::backends::TokenPricing> {
-            None
-        }
-    }
-
-    fn create_mock_agent() -> Agent {
-        Agent::new(
-            std::sync::Arc::new(MockBackend),
-            std::sync::Arc::new(crate::tools::ToolRegistry::new()),
-            std::sync::Arc::new(crate::tool_executor::ToolExecutor::new(
-                std::sync::Arc::new(crate::tools::ToolRegistry::new()),
-                std::sync::Arc::new(crate::permissions::PermissionManager::new(
-                    {
-                        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
-                        tx
-                    },
-                    {
-                        let (_, rx) = tokio::sync::mpsc::unbounded_channel();
-                        rx
-                    },
-                )),
-            )),
-        )
+    fn create_context() -> ReminderContext {
+        ReminderContext { agent_step: 0 }
     }
 
     #[test]
@@ -118,9 +62,9 @@ mod tests {
     async fn test_no_reminder_below_threshold() {
         let strategy = PeriodicCoreReminderStrategy::new(10000, "Test message".to_string());
         let mut conversation = Conversation::new();
-        let mock_agent = create_mock_agent();
+        let context = create_context();
 
-        let result = strategy.apply(&mut conversation, &mock_agent).await;
+        let result = strategy.apply(&mut conversation, &context).await;
 
         assert!(result.is_ok());
         assert_eq!(conversation.get_messages_for_api().len(), 0);
@@ -131,13 +75,10 @@ mod tests {
         let instructions = "Critical reminder".to_string();
         let strategy = PeriodicCoreReminderStrategy::new(100, instructions.clone());
         let mut conversation = Conversation::new();
-
-        // Add content to exceed threshold: 500 chars ≈ 125 tokens
-        // (4 bytes for "user" + 500 = 504 bytes / 4 = 126 tokens)
         conversation.add_user_message("x".repeat(500));
 
-        let mock_agent = create_mock_agent();
-        let result = strategy.apply(&mut conversation, &mock_agent).await;
+        let context = create_context();
+        let result = strategy.apply(&mut conversation, &context).await;
 
         assert!(result.is_ok());
         let messages = conversation.get_messages_for_api();
@@ -150,9 +91,9 @@ mod tests {
     async fn test_always_returns_continue() {
         let strategy = PeriodicCoreReminderStrategy::new(5000, "Test".to_string());
         let mut conversation = Conversation::new();
-        let mock_agent = create_mock_agent();
+        let context = create_context();
 
-        let result = strategy.apply(&mut conversation, &mock_agent).await;
+        let result = strategy.apply(&mut conversation, &context).await;
 
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), SideEffectResult::Continue));

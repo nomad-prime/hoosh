@@ -18,7 +18,7 @@ use crate::history::PromptHistory;
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
-use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
+use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder, TodoReminderStrategy};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 use crate::tools::todo_state::TodoState;
@@ -190,11 +190,16 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         .load_core_instructions()
         .unwrap_or_else(|_| "Focus on completing the task efficiently.".to_string());
     let interval = config.get_core_instructions_interval();
-    let reminder_strategy = Box::new(PeriodicCoreReminderStrategy::new(
+    let periodic_strategy = Box::new(PeriodicCoreReminderStrategy::new(
         interval,
         core_instructions,
     ));
-    let system_reminder = Arc::new(SystemReminder::new().add_strategy(reminder_strategy));
+    let todo_strategy = Box::new(TodoReminderStrategy::new(todo_state.clone()));
+    let system_reminder = Arc::new(
+        SystemReminder::new()
+            .add_strategy(periodic_strategy)
+            .add_strategy(todo_strategy),
+    );
 
     // Build system resources
     let system_resources = SystemResources {
