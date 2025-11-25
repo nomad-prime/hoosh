@@ -298,6 +298,10 @@ impl AppConfig {
         path.push(".config");
         path.push("hoosh");
         path.push("agents");
+
+        // Create the directory if it doesn't exist
+        fs::create_dir_all(&path).map_err(ConfigError::IoError)?;
+
         Ok(path)
     }
 

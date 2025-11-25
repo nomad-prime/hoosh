@@ -3,7 +3,7 @@ use crate::console;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDefinition {
@@ -42,24 +42,10 @@ impl AgentDefinition {
 impl AgentDefinitionManager {
     pub fn new() -> Result<Self> {
         let config = AppConfig::load()?;
-        let agents_dir = Self::agents_dir()?;
+        let agents_dir = AppConfig::agents_dir()?;
         Self::initialize_default_agents(&agents_dir)?;
 
         Ok(Self { config })
-    }
-
-    fn agents_dir() -> Result<PathBuf> {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .context("Failed to get home directory")?;
-        let agents_dir = PathBuf::from(home)
-            .join(".config")
-            .join("hoosh")
-            .join("agents");
-
-        fs::create_dir_all(&agents_dir).context("Failed to create agents directory")?;
-
-        Ok(agents_dir)
     }
 
     fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
@@ -120,7 +106,7 @@ impl AgentDefinitionManager {
     }
 
     fn load_agent_content(&self, agent_config: &AgentConfig) -> Result<String> {
-        let agents_dir = Self::agents_dir()?;
+        let agents_dir = AppConfig::agents_dir()?;
         let agent_path = agents_dir.join(&agent_config.file);
         fs::read_to_string(&agent_path)
             .with_context(|| format!("Failed to read agent file: {}", agent_config.file))
