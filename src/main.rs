@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use hoosh::cli::{handle_agent, handle_config, handle_conversations, handle_setup};
+use hoosh::cli::{handle_agent, handle_agents, handle_config, handle_conversations, handle_setup};
 use hoosh::{
     cli::{Cli, Commands},
     config::{AppConfig, ConfigError},
@@ -11,10 +11,9 @@ use hoosh::{
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // For non-interactive commands (Config, Conversations), initialize console with default verbosity
     if matches!(
         cli.command,
-        Some(Commands::Config { .. }) | Some(Commands::Conversations { .. })
+        Some(Commands::Config { .. }) | Some(Commands::Conversations { .. }) | Some(Commands::Agent { .. })
     ) {
         init_console(cli.get_effective_verbosity(VerbosityLevel::Normal));
     }
@@ -31,6 +30,9 @@ async fn main() -> Result<()> {
                 eprintln!("Warning: Failed to create project config: {}", e);
             }
             handle_conversations(action)?;
+        }
+        Some(Commands::Agent { action }) => {
+            handle_agents(action)?;
         }
         Some(Commands::Setup) => {
             handle_setup().await?;

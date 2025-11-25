@@ -42,13 +42,10 @@ impl AgentDefinition {
 impl AgentDefinitionManager {
     pub fn new() -> Result<Self> {
         let config = AppConfig::load()?;
-        let agents_dir = AppConfig::agents_dir()?;
-        Self::initialize_default_agents(&agents_dir)?;
-
         Ok(Self { config })
     }
 
-    fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
+    pub fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
         let default_prompts = [
             (
                 "hoosh_planner.txt",

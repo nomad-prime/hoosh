@@ -1,4 +1,5 @@
 mod agent;
+mod agents;
 mod config;
 mod conversations;
 mod setup;
@@ -7,6 +8,7 @@ use crate::console::VerbosityLevel;
 use clap::{Parser, Subcommand};
 
 pub use agent::handle_agent;
+pub use agents::handle_agents;
 pub use config::handle_config;
 pub use conversations::handle_conversations;
 pub use setup::handle_setup;
@@ -52,6 +54,10 @@ pub enum Commands {
         #[command(subcommand)]
         action: ConversationsAction,
     },
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
+    },
     Setup,
 }
 
@@ -64,6 +70,11 @@ pub enum ConversationsAction {
 pub enum ConfigAction {
     Show,
     Set { key: String, value: String },
+}
+
+#[derive(Subcommand)]
+pub enum AgentAction {
+    ReinstallBuiltins,
 }
 
 impl Cli {
