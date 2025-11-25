@@ -13,7 +13,9 @@ async fn main() -> Result<()> {
 
     if matches!(
         cli.command,
-        Some(Commands::Config { .. }) | Some(Commands::Conversations { .. }) | Some(Commands::Agent { .. })
+        Some(Commands::Config { .. })
+            | Some(Commands::Conversations { .. })
+            | Some(Commands::Agent { .. })
     ) {
         init_console(cli.get_effective_verbosity(VerbosityLevel::Normal));
     }

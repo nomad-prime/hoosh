@@ -1,4 +1,4 @@
-use crate::console::{console, VerbosityLevel};
+use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
@@ -11,7 +11,10 @@ pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
         "hoosh_planner.txt",
         include_str!("../prompts/hoosh_planner.txt"),
     ),
-    ("hoosh_coder.txt", include_str!("../prompts/hoosh_coder.txt")),
+    (
+        "hoosh_coder.txt",
+        include_str!("../prompts/hoosh_coder.txt"),
+    ),
     (
         "hoosh_reviewer.txt",
         include_str!("../prompts/hoosh_reviewer.txt"),
@@ -183,7 +186,10 @@ impl AppConfig {
             ));
             if !self.agents.is_empty() {
                 let available_agents: Vec<&str> = self.agents.keys().map(|s| s.as_str()).collect();
-                console.warning(&format!("Available agents: {}", available_agents.join(", ")));
+                console.warning(&format!(
+                    "Available agents: {}",
+                    available_agents.join(", ")
+                ));
             }
         }
 

@@ -8,7 +8,10 @@ pub async fn handle_setup() -> Result<()> {
     let config_path = AppConfig::config_path()?;
 
     if config_path.exists() {
-        console().info(&format!("Configuration already exists at: {}", config_path.display()));
+        console().info(&format!(
+            "Configuration already exists at: {}",
+            config_path.display()
+        ));
         console().info("Do you want to reconfigure? (y/n)");
 
         let mut input = String::new();
@@ -42,7 +45,10 @@ pub async fn handle_setup() -> Result<()> {
                 match AppConfig::load() {
                     Ok(_) => {}
                     Err(e) => {
-                        console().error(&format!("\n✗ Configuration saved but could not be loaded: {}", e));
+                        console().error(&format!(
+                            "\n✗ Configuration saved but could not be loaded: {}",
+                            e
+                        ));
                         console().error(&format!(
                             "Check your config file at: {}",
                             AppConfig::config_path()?.display()
