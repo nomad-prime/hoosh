@@ -1,4 +1,4 @@
-use crate::console::VerbosityLevel;
+use crate::console::{console, VerbosityLevel};
 use crate::context_management::ContextManagerConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
@@ -172,18 +172,43 @@ impl AppConfig {
     }
 
     fn validate(&self) -> ConfigResult<()> {
+        let console = console();
+
         if let Some(default_agent) = &self.default_agent
             && !self.agents.contains_key(default_agent)
         {
-            eprintln!(
-                "Warning: Configured default agent '{}' not found in agents configuration",
+            console.warning(&format!(
+                "Configured default agent '{}' not found in agents configuration",
                 default_agent
-            );
+            ));
             if !self.agents.is_empty() {
                 let available_agents: Vec<&str> = self.agents.keys().map(|s| s.as_str()).collect();
-                eprintln!("Available agents: {}", available_agents.join(", "));
+                console.warning(&format!("Available agents: {}", available_agents.join(", ")));
             }
         }
+
+        let agents_dir = Self::agents_dir()?;
+
+        for (name, agent_config) in &self.agents {
+            let agent_path = agents_dir.join(&agent_config.file);
+            if !agent_path.exists() {
+                console.warning(&format!(
+                    "Agent '{}' references missing file: {}",
+                    name, agent_config.file
+                ));
+            }
+
+            if let Some(core_file) = &agent_config.core_instructions_file {
+                let core_path = agents_dir.join(core_file);
+                if !core_path.exists() {
+                    console.warning(&format!(
+                        "Agent '{}' references missing core instructions file: {}",
+                        name, core_file
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 
