@@ -2,12 +2,13 @@ use crate::tools::todo_write::TodoStatus;
 use crate::tui::app_state::AppState;
 use crate::tui::colors::palette;
 use crate::tui::component::Component;
+use crate::tui::events::AgentState;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 
 pub struct TodoListComponent;
@@ -30,7 +31,13 @@ impl Component for TodoListComponent {
             .count();
         let total = state.todos.len();
 
-        for todo in state.todos.iter() {
+        // Check if status bar has content (not idle and no dialogs)
+        let has_status = state.current_retry_status.is_some()
+            || state.is_showing_tool_permission_dialog()
+            || state.is_showing_approval_dialog()
+            || !matches!(state.agent_state, AgentState::Idle);
+
+        for (idx, todo) in state.todos.iter().enumerate() {
             let (status_icon, status_color) = match todo.status {
                 TodoStatus::Pending => ("○", palette::DIMMED_TEXT),
                 TodoStatus::InProgress => ("◐", palette::TOOL_STATUS_RUNNING),
@@ -50,24 +57,30 @@ impl Component for TodoListComponent {
                 &todo.content
             };
 
+            // Use ⎿ for the first item only if there's status content, otherwise no prefix
+            let prefix = if idx == 0 && has_status { "⎿ " } else { "  " };
+
             let line = Line::from(vec![
+                Span::styled(prefix, Style::default().fg(palette::DIMMED_TEXT)),
                 Span::styled(
                     format!("{} ", status_icon),
                     Style::default().fg(status_color),
                 ),
                 Span::styled(display_text.clone(), Style::default().fg(content_color)),
+                Span::styled(
+                    if idx == 0 {
+                        format!(" ({}/{})", completed, total)
+                    } else {
+                        String::new()
+                    },
+                    Style::default().fg(palette::DIMMED_TEXT),
+                ),
             ]);
 
             lines.push(line);
         }
 
-        let title = format!(" Tasks ({}/{}) ", completed, total);
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(palette::PRIMARY_BORDER));
-
-        let paragraph = Paragraph::new(lines).block(block);
+        let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);
     }
 }
