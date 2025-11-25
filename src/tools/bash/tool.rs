@@ -24,15 +24,13 @@ impl BashTool {
     pub fn new() -> Self {
         Self {
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            timeout_seconds: 30, // Default 30 second timeout
+            timeout_seconds: 240, // Default 30 second timeout
         }
     }
 
-    pub fn with_working_directory(working_dir: PathBuf) -> Self {
-        Self {
-            working_directory: working_dir,
-            timeout_seconds: 30,
-        }
+    pub fn with_working_directory(mut self, working_dir: PathBuf) -> Self {
+        self.working_directory = working_dir;
+        self
     }
 
     pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
@@ -321,7 +319,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &'static str {
-        "Execute bash commands with timeout and security restrictions.\n\n\
+        r#"Execute bash commands with timeout and security restrictions.\n\n\
         IMPORTANT: This tool is for terminal operations ONLY. Do NOT use it for:\n\
         - Reading files - use read_file instead of cat/head/tail\n\
         - Editing files - use edit_file instead of sed/awk\n\
@@ -335,11 +333,16 @@ impl Tool for BashTool {
         - Package managers: cargo add, npm install, pip install\n\
         - Running tests: cargo test, pytest, npm test\n\
         - Linting: cargo clippy, eslint, rustfmt\n\n\
+        - bash("cargo test")                    # NOT: bash("cd /path && cargo test") \n
+        - bash("cargo check")                   # NOT: bash("cd /path && cargo check") \n
+        - bash(".hoosh/skills/cargo_pipeline.sh")  # NOT: bash("cd /path && .hoosh/skills/cargo_pipeline.sh") \n
+        - bash("git status") \n
+        - bash("npm install") \n
         Usage notes:\n\
         - You are already in the project directory - do not cd into it\n\
         - Commands timeout after 30 seconds by default (max 300s)\n\
         - Always quote file paths with spaces: cd \"path with spaces\"\n\
-        - Avoid interactive commands (-i flags) as they are not supported"
+        - Avoid interactive commands (-i flags) as they are not supported"#
     }
 
     fn parameter_schema(&self) -> Value {

@@ -3,7 +3,7 @@ use crate::console;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDefinition {
@@ -13,6 +13,8 @@ pub struct AgentDefinition {
     pub file: String,
     pub description: Option<String>,
     pub tags: Vec<String>,
+    #[serde(skip)]
+    pub core_instructions: String,
 }
 
 pub struct AgentDefinitionManager {
@@ -20,13 +22,19 @@ pub struct AgentDefinitionManager {
 }
 
 impl AgentDefinition {
-    pub fn from_config(name: String, config: AgentConfig, content: String) -> Self {
+    pub fn from_config(
+        name: String,
+        config: AgentConfig,
+        content: String,
+        core_instructions: String,
+    ) -> Self {
         Self {
             name,
             content,
             file: config.file,
             description: config.description,
             tags: config.tags,
+            core_instructions,
         }
     }
 }
@@ -34,63 +42,27 @@ impl AgentDefinition {
 impl AgentDefinitionManager {
     pub fn new() -> Result<Self> {
         let config = AppConfig::load()?;
-        let agents_dir = Self::agents_dir()?;
-        Self::initialize_default_agents(&agents_dir)?;
-
         Ok(Self { config })
     }
 
-    fn agents_dir() -> Result<PathBuf> {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .context("Failed to get home directory")?;
-        let agents_dir = PathBuf::from(home)
-            .join(".config")
-            .join("hoosh")
-            .join("agents");
-
-        fs::create_dir_all(&agents_dir).context("Failed to create agents directory")?;
-
-        Ok(agents_dir)
-    }
-
-    fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
-        // Embed default prompts at compile time
-        let default_prompts = [
-            (
-                "hoosh_planner.txt",
-                include_str!("../prompts/hoosh_planner.txt"),
-            ),
-            (
-                "hoosh_coder.txt",
-                include_str!("../prompts/hoosh_coder.txt"),
-            ),
-            (
-                "hoosh_reviewer.txt",
-                include_str!("../prompts/hoosh_reviewer.txt"),
-            ),
-            (
-                "hoosh_troubleshooter.txt",
-                include_str!("../prompts/hoosh_troubleshooter.txt"),
-            ),
-            (
-                "hoosh_assistant.txt",
-                include_str!("../prompts/hoosh_assistant.txt"),
-            ),
-        ];
-
-        // Write each embedded prompt to the agents directory
-        for (file_name, content) in default_prompts {
+    pub fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
+        for (file_name, content) in crate::config::DEFAULT_AGENTS {
             let agent_path = agents_dir.join(file_name);
             fs::write(&agent_path, content)
                 .with_context(|| format!("Failed to write agent file: {}", file_name))?;
+        }
+
+        for (file_name, content) in crate::config::DEFAULT_CORE_INSTRUCTIONS {
+            let path = agents_dir.join(file_name);
+            fs::write(&path, content)
+                .with_context(|| format!("Failed to write core instructions: {}", file_name))?;
         }
 
         Ok(())
     }
 
     fn load_agent_content(&self, agent_config: &AgentConfig) -> Result<String> {
-        let agents_dir = Self::agents_dir()?;
+        let agents_dir = AppConfig::agents_dir()?;
         let agent_path = agents_dir.join(&agent_config.file);
         fs::read_to_string(&agent_path)
             .with_context(|| format!("Failed to read agent file: {}", agent_config.file))
@@ -100,7 +72,16 @@ impl AgentDefinitionManager {
         // Check custom agents first
         if let Some(agent_config) = self.config.agents.get(name) {
             return self.load_agent_content(agent_config).ok().map(|content| {
-                AgentDefinition::from_config(name.to_string(), agent_config.clone(), content)
+                let core_instructions = self
+                    .config
+                    .load_core_instructions(Some(name))
+                    .unwrap_or_else(|_| "Focus on completing the task efficiently.".to_string());
+                AgentDefinition::from_config(
+                    name.to_string(),
+                    agent_config.clone(),
+                    content,
+                    core_instructions,
+                )
             });
         }
 
@@ -132,7 +113,18 @@ impl AgentDefinitionManager {
             .iter()
             .filter_map(|(name, agent_config)| {
                 self.load_agent_content(agent_config).ok().map(|content| {
-                    AgentDefinition::from_config(name.clone(), agent_config.clone(), content)
+                    let core_instructions = self
+                        .config
+                        .load_core_instructions(Some(name))
+                        .unwrap_or_else(|_| {
+                            "Focus on completing the task efficiently.".to_string()
+                        });
+                    AgentDefinition::from_config(
+                        name.clone(),
+                        agent_config.clone(),
+                        content,
+                        core_instructions,
+                    )
                 })
             })
             .collect()

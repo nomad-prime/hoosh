@@ -1,10 +1,60 @@
-use crate::console::VerbosityLevel;
+use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
 
 pub mod error;
 pub use error::{ConfigError, ConfigResult};
+
+pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
+    (
+        "hoosh_planner.txt",
+        include_str!("../prompts/hoosh_planner.txt"),
+    ),
+    (
+        "hoosh_coder.txt",
+        include_str!("../prompts/hoosh_coder.txt"),
+    ),
+    (
+        "hoosh_reviewer.txt",
+        include_str!("../prompts/hoosh_reviewer.txt"),
+    ),
+    (
+        "hoosh_troubleshooter.txt",
+        include_str!("../prompts/hoosh_troubleshooter.txt"),
+    ),
+    (
+        "hoosh_assistant.txt",
+        include_str!("../prompts/hoosh_assistant.txt"),
+    ),
+];
+
+pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
+    (
+        "hoosh_core_instructions.txt",
+        include_str!("../prompts/hoosh_core_instructions.txt"),
+    ),
+    (
+        "hoosh_coder_core_instructions.txt",
+        include_str!("../prompts/hoosh_coder_core_instructions.txt"),
+    ),
+    (
+        "hoosh_planner_core_instructions.txt",
+        include_str!("../prompts/hoosh_planner_core_instructions.txt"),
+    ),
+    (
+        "hoosh_reviewer_core_instructions.txt",
+        include_str!("../prompts/hoosh_reviewer_core_instructions.txt"),
+    ),
+    (
+        "hoosh_troubleshooter_core_instructions.txt",
+        include_str!("../prompts/hoosh_troubleshooter_core_instructions.txt"),
+    ),
+    (
+        "hoosh_assistant_core_instructions.txt",
+        include_str!("../prompts/hoosh_assistant_core_instructions.txt"),
+    ),
+];
 
 #[cfg(test)]
 mod mod_tests;
@@ -25,6 +75,8 @@ pub struct AgentConfig {
     pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub core_instructions_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -40,6 +92,8 @@ pub struct AppConfig {
     pub agents: HashMap<String, AgentConfig>,
     #[serde(default)]
     pub context_manager: Option<ContextManagerConfig>,
+    #[serde(default)]
+    pub core_reminder_token_threshold: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -56,47 +110,28 @@ pub struct ProjectConfig {
     pub agents: HashMap<String, AgentConfig>,
     #[serde(default)]
     pub context_manager: Option<ContextManagerConfig>,
+    #[serde(default)]
+    pub core_reminder_token_threshold: Option<usize>,
+    #[serde(default)]
+    pub core_instructions_file: Option<String>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         let mut agents = HashMap::new();
 
-        // Get the path to the prompts directory in the source code
-        let prompts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("prompts");
-
-        // Read all files from the prompts directory
-        if let Ok(prompt_files) = std::fs::read_dir(&prompts_dir) {
-            for entry in prompt_files.filter_map(|e| e.ok()) {
-                let file_path = entry.path();
-
-                // Skip directories and non-file entries
-                if !file_path.is_file() {
-                    continue;
-                }
-
-                // Get the file name without extension for the agent name
-                if let Some(file_name) = file_path.file_name().and_then(|f| f.to_str()) {
-                    // Remove .txt extension for the agent name
-                    let agent_name = if let Some(stripped) = file_name.strip_suffix(".txt") {
-                        stripped.to_string()
-                    } else {
-                        file_name.to_string()
-                    };
-
-                    // Add the agent to the config
-                    agents.insert(
-                        agent_name,
-                        AgentConfig {
-                            file: file_name.to_string(),
-                            description: None,
-                            tags: vec![],
-                        },
-                    );
-                }
-            }
+        for (file_name, _) in DEFAULT_AGENTS {
+            let agent_name = file_name.strip_suffix(".txt").unwrap_or(file_name);
+            let core_instructions_file = Some(format!("{}_core_instructions.txt", agent_name));
+            agents.insert(
+                agent_name.to_string(),
+                AgentConfig {
+                    file: file_name.to_string(),
+                    description: None,
+                    tags: vec![],
+                    core_instructions_file,
+                },
+            );
         }
 
         Self {
@@ -106,6 +141,7 @@ impl Default for AppConfig {
             default_agent: Some("hoosh_coder".to_string()),
             agents,
             context_manager: None,
+            core_reminder_token_threshold: None,
         }
     }
 }
@@ -133,27 +169,52 @@ impl AppConfig {
             config.merge(project_config);
         }
 
-        // Ensure default agents are always available
-        config.ensure_default_agents()?;
-
         config.validate()?;
 
         Ok(config)
     }
 
     fn validate(&self) -> ConfigResult<()> {
+        let console = console();
+
         if let Some(default_agent) = &self.default_agent
             && !self.agents.contains_key(default_agent)
         {
-            eprintln!(
-                "Warning: Configured default agent '{}' not found in agents configuration",
+            console.warning(&format!(
+                "Configured default agent '{}' not found in agents configuration",
                 default_agent
-            );
+            ));
             if !self.agents.is_empty() {
                 let available_agents: Vec<&str> = self.agents.keys().map(|s| s.as_str()).collect();
-                eprintln!("Available agents: {}", available_agents.join(", "));
+                console.warning(&format!(
+                    "Available agents: {}",
+                    available_agents.join(", ")
+                ));
             }
         }
+
+        let agents_dir = Self::agents_dir()?;
+
+        for (name, agent_config) in &self.agents {
+            let agent_path = agents_dir.join(&agent_config.file);
+            if !agent_path.exists() {
+                console.warning(&format!(
+                    "Agent '{}' references missing file: {}",
+                    name, agent_config.file
+                ));
+            }
+
+            if let Some(core_file) = &agent_config.core_instructions_file {
+                let core_path = agents_dir.join(core_file);
+                if !core_path.exists() {
+                    console.warning(&format!(
+                        "Agent '{}' references missing core instructions file: {}",
+                        name, core_file
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -182,45 +243,6 @@ impl AppConfig {
 
         // On non-Unix systems, we don't perform permission validation
         // as the permission model is different
-
-        Ok(())
-    }
-
-    /// Ensure default agents from prompts directory are available in config
-    fn ensure_default_agents(&mut self) -> ConfigResult<()> {
-        // Get the path to the prompts directory in the source code
-        let prompts_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("prompts");
-
-        // Read all files from the prompts directory
-        if let Ok(prompt_files) = std::fs::read_dir(&prompts_dir) {
-            for entry in prompt_files.filter_map(|e| e.ok()) {
-                let file_path = entry.path();
-
-                // Skip directories and non-file entries
-                if !file_path.is_file() {
-                    continue;
-                }
-
-                // Get the file name without extension for the agent name
-                if let Some(file_name) = file_path.file_name().and_then(|f| f.to_str()) {
-                    // Remove .txt extension for the agent name
-                    let agent_name = if let Some(stripped) = file_name.strip_suffix(".txt") {
-                        stripped.to_string()
-                    } else {
-                        file_name.to_string()
-                    };
-
-                    // Add the agent to the config if it doesn't exist
-                    self.agents.entry(agent_name).or_insert(AgentConfig {
-                        file: file_name.to_string(),
-                        description: None,
-                        tags: vec![],
-                    });
-                }
-            }
-        }
 
         Ok(())
     }
@@ -292,7 +314,6 @@ impl AppConfig {
         Ok(())
     }
 
-    /// Get the configured verbosity level, falling back to Normal if not set
     pub fn get_verbosity(&self) -> VerbosityLevel {
         self.verbosity
             .as_ref()
@@ -306,30 +327,64 @@ impl AppConfig {
             .unwrap_or(VerbosityLevel::Normal)
     }
 
-    /// Set the verbosity level in configuration
     pub fn set_verbosity(&mut self, verbosity: VerbosityLevel) {
         self.verbosity = Some(verbosity.to_string());
     }
 
-    /// Set the default agent in configuration
     pub fn set_default_agent(&mut self, agent_name: String) {
         self.default_agent = Some(agent_name);
     }
 
-    /// Get the context manager configuration, or default if not set
     pub fn get_context_manager_config(&self) -> ContextManagerConfig {
         self.context_manager.clone().unwrap_or_default()
     }
 
-    pub fn config_path() -> ConfigResult<PathBuf> {
-        let path = std::env::var("HOME")
+    pub fn load_core_instructions(&self, agent_name: Option<&str>) -> ConfigResult<String> {
+        // First, try agent-specific core instructions file
+        if let Some(agent) = agent_name
+            && let Some(agent_config) = self.agents.get(agent)
+            && let Some(custom_file) = &agent_config.core_instructions_file
+        {
+            let agents_dir = Self::agents_dir()?;
+            let path = agents_dir.join(custom_file);
+            if let Ok(content) = fs::read_to_string(&path) {
+                return Ok(content.trim().to_string());
+            }
+        }
+
+        // Fall back to built-in core instructions
+        Ok(include_str!("../prompts/hoosh_core_instructions.txt")
+            .trim()
+            .to_string())
+    }
+
+    fn hoosh_config_dir() -> ConfigResult<PathBuf> {
+        let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .map_err(|_| ConfigError::NoHomeDirectory)?;
-        let mut path = PathBuf::from(path);
+
+        let mut path = PathBuf::from(home);
         path.push(".config");
         path.push("hoosh");
+
+        Ok(path)
+    }
+
+    pub fn config_path() -> ConfigResult<PathBuf> {
+        let mut path = Self::hoosh_config_dir()?;
         path.push("config.toml");
         Ok(path)
+    }
+
+    pub fn agents_dir() -> ConfigResult<PathBuf> {
+        let mut path = Self::hoosh_config_dir()?;
+        path.push("agents");
+        fs::create_dir_all(&path).map_err(ConfigError::IoError)?;
+        Ok(path)
+    }
+
+    pub fn get_core_reminder_token_threshold(&self) -> usize {
+        self.core_reminder_token_threshold.unwrap_or(20000)
     }
 
     pub fn project_config_path() -> ConfigResult<PathBuf> {
@@ -364,6 +419,10 @@ impl AppConfig {
 
         if other.context_manager.is_some() {
             self.context_manager = other.context_manager;
+        }
+
+        if other.core_reminder_token_threshold.is_some() {
+            self.core_reminder_token_threshold = other.core_reminder_token_threshold;
         }
     }
 

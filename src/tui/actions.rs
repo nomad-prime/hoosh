@@ -5,7 +5,7 @@ use crate::agent::{Agent, AgentEvent};
 use crate::commands::{CommandContext, CommandResult};
 use crate::tui::app_loop::EventLoopContext;
 
-pub fn execute_command(input: String, event_loop_context: &crate::tui::app_loop::EventLoopContext) {
+pub fn execute_command(input: String, event_loop_context: &EventLoopContext) {
     let command_registry = Arc::clone(&event_loop_context.system_resources.command_registry);
     let conversation = Arc::clone(&event_loop_context.conversation_state.conversation);
     let tool_registry = Arc::clone(&event_loop_context.system_resources.tool_registry);
@@ -60,34 +60,20 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
     let backend = Arc::clone(&event_loop_context.system_resources.backend);
     let tool_registry = Arc::clone(&event_loop_context.system_resources.tool_registry);
     let tool_executor = Arc::clone(&event_loop_context.system_resources.tool_executor);
+    let system_reminder = Arc::clone(&event_loop_context.system_resources.system_reminder);
     let event_tx = event_loop_context.channels.event_tx.clone();
     let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
-    let todo_state = event_loop_context.runtime.todo_state.clone();
 
     tokio::spawn(async move {
         let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
 
-        {
-            let mut conv = conversation.lock().await;
-            conv.add_user_message(expanded_input.clone());
-
-            // Inject todo state as a system reminder in the user message
-            if let Some(todo_reminder) = todo_state.format_for_llm().await {
-                // Add the todo reminder as part of the user's message context
-                let last_idx = conv.messages.len() - 1;
-                if let Some(msg) = conv.messages.get_mut(last_idx)
-                    && let Some(content) = &mut msg.content
-                {
-                    content.push_str("\n\n");
-                    content.push_str(&todo_reminder);
-                }
-            }
-        }
-
         let mut conv = conversation.lock().await;
+        conv.add_user_message(expanded_input.clone());
+
         let agent = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx.clone())
-            .with_context_manager(context_manager);
+            .with_context_manager(context_manager)
+            .with_system_reminder(system_reminder);
 
         // Error is already sent as AgentEvent::Error from within handle_turn
         let _ = agent.handle_turn(&mut conv).await;

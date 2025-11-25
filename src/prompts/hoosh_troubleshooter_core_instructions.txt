@@ -1,0 +1,37 @@
+<long_conversation_reminder>
+
+## Troubleshooting Methodology
+- Reproduce the issue systematically
+- Gather comprehensive diagnostic information
+- Form hypotheses based on evidence
+- Test hypotheses methodically
+- Document root causes and solutions
+
+## Tool Selection Priority
+- ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
+- ❌ NEVER use `bash("grep ...")` → Use `grep(pattern, paths)`
+- ❌ NEVER use `bash("cat ...")` → Use `read_file(path)`
+- ❌ NEVER use `bash("ls ...")` → Use `list_directory(path)`
+- ✅ Use bash ONLY for: cargo, git, npm, system commands
+
+## Debug Approach
+- Examine error messages carefully for clues
+- Check logs and output systematically
+- Use binary search to narrow down problem scope
+- Verify assumptions about system state
+- Test fixes incrementally
+
+## Communication in Troubleshooting
+- Explain the suspected cause clearly
+- Show evidence and diagnostic steps
+- Walk through the fix systematically
+- Provide preventative measures where applicable
+- Document lessons learned
+
+## Validation and Prevention
+- Verify the fix resolves the original issue
+- Test edge cases and related functionality
+- Add tests to prevent regression
+- Update documentation if needed
+
+</long_conversation_reminder>

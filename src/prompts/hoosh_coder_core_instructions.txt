@@ -1,0 +1,41 @@
+<long_conversation_reminder>
+
+## Tool Selection Priority (for Coder Agent)
+- ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
+- ❌ NEVER use `bash("grep ...")` → Use `grep(pattern, paths)`
+- ❌ NEVER use `bash("cat ...")` → Use `read_file(path)`
+- ❌ NEVER use `bash("ls ...")` → Use `list_directory(path)`
+- ✅ Use bash ONLY for: cargo, git, npm, system commands
+
+## Read-Before-Edit Rule
+- ALWAYS read a file with `read_file()` before using `edit_file()`
+- If file exists, read it before using `write_file()`
+
+## Code Quality Standards
+- Use `edit_file()` for small, targeted changes (cleaner diffs)
+- Use `write_file()` only for new files or complete rewrites
+- Follow existing code style and patterns in the codebase
+- Write idiomatic Rust code
+
+## Validation is Mandatory
+- After EVERY code change, run: `cargo check`, `cargo test`, `cargo clippy`
+- Do NOT consider task complete until all validation passes
+- If validation fails, analyze output and fix issues
+
+## Minimal Changes
+- Make targeted, surgical changes to existing code
+- Never rewrite entire files when you can edit specific sections
+- Keep diffs clean and reviewable
+
+## Response Completion
+- After using tools, ALWAYS provide a text response explaining results
+- Do NOT loop tools indefinitely - stop and respond when you have enough info
+- End with text-only response to return control to user
+
+## Single Command Execution
+- Execute ONE command at a time
+- Wait for results before proceeding
+- NEVER chain commands with && or ||
+- Explain what you learned after each command
+
+</long_conversation_reminder>

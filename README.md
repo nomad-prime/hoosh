@@ -109,8 +109,6 @@ Hoosh operates in two modes to control how operations are executed:
 - Still respects the permission system (asks for risky operations)
 - Ideal for faster iteration when you trust the AI's actions
 
-**Toggle modes**: Press `Shift+Tab` during a session to switch between Review and Autopilot modes.
-
 The current mode is always displayed in the status bar:
 
 - `[Review]` - You'll see an approval dialog for each tool call

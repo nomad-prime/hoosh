@@ -46,9 +46,6 @@ pub enum AgentEvent {
         message: String,
         is_success: bool,
     },
-    AgentSwitched {
-        new_agent_name: String,
-    },
     TokenPressureWarning {
         current_pressure: f32,
         threshold: f32,

@@ -1,6 +1,3 @@
-// Comprehensive unit tests for Agent core functionality
-// Tests focus on use cases and behavior, not implementation details
-
 use super::*;
 use crate::agent::{Conversation, ToolCall, ToolFunction};
 use crate::backends::{LlmError, LlmResponse};
@@ -444,6 +441,7 @@ async fn agent_response_only_has_content_completes() {
 
 #[tokio::test]
 async fn agent_with_execution_budget() {
+    use crate::system_reminders::{BudgetReminderStrategy, SystemReminder};
     use crate::task_management::ExecutionBudget;
     use std::time::Duration;
 
@@ -467,9 +465,13 @@ async fn agent_with_execution_budget() {
         )),
     ));
 
+    let max_steps = 5;
+    let budget_strategy = Box::new(BudgetReminderStrategy::new(budget, max_steps));
+    let system_reminder = Arc::new(SystemReminder::new().add_strategy(budget_strategy));
+
     let agent = Agent::new(backend, tool_registry, tool_executor)
-        .with_max_steps(5)
-        .with_execution_budget(budget);
+        .with_max_steps(max_steps)
+        .with_system_reminder(system_reminder);
 
     let mut conversation = Conversation::new();
     conversation.add_user_message("Test message".to_string());
@@ -480,6 +482,7 @@ async fn agent_with_execution_budget() {
 
 #[tokio::test]
 async fn agent_handles_budget_tracking() {
+    use crate::system_reminders::{BudgetReminderStrategy, SystemReminder};
     use crate::task_management::ExecutionBudget;
     use std::time::Duration;
 
@@ -504,10 +507,14 @@ async fn agent_handles_budget_tracking() {
         )),
     ));
 
+    let max_steps = 5;
+    let budget_strategy = Box::new(BudgetReminderStrategy::new(budget, max_steps));
+    let system_reminder = Arc::new(SystemReminder::new().add_strategy(budget_strategy));
+
     let agent = Agent::new(backend, tool_registry, tool_executor)
-        .with_max_steps(5)
-        .with_execution_budget(budget)
-        .with_event_sender(event_tx);
+        .with_max_steps(max_steps)
+        .with_event_sender(event_tx)
+        .with_system_reminder(system_reminder);
 
     let mut conversation = Conversation::new();
     conversation.add_user_message("Test".to_string());
@@ -518,6 +525,7 @@ async fn agent_handles_budget_tracking() {
 
 #[tokio::test]
 async fn agent_wraps_up_when_budget_low() {
+    use crate::system_reminders::{BudgetReminderStrategy, SystemReminder};
     use crate::task_management::ExecutionBudget;
     use std::time::Duration;
 
@@ -584,10 +592,14 @@ async fn agent_wraps_up_when_budget_low() {
         )),
     ));
 
+    let max_steps = 10;
+    let budget_strategy = Box::new(BudgetReminderStrategy::new(budget, max_steps));
+    let system_reminder = Arc::new(SystemReminder::new().add_strategy(budget_strategy));
+
     let agent = Agent::new(backend, tool_registry, tool_executor)
-        .with_max_steps(10)
-        .with_execution_budget(budget)
-        .with_event_sender(event_tx);
+        .with_max_steps(max_steps)
+        .with_event_sender(event_tx)
+        .with_system_reminder(system_reminder);
 
     let mut conversation = Conversation::new();
     conversation.add_user_message("Test".to_string());
@@ -610,6 +622,7 @@ async fn agent_wraps_up_when_budget_low() {
 
 #[tokio::test]
 async fn agent_handles_budget_exhaustion() {
+    use crate::system_reminders::{BudgetReminderStrategy, SystemReminder};
     use crate::task_management::ExecutionBudget;
     use std::time::Duration;
 
@@ -634,9 +647,13 @@ async fn agent_handles_budget_exhaustion() {
         )),
     ));
 
+    let max_steps = 10;
+    let budget_strategy = Box::new(BudgetReminderStrategy::new(budget, max_steps));
+    let system_reminder = Arc::new(SystemReminder::new().add_strategy(budget_strategy));
+
     let agent = Agent::new(backend, tool_registry, tool_executor)
-        .with_max_steps(10)
-        .with_execution_budget(budget);
+        .with_max_steps(max_steps)
+        .with_system_reminder(system_reminder);
 
     let mut conversation = Conversation::new();
     conversation.add_user_message("Long task".to_string());

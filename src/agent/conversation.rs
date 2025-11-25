@@ -386,15 +386,45 @@ impl Conversation {
         self.messages.extend(recent);
     }
 
-    /// Check if the conversation has been compacted
-    pub fn is_compacted(&self) -> bool {
-        self.messages.iter().any(|m| {
-            if let Some(content) = &m.content {
-                content.starts_with("[CONVERSATION HISTORY SUMMARY")
-            } else {
-                false
+    /// Estimate the number of tokens in this conversation.
+    /// Uses ~4 bytes per token (industry standard approximation).
+    /// Accounts for message content, tool calls, roles, and names.
+    pub fn estimate_token(&self) -> usize {
+        const APPROX_BYTES_PER_TOKEN: usize = 4;
+
+        let total_bytes: usize = self.messages.iter().map(Self::estimate_message_bytes).sum();
+
+        // Round up: (bytes + 3) / 4
+        total_bytes.saturating_add(APPROX_BYTES_PER_TOKEN.saturating_sub(1))
+            / APPROX_BYTES_PER_TOKEN
+    }
+
+    /// Estimate the byte size of a single conversation message.
+    /// This accounts for all message fields including large tool outputs.
+    fn estimate_message_bytes(msg: &ConversationMessage) -> usize {
+        let mut total = 0;
+
+        // Content field (can be very large for tool outputs)
+        if let Some(content) = &msg.content {
+            total += content.len();
+        }
+
+        // Tool calls (including arguments JSON which can be large)
+        if let Some(tool_calls) = &msg.tool_calls {
+            for call in tool_calls {
+                total += call.function.name.len();
+                total += call.function.arguments.len();
             }
-        })
+        }
+
+        // Role and other fields (small but count them)
+        total += msg.role.len();
+
+        if let Some(name) = &msg.name {
+            total += name.len();
+        }
+
+        total
     }
 }
 
@@ -779,5 +809,58 @@ mod tests {
         let repaired2 = conversation.repair_incomplete_tool_calls();
         assert!(!repaired2);
         assert_eq!(conversation.messages.len(), len_after_first);
+    }
+
+    #[test]
+    fn test_estimate_token_empty_conversation() {
+        let conversation = Conversation::new();
+        assert_eq!(conversation.estimate_token(), 0);
+    }
+
+    #[test]
+    fn test_estimate_token_simple_message() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("Hello".to_string());
+        // "user" (4) + "Hello" (5) = 9 bytes / 4 = 2 tokens (rounded up)
+        let tokens = conversation.estimate_token();
+        (2..=3).contains(&tokens);
+    }
+
+    #[test]
+    fn test_estimate_token_with_all_fields() {
+        let mut conversation = Conversation::new();
+
+        let msg = ConversationMessage {
+            role: "assistant".to_string(),         // 9 bytes
+            content: Some("Response".to_string()), // 8 bytes
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "test".to_string(),    // 4 bytes
+                    arguments: "{}".to_string(), // 2 bytes
+                },
+            }]),
+            tool_call_id: None,
+            name: Some("assistant_name".to_string()), // 14 bytes
+        };
+
+        conversation.messages.push(msg);
+        // 9 + 8 + 4 + 2 + 14 = 37 bytes / 4 = 9 tokens (rounded up)
+        let tokens = conversation.estimate_token();
+        (9..=10).contains(&tokens);
+    }
+
+    #[test]
+    fn test_estimate_token_with_large_content() {
+        let mut conversation = Conversation::new();
+
+        let large_output = "x".repeat(10000);
+        conversation.add_assistant_message(Some(large_output.clone()), None);
+
+        // 9 ("assistant") + 10000 (content) = 10009 bytes
+        // 10009 / 4 = 2502 tokens (rounded up)
+        let tokens = conversation.estimate_token();
+        (2500..=2510).contains(&tokens);
     }
 }

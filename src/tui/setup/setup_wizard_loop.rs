@@ -1,3 +1,4 @@
+use crate::agent_definition::AgentDefinitionManager;
 use crate::config::AppConfig;
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::layout::Layout;
@@ -74,16 +75,17 @@ pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
         },
     );
 
-    // Save the config
     config.save()?;
 
-    // Verify the file was actually written
     if !config_path.exists() {
         return Err(anyhow::anyhow!(
             "Config file not found after save operation at {}",
             config_path.display()
         ));
     }
+
+    let agents_dir = AppConfig::agents_dir()?;
+    AgentDefinitionManager::initialize_default_agents(&agents_dir)?;
 
     Ok(())
 }
