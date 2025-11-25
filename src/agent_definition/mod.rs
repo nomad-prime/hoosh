@@ -46,57 +46,16 @@ impl AgentDefinitionManager {
     }
 
     pub fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
-        let default_prompts = [
-            (
-                "hoosh_planner.txt",
-                include_str!("../prompts/hoosh_planner.txt"),
-            ),
-            (
-                "hoosh_coder.txt",
-                include_str!("../prompts/hoosh_coder.txt"),
-            ),
-            (
-                "hoosh_reviewer.txt",
-                include_str!("../prompts/hoosh_reviewer.txt"),
-            ),
-            (
-                "hoosh_troubleshooter.txt",
-                include_str!("../prompts/hoosh_troubleshooter.txt"),
-            ),
-            (
-                "hoosh_assistant.txt",
-                include_str!("../prompts/hoosh_assistant.txt"),
-            ),
-            (
-                "hoosh_core_instructions.txt",
-                include_str!("../prompts/hoosh_core_instructions.txt"),
-            ),
-            (
-                "hoosh_coder_core_instructions.txt",
-                include_str!("../prompts/hoosh_coder_core_instructions.txt"),
-            ),
-            (
-                "hoosh_planner_core_instructions.txt",
-                include_str!("../prompts/hoosh_planner_core_instructions.txt"),
-            ),
-            (
-                "hoosh_reviewer_core_instructions.txt",
-                include_str!("../prompts/hoosh_reviewer_core_instructions.txt"),
-            ),
-            (
-                "hoosh_troubleshooter_core_instructions.txt",
-                include_str!("../prompts/hoosh_troubleshooter_core_instructions.txt"),
-            ),
-            (
-                "hoosh_assistant_core_instructions.txt",
-                include_str!("../prompts/hoosh_assistant_core_instructions.txt"),
-            ),
-        ];
-
-        for (file_name, content) in default_prompts {
+        for (file_name, content) in crate::config::DEFAULT_AGENTS {
             let agent_path = agents_dir.join(file_name);
             fs::write(&agent_path, content)
                 .with_context(|| format!("Failed to write agent file: {}", file_name))?;
+        }
+
+        for (file_name, content) in crate::config::DEFAULT_CORE_INSTRUCTIONS {
+            let path = agents_dir.join(file_name);
+            fs::write(&path, content)
+                .with_context(|| format!("Failed to write core instructions: {}", file_name))?;
         }
 
         Ok(())

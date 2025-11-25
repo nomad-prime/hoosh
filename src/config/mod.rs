@@ -6,15 +6,52 @@ use std::{collections::HashMap, fs, path::PathBuf};
 pub mod error;
 pub use error::{ConfigError, ConfigResult};
 
-pub const DEFAULT_AGENT_FILES: &[&str] = &[
-    "hoosh_planner.txt",
-    "hoosh_coder.txt",
-    "hoosh_reviewer.txt",
-    "hoosh_troubleshooter.txt",
-    "hoosh_assistant.txt",
+pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
+    (
+        "hoosh_planner.txt",
+        include_str!("../prompts/hoosh_planner.txt"),
+    ),
+    ("hoosh_coder.txt", include_str!("../prompts/hoosh_coder.txt")),
+    (
+        "hoosh_reviewer.txt",
+        include_str!("../prompts/hoosh_reviewer.txt"),
+    ),
+    (
+        "hoosh_troubleshooter.txt",
+        include_str!("../prompts/hoosh_troubleshooter.txt"),
+    ),
+    (
+        "hoosh_assistant.txt",
+        include_str!("../prompts/hoosh_assistant.txt"),
+    ),
 ];
 
-pub const DEFAULT_CORE_INSTRUCTIONS_FILE: &str = "hoosh_core_instructions.txt";
+pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
+    (
+        "hoosh_core_instructions.txt",
+        include_str!("../prompts/hoosh_core_instructions.txt"),
+    ),
+    (
+        "hoosh_coder_core_instructions.txt",
+        include_str!("../prompts/hoosh_coder_core_instructions.txt"),
+    ),
+    (
+        "hoosh_planner_core_instructions.txt",
+        include_str!("../prompts/hoosh_planner_core_instructions.txt"),
+    ),
+    (
+        "hoosh_reviewer_core_instructions.txt",
+        include_str!("../prompts/hoosh_reviewer_core_instructions.txt"),
+    ),
+    (
+        "hoosh_troubleshooter_core_instructions.txt",
+        include_str!("../prompts/hoosh_troubleshooter_core_instructions.txt"),
+    ),
+    (
+        "hoosh_assistant_core_instructions.txt",
+        include_str!("../prompts/hoosh_assistant_core_instructions.txt"),
+    ),
+];
 
 #[cfg(test)]
 mod mod_tests;
@@ -80,7 +117,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         let mut agents = HashMap::new();
 
-        for file_name in DEFAULT_AGENT_FILES {
+        for (file_name, _) in DEFAULT_AGENTS {
             let agent_name = file_name.strip_suffix(".txt").unwrap_or(file_name);
             let core_instructions_file = Some(format!("{}_core_instructions.txt", agent_name));
             agents.insert(
