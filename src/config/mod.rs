@@ -352,34 +352,33 @@ impl AppConfig {
             .to_string())
     }
 
-    pub fn agents_dir() -> ConfigResult<PathBuf> {
-        let path = std::env::var("HOME")
+    fn hoosh_config_dir() -> ConfigResult<PathBuf> {
+        let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .map_err(|_| ConfigError::NoHomeDirectory)?;
-        let mut path = PathBuf::from(path);
+
+        let mut path = PathBuf::from(home);
         path.push(".config");
         path.push("hoosh");
+
+        Ok(path)
+    }
+
+    pub fn config_path() -> ConfigResult<PathBuf> {
+        let mut path = Self::hoosh_config_dir()?;
+        path.push("config.toml");
+        Ok(path)
+    }
+
+    pub fn agents_dir() -> ConfigResult<PathBuf> {
+        let mut path = Self::hoosh_config_dir()?;
         path.push("agents");
-
-        // Create the directory if it doesn't exist
         fs::create_dir_all(&path).map_err(ConfigError::IoError)?;
-
         Ok(path)
     }
 
     pub fn get_core_reminder_token_threshold(&self) -> usize {
         self.core_reminder_token_threshold.unwrap_or(20000)
-    }
-
-    pub fn config_path() -> ConfigResult<PathBuf> {
-        let path = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .map_err(|_| ConfigError::NoHomeDirectory)?;
-        let mut path = PathBuf::from(path);
-        path.push(".config");
-        path.push("hoosh");
-        path.push("config.toml");
-        Ok(path)
     }
 
     pub fn project_config_path() -> ConfigResult<PathBuf> {
