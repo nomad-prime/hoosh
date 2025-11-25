@@ -6,6 +6,7 @@ use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
+use crate::system_reminders::{BudgetReminderStrategy, SystemReminder};
 use crate::task_management::{ExecutionBudget, TaskDefinition, TaskEvent, TaskResult};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
@@ -70,14 +71,18 @@ impl TaskManager {
             .with_event_sender(event_tx.clone()),
         );
 
+        let max_steps = task_def.agent_type.max_steps();
+        let budget_strategy = Box::new(BudgetReminderStrategy::new(budget_arc.clone(), max_steps));
+        let system_reminder = Arc::new(SystemReminder::new().add_strategy(budget_strategy));
+
         let agent = Agent::new(
             self.backend.clone(),
             self.tool_registry.clone(),
             tool_executor,
         )
-        .with_max_steps(task_def.agent_type.max_steps())
+        .with_max_steps(max_steps)
         .with_event_sender(event_tx)
-        .with_execution_budget(budget_arc.clone());
+        .with_system_reminder(system_reminder);
 
         let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
 

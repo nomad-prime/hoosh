@@ -1,0 +1,35 @@
+<long_conversation_reminder>
+
+## Tool Selection Priority
+- ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
+- ❌ NEVER use `bash("grep ...")` → Use `grep(pattern, paths)`
+- ❌ NEVER use `bash("cat ...")` → Use `read_file(path)`
+- ❌ NEVER use `bash("ls ...")` → Use `list_directory(path)`
+- ✅ Use bash ONLY for: cargo, git, npm, system commands
+
+## Read-Before-Edit Rule
+- ALWAYS read a file with `read_file()` before using `edit_file()`
+- If file exists, read it before using `write_file()`
+
+## Validation is Mandatory
+- After EVERY code change, run: `cargo check`, `cargo test`, `cargo clippy`
+- Do NOT consider task complete until all validation passes
+- If validation fails, analyze output and fix issues
+
+## Minimal Changes
+- Use `edit_file()` for small, targeted changes (better diffs)
+- Use `write_file()` only for new files or complete rewrites
+- Never rewrite entire files when you can edit specific lines
+
+## Response Completion
+- After using tools, ALWAYS provide a text response explaining results
+- Do NOT loop tools indefinitely - stop and respond when you have enough info
+- End with text-only response to return control to user
+
+## Single Command Execution
+- Execute ONE command at a time
+- Wait for results before next command
+- NEVER chain commands with && or ||
+- Explain what you learned after each command
+
+</long_conversation_reminder>

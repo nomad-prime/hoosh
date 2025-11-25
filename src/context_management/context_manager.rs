@@ -139,7 +139,7 @@ impl ContextManager {
     }
 
     pub fn get_token_pressure(&self, conversation: &Conversation) -> f32 {
-        let current = TokenAccountant::estimate_conversation_tokens(conversation);
+        let current = conversation.estimate_token();
         (current as f32 / self.config.max_tokens as f32).min(1.0)
     }
 

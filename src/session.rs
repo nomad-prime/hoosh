@@ -18,6 +18,9 @@ use crate::history::PromptHistory;
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
+use crate::system_reminders::{
+    PeriodicCoreReminderStrategy, SkillReminderStrategy, SystemReminder, TodoReminderStrategy,
+};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 use crate::tools::todo_state::TodoState;
@@ -184,6 +187,25 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     let command_completer = CommandCompleter::new(Arc::clone(&command_registry));
     app_state.register_completer(Box::new(command_completer));
 
+    // Build system reminder
+    let core_instructions = default_agent
+        .as_ref()
+        .map(|a| a.core_instructions.clone())
+        .unwrap_or_else(|| "Focus on completing the task efficiently.".to_string());
+    let token_threshold = config.get_core_reminder_token_threshold();
+    let periodic_strategy = Box::new(PeriodicCoreReminderStrategy::new(
+        token_threshold,
+        core_instructions,
+    ));
+    let todo_strategy = Box::new(TodoReminderStrategy::new(todo_state.clone()));
+    let skill_strategy = Box::new(SkillReminderStrategy::new(working_dir.clone()));
+    let system_reminder = Arc::new(
+        SystemReminder::new()
+            .add_strategy(periodic_strategy)
+            .add_strategy(todo_strategy)
+            .add_strategy(skill_strategy),
+    );
+
     // Build system resources
     let system_resources = SystemResources {
         backend,
@@ -192,6 +214,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         tool_executor: Arc::new(tool_executor),
         agent_manager,
         command_registry,
+        system_reminder,
     };
 
     // Build conversation state

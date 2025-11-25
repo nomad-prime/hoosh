@@ -573,10 +573,6 @@ impl AppState {
                     self.add_retry_failure(&message);
                 }
             }
-            AgentEvent::AgentSwitched { .. } => {
-                // The event is handled in the event loop, but we might want to show a message
-                // or update UI elements here if needed
-            }
             AgentEvent::Summarizing { .. } => {
                 self.agent_state = AgentState::Summarizing;
             }

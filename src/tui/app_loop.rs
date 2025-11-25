@@ -32,6 +32,7 @@ pub struct SystemResources {
     pub tool_executor: Arc<ToolExecutor>,
     pub agent_manager: Arc<AgentDefinitionManager>,
     pub command_registry: Arc<CommandRegistry>,
+    pub system_reminder: Arc<crate::system_reminders::SystemReminder>,
 }
 
 pub struct ConversationState {
@@ -147,9 +148,6 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
             if console().verbosity() >= VerbosityLevel::Debug {
                 app.add_debug_message(msg);
             }
-        }
-        AgentEvent::AgentSwitched { new_agent_name } => {
-            context.conversation_state.current_agent_name = new_agent_name;
         }
         other_event => {
             app.handle_agent_event(other_event);

@@ -297,7 +297,7 @@ fn test_token_estimation_with_tool_calls() {
         name: None,
     });
 
-    let estimated_tokens = TokenAccountant::estimate_conversation_tokens(&conversation);
+    let estimated_tokens = conversation.estimate_token();
 
     // Should account for tool call name and arguments
     // "assistant" + "read_file" + large JSON = significant tokens
