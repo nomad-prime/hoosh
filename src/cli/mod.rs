@@ -75,6 +75,11 @@ pub enum ConfigAction {
 #[derive(Subcommand)]
 pub enum AgentAction {
     ReinstallBuiltins,
+    Create {
+        name: String,
+        #[arg(short, long)]
+        description: Option<String>,
+    },
 }
 
 impl Cli {
