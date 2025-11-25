@@ -62,7 +62,14 @@ impl Component for StatusBar {
                         palette::STATUS_PROCESSING,
                     )
                 }
-                AgentState::Idle => (String::new(), palette::STATUS_IDLE),
+                AgentState::Idle => {
+                    // Show "Todos" when idle and there are todos
+                    if !state.todos.is_empty() {
+                        ("Todos".to_string(), palette::STATUS_TODOS)
+                    } else {
+                        (String::new(), palette::STATUS_IDLE)
+                    }
+                }
                 AgentState::Thinking => {
                     let spinner = thinking_spinners[state.current_thinking_spinner][state
                         .animation_frame

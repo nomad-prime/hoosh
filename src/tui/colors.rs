@@ -41,6 +41,7 @@ pub mod palette {
     pub const STATUS_IDLE: Color = Color::Rgb(142, 240, 204);
     pub const STATUS_PROCESSING: Color = Color::Rgb(142, 240, 204);
     pub const STATUS_WAITING: Color = Color::Yellow;
+    pub const STATUS_TODOS: Color = Color::Yellow;
 
     // Tool call status colors
     pub const TOOL_STATUS_STARTING: Color = Color::Gray;
