@@ -83,6 +83,7 @@ impl BackendFactory for OpenAICompatibleBackend {
             base_url,
             chat_api,
             temperature: config.temperature,
+            pricing_endpoint: config.pricing_endpoint.clone(),
         };
 
         Ok(Box::new(OpenAICompatibleBackend::new(openai_config)?))

@@ -43,6 +43,15 @@ impl SetupWizardHandler {
                                 }
                             }
                         }
+                        SetupWizardStep::PricingEndpointInput => {
+                            let lines: Vec<&str> = text.lines().collect();
+                            for (i, line) in lines.iter().enumerate() {
+                                app.pricing_endpoint_input.insert_str(line);
+                                if i < lines.len() - 1 {
+                                    app.pricing_endpoint_input.insert_newline();
+                                }
+                            }
+                        }
                         SetupWizardStep::ModelSelection => {
                             let lines: Vec<&str> = text.lines().collect();
                             for (i, line) in lines.iter().enumerate() {
@@ -66,6 +75,9 @@ impl SetupWizardHandler {
             }
             SetupWizardStep::BaseUrlInput => {
                 app.base_url_input.input(*event);
+            }
+            SetupWizardStep::PricingEndpointInput => {
+                app.pricing_endpoint_input.input(*event);
             }
             SetupWizardStep::ModelSelection => {
                 app.model_input.input(*event);
@@ -102,6 +114,16 @@ impl SetupWizardHandler {
                     }
                     return KeyHandlerResult::Handled;
                 }
+                SetupWizardStep::PricingEndpointInput => {
+                    let lines: Vec<&str> = text.lines().collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        state.pricing_endpoint_input.insert_str(line);
+                        if i < lines.len() - 1 {
+                            state.pricing_endpoint_input.insert_newline();
+                        }
+                    }
+                    return KeyHandlerResult::Handled;
+                }
                 SetupWizardStep::ModelSelection => {
                     let lines: Vec<&str> = text.lines().collect();
                     for (i, line) in lines.iter().enumerate() {
@@ -128,6 +150,7 @@ impl SetupWizardHandler {
             &state.current_step,
             SetupWizardStep::ApiKeyInput
                 | SetupWizardStep::BaseUrlInput
+                | SetupWizardStep::PricingEndpointInput
                 | SetupWizardStep::ModelSelection
         );
 
@@ -167,6 +190,13 @@ impl SetupWizardHandler {
                 }
             },
             SetupWizardStep::BaseUrlInput => match key {
+                KeyCode::Enter => state.advance_step(),
+                KeyCode::Esc => state.go_back(),
+                _ => {
+                    self.handle_text_input(state, key_event);
+                }
+            },
+            SetupWizardStep::PricingEndpointInput => match key {
                 KeyCode::Enter => state.advance_step(),
                 KeyCode::Esc => state.go_back(),
                 _ => {

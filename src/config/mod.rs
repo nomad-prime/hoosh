@@ -66,6 +66,7 @@ pub struct BackendConfig {
     pub base_url: Option<String>,
     pub chat_api: Option<String>,
     pub temperature: Option<f32>,
+    pub pricing_endpoint: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -290,6 +291,7 @@ impl AppConfig {
                 base_url: None,
                 chat_api: None,
                 temperature: None,
+                pricing_endpoint: None,
             });
 
         match key {
@@ -304,6 +306,7 @@ impl AppConfig {
                 })?;
                 config.temperature = Some(temp);
             }
+            "pricing_endpoint" => config.pricing_endpoint = Some(value),
             _ => {
                 return Err(ConfigError::UnknownConfigKey {
                     key: key.to_string(),

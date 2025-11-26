@@ -229,6 +229,73 @@ impl SetupWizardDialog {
         paragraph.render(inner, buf);
     }
 
+    fn render_pricing_endpoint(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
+        let backend_name = state
+            .selected_backend
+            .as_ref()
+            .map(|b| b.as_str())
+            .unwrap_or("unknown");
+
+        let block = Block::default()
+            .title(" Pricing Endpoint Configuration ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(palette::PRIMARY_BORDER))
+            .style(Style::default().bg(palette::DIALOG_BG));
+
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        // Don't render content if the area is too small
+        if inner.height < 8 {
+            return;
+        }
+
+        let mut lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                format!("Configure {} Pricing Endpoint", backend_name),
+                Style::default()
+                    .fg(palette::PRIMARY_BORDER)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Pricing Endpoint (optional):",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "e.g., /models for OpenRouter-compatible backends",
+                Style::default()
+                    .fg(palette::WARNING)
+                    .add_modifier(Modifier::ITALIC),
+            )),
+            Line::from(""),
+        ];
+
+        let widget = state.pricing_endpoint_input.widget();
+        widget.render(
+            Rect {
+                x: inner.x,
+                y: inner.y + lines.len() as u16,
+                width: inner.width,
+                height: 1,
+            },
+            buf,
+        );
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Enter to continue, Esc to go back",
+            Style::default().fg(palette::PRIMARY_BORDER),
+        )));
+
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+
+        paragraph.render(inner, buf);
+    }
+
     fn render_model_selection(&self, state: &SetupWizardState, area: Rect, buf: &mut Buffer) {
         let backend_name = state
             .selected_backend
@@ -406,9 +473,10 @@ impl Component for SetupWizardDialog {
             SetupWizardStep::Welcome => self.render_welcome(area, buf),
             SetupWizardStep::BackendSelection => self.render_backend_selection(state, area, buf),
             SetupWizardStep::ApiKeyInput => self.render_api_key_input(state, area, buf),
+            SetupWizardStep::BaseUrlInput => self.render_base_url(state, area, buf),
+            SetupWizardStep::PricingEndpointInput => self.render_pricing_endpoint(state, area, buf),
             SetupWizardStep::ModelSelection => self.render_model_selection(state, area, buf),
             SetupWizardStep::Confirmation => self.render_confirmation(state, area, buf),
-            SetupWizardStep::BaseUrlInput => self.render_base_url(state, area, buf),
         }
     }
 }

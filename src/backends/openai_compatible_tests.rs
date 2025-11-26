@@ -13,6 +13,7 @@ fn create_test_config() -> OpenAICompatibleConfig {
         base_url: "http://localhost".to_string(),
         chat_api: "/v1/chat/completions".to_string(),
         temperature: Some(0.7),
+        pricing_endpoint: None,
     }
 }
 
@@ -107,6 +108,7 @@ async fn backend_handles_rate_limit_error() {
         client,
         config,
         default_executor,
+        cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -135,6 +137,7 @@ async fn backend_handles_server_error() {
         client,
         config,
         default_executor,
+        cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -161,6 +164,7 @@ async fn backend_handles_authentication_error() {
         client,
         config,
         default_executor,
+        cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -421,6 +425,7 @@ async fn backend_handles_multiple_retries_on_rate_limit() {
         client,
         config,
         default_executor,
+        cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -486,6 +491,7 @@ async fn backend_configuration_with_custom_values() {
         base_url: "https://custom.api".to_string(),
         chat_api: "/custom/chat".to_string(),
         temperature: Some(0.9),
+        pricing_endpoint: None,
     };
 
     let backend = OpenAICompatibleBackend::new(config).unwrap();

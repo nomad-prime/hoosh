@@ -15,6 +15,7 @@ pub struct OpenAICompatibleConfig {
     pub base_url: String,
     pub temperature: Option<f32>,
     pub chat_api: String,
+    pub pricing_endpoint: Option<String>,
 }
 
 impl Default for OpenAICompatibleConfig {
@@ -26,6 +27,7 @@ impl Default for OpenAICompatibleConfig {
             base_url: "https://api.openai.com/v1".to_string(),
             chat_api: "/chat/completions".to_string(),
             temperature: None,
+            pricing_endpoint: None,
         }
     }
 }
@@ -34,6 +36,7 @@ pub struct OpenAICompatibleBackend {
     client: reqwest::Client,
     config: OpenAICompatibleConfig,
     default_executor: RequestExecutor,
+    cached_pricing: std::sync::Arc<tokio::sync::RwLock<Option<crate::backends::TokenPricing>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +109,23 @@ struct ResponseMessage {
     tool_calls: Option<Vec<ToolCall>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelInfo {
+    id: String,
+    pricing: Option<ModelPricing>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelPricing {
+    prompt: Option<String>,
+    completion: Option<String>,
+}
+
 impl OpenAICompatibleBackend {
     pub fn new(config: OpenAICompatibleConfig) -> Result<Self> {
         let mut client_builder = reqwest::Client::builder()
@@ -136,7 +156,56 @@ impl OpenAICompatibleBackend {
             client,
             config,
             default_executor,
+            cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
         })
+    }
+
+    async fn fetch_and_cache_pricing(&self) -> Result<()> {
+        // Only fetch if pricing endpoint is configured
+        let pricing_endpoint = match &self.config.pricing_endpoint {
+            Some(endpoint) => endpoint,
+            None => return Ok(()),
+        };
+
+        let url = format!("{}{}", self.config.base_url, pricing_endpoint);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .send()
+            .await
+            .context("Failed to fetch pricing from endpoint")?;
+
+        if !response.status().is_success() {
+            return Ok(()); // Silently fail, will use hardcoded pricing
+        }
+
+        let models_response: ModelsResponse = response
+            .json()
+            .await
+            .context("Failed to parse models response")?;
+
+        if let Some(model_info) = models_response
+            .data
+            .iter()
+            .find(|m| m.id == self.config.model)
+            && let Some(pricing) = &model_info.pricing
+            && let (Some(prompt_str), Some(completion_str)) = (&pricing.prompt, &pricing.completion)
+            && let (Ok(input_per_token), Ok(output_per_token)) =
+                (prompt_str.parse::<f64>(), completion_str.parse::<f64>())
+        {
+            // OpenRouter pricing is per token, convert to per million tokens
+            let pricing_data = crate::backends::TokenPricing {
+                input_per_million: input_per_token * 1_000_000.0,
+                output_per_million: output_per_token * 1_000_000.0,
+            };
+
+            let mut cached = self.cached_pricing.write().await;
+            *cached = Some(pricing_data);
+        }
+
+        Ok(())
     }
 
     fn http_error_to_llm_error(status: reqwest::StatusCode, error_text: String) -> LlmError {
@@ -450,7 +519,19 @@ impl LlmBackend for OpenAICompatibleBackend {
         &self.config.model
     }
 
+    async fn initialize(&self) -> Result<()> {
+        // Fetch pricing at initialization if endpoint is configured
+        self.fetch_and_cache_pricing().await?;
+        Ok(())
+    }
+
     fn pricing(&self) -> Option<crate::backends::TokenPricing> {
+        // Try to return cached pricing from endpoint first
+        if let Some(cached_pricing) = self.cached_pricing.try_read().ok().and_then(|guard| *guard) {
+            return Some(cached_pricing);
+        }
+
+        // Fall back to hardcoded pricing for known models
         let pricing = match self.config.model.as_str() {
             "gpt-4o" | "gpt-4o-2024-11-20" | "gpt-4o-2024-08-06" | "gpt-4o-2024-05-13" => {
                 crate::backends::TokenPricing {
