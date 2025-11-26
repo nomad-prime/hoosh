@@ -72,6 +72,7 @@ pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
             base_url: result.base_url.clone(),
             chat_api: None,
             temperature: None,
+            pricing_endpoint: result.pricing_endpoint.clone(),
         },
     );
 

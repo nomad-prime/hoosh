@@ -25,6 +25,7 @@ impl ConfigKey {
             ("_chat_api", "chat_api"),
             ("_temperature", "temperature"),
             ("_model", "model"),
+            ("_pricing_endpoint", "pricing_endpoint"),
         ];
 
         for (suffix, setting_key) in SUFFIXES {
@@ -41,7 +42,7 @@ impl ConfigKey {
         Err(format!(
             "Unknown config key: {}. Use format: <backend>_<setting> where backend is one of \
              [openai, together_ai, ollama, anthropic] and setting is one of \
-             [api_key, model, base_url, temperature, chat_api]",
+             [api_key, model, base_url, temperature, chat_api, pricing_endpoint]",
             key
         ))
     }

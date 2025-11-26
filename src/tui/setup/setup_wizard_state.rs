@@ -8,6 +8,7 @@ pub enum SetupWizardStep {
     BackendSelection,
     ApiKeyInput,
     BaseUrlInput,
+    PricingEndpointInput,
     ModelSelection,
     Confirmation,
 }
@@ -67,6 +68,7 @@ pub struct SetupWizardResult {
     pub backend: String,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    pub pricing_endpoint: Option<String>,
     pub model: String,
     pub store_key_in_config: bool,
 }
@@ -77,6 +79,7 @@ pub struct SetupWizardState {
     pub selected_backend: Option<BackendType>,
     pub api_key_input: TextArea<'static>,
     pub base_url_input: TextArea<'static>,
+    pub pricing_endpoint_input: TextArea<'static>,
     pub model_input: TextArea<'static>,
     pub selected_confirmation_index: usize,
     pub should_quit: bool,
@@ -97,6 +100,12 @@ impl Default for SetupWizardState {
         base_url_input.set_placeholder_text("Leave empty for default");
         base_url_input.set_placeholder_style(Style::default().fg(palette::PLACEHOLDER));
 
+        let mut pricing_endpoint_input = TextArea::default();
+        pricing_endpoint_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        pricing_endpoint_input.set_cursor_line_style(Style::default());
+        pricing_endpoint_input.set_placeholder_text("Leave empty to skip (e.g., /v1/models)");
+        pricing_endpoint_input.set_placeholder_style(Style::default().fg(palette::PLACEHOLDER));
+
         let mut model_input = TextArea::default();
         model_input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         model_input.set_cursor_line_style(Style::default());
@@ -109,6 +118,7 @@ impl Default for SetupWizardState {
             selected_backend: None,
             api_key_input,
             base_url_input,
+            pricing_endpoint_input,
             model_input,
             selected_confirmation_index: 0,
             should_quit: false,
@@ -158,7 +168,8 @@ impl SetupWizardState {
                 }
             }
             SetupWizardStep::ApiKeyInput => SetupWizardStep::BaseUrlInput,
-            SetupWizardStep::BaseUrlInput => {
+            SetupWizardStep::BaseUrlInput => SetupWizardStep::PricingEndpointInput,
+            SetupWizardStep::PricingEndpointInput => {
                 if let Some(backend) = &self.selected_backend {
                     self.model_input.select_all();
                     self.model_input.cut();
@@ -187,7 +198,8 @@ impl SetupWizardState {
                     SetupWizardStep::BackendSelection
                 }
             }
-            SetupWizardStep::ModelSelection => SetupWizardStep::BaseUrlInput,
+            SetupWizardStep::PricingEndpointInput => SetupWizardStep::BaseUrlInput,
+            SetupWizardStep::ModelSelection => SetupWizardStep::PricingEndpointInput,
             SetupWizardStep::Confirmation => SetupWizardStep::ModelSelection,
         };
     }
@@ -224,12 +236,20 @@ impl SetupWizardState {
                 Some(base_url_text)
             };
 
+            let pricing_endpoint_text = self.pricing_endpoint_input.lines()[0].clone();
+            let pricing_endpoint = if pricing_endpoint_text.is_empty() {
+                None
+            } else {
+                Some(pricing_endpoint_text)
+            };
+
             let model = self.model_input.lines()[0].clone();
 
             self.result = Some(SetupWizardResult {
                 backend: backend.as_str().to_string(),
                 api_key,
                 base_url,
+                pricing_endpoint,
                 model,
                 store_key_in_config: true,
             });

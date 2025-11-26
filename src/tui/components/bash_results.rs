@@ -40,8 +40,8 @@ impl Component for BashResultsComponent {
             // Show ellipsis at the top if there are more lines (like terminal scrolling down)
             if has_more {
                 lines.push(Line::from(vec![
-                    Span::styled("  ⎿ ", Style::default().fg(palette::DIMMED_TEXT)),
-                    Span::styled("...", Style::default().fg(palette::DIMMED_TEXT)),
+                    Span::styled("  ⎿ ", Style::default().fg(palette::SECONDARY_TEXT)),
+                    Span::styled("...", Style::default().fg(palette::SECONDARY_TEXT)),
                 ]));
             }
 
@@ -58,9 +58,9 @@ impl Component for BashResultsComponent {
                         ("     ", Style::default().fg(palette::DESTRUCTIVE))
                     }
                 } else if i == 0 && !has_more {
-                    ("  ⎿ ", Style::default().fg(palette::DIMMED_TEXT))
+                    ("  ⎿ ", Style::default().fg(palette::SECONDARY_TEXT))
                 } else {
-                    ("    ", Style::default().fg(palette::DIMMED_TEXT))
+                    ("    ", Style::default().fg(palette::SECONDARY_TEXT))
                 };
 
                 // Truncate long lines

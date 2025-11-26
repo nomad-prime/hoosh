@@ -32,6 +32,7 @@ fn backend_config_fields_are_optional() {
         base_url: None,
         chat_api: None,
         temperature: None,
+        pricing_endpoint: None,
     };
 
     assert!(backend.api_key.is_none());
@@ -49,6 +50,7 @@ fn backend_config_can_be_fully_populated() {
         base_url: Some("https://api.example.com".to_string()),
         chat_api: Some("chat".to_string()),
         temperature: Some(0.7),
+        pricing_endpoint: None,
     };
 
     assert_eq!(backend.api_key, Some("test-key".to_string()));
@@ -115,6 +117,7 @@ fn get_backend_config_returns_config_when_exists() {
         base_url: None,
         chat_api: None,
         temperature: None,
+        pricing_endpoint: None,
     };
 
     config.set_backend_config("test".to_string(), backend);
@@ -133,6 +136,7 @@ fn set_backend_config_adds_new_backend() {
         base_url: None,
         chat_api: None,
         temperature: None,
+        pricing_endpoint: None,
     };
 
     config.set_backend_config("new_backend".to_string(), backend);
@@ -351,6 +355,7 @@ fn merge_overwrites_backends() {
             base_url: None,
             chat_api: None,
             temperature: None,
+            pricing_endpoint: None,
         },
     );
 
@@ -363,6 +368,7 @@ fn merge_overwrites_backends() {
             base_url: None,
             chat_api: None,
             temperature: None,
+            pricing_endpoint: None,
         },
     );
 
@@ -519,6 +525,7 @@ fn serialize_backend_config_to_toml() {
         base_url: None,
         chat_api: None,
         temperature: Some(0.7),
+        pricing_endpoint: None,
     };
 
     let toml = toml::to_string(&backend).unwrap();
@@ -672,6 +679,7 @@ fn clone_backend_config() {
         base_url: None,
         chat_api: None,
         temperature: Some(0.5),
+        pricing_endpoint: None,
     };
 
     let cloned = backend.clone();
@@ -716,6 +724,7 @@ fn debug_format_backend_config() {
         base_url: None,
         chat_api: None,
         temperature: None,
+        pricing_endpoint: None,
     };
 
     let debug_str = format!("{:?}", backend);
