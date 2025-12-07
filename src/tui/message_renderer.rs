@@ -2,7 +2,8 @@ use super::app_state::{AppState, MessageLine};
 use super::markdown::MarkdownRenderer;
 use crate::tui::terminal::HooshTerminal;
 use anyhow::Result;
-use ratatui::text::{Line, Text};
+use ratatui::style::Style;
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Widget};
 
 /// Handles rendering of chat messages in the TUI
@@ -101,14 +102,15 @@ impl MessageRenderer {
     fn render_markdown_message(
         &self,
         markdown: String,
-        _terminal_width: usize,
+        terminal_width: usize,
         terminal: &mut HooshTerminal,
     ) -> Result<()> {
         let rendered_lines = self.markdown_renderer.render(&markdown);
-        let line_count = rendered_lines.len() as u16;
+        let wrapped_lines = self.wrap_styled_lines(rendered_lines, terminal_width);
+        let line_count = wrapped_lines.len() as u16;
 
         terminal.insert_before(line_count, |buf| {
-            Paragraph::new(Text::from(rendered_lines)).render(buf.area, buf);
+            Paragraph::new(Text::from(wrapped_lines)).render(buf.area, buf);
         })?;
 
         Ok(())
@@ -150,6 +152,158 @@ impl MessageRenderer {
             .into_iter()
             .map(|w| Line::from(w.to_string()))
             .collect()
+    }
+
+    /// Wraps styled lines to fit within terminal width while preserving formatting
+    fn wrap_styled_lines(
+        &self,
+        lines: Vec<Line<'static>>,
+        terminal_width: usize,
+    ) -> Vec<Line<'static>> {
+        let mut wrapped_lines = Vec::new();
+
+        for line in lines {
+            // Calculate the actual text width (without ANSI codes)
+            let text_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
+
+            // If the line fits within terminal width, keep it as-is
+            if text_width <= terminal_width {
+                wrapped_lines.push(line);
+                continue;
+            }
+
+            // Need to wrap this line - preserve indentation from first span if it's whitespace
+            let mut indent = String::new();
+            if let Some(first_span) = line.spans.first() {
+                let content = first_span.content.as_ref();
+                let trimmed = content.trim_start();
+                if trimmed.len() < content.len() {
+                    indent = " ".repeat(content.len() - trimmed.len());
+                }
+            }
+
+            // Flatten spans into styled characters for precise wrapping
+            let mut chars_with_style: Vec<(char, Style)> = Vec::new();
+            for span in &line.spans {
+                for ch in span.content.chars() {
+                    chars_with_style.push((ch, span.style));
+                }
+            }
+
+            // Wrap by building new lines respecting word boundaries
+            let mut current_line_chars: Vec<(char, Style)> = Vec::new();
+            let mut current_width = 0;
+            let mut word_buffer: Vec<(char, Style)> = Vec::new();
+            let mut word_width = 0;
+
+            for (ch, style) in chars_with_style {
+                if ch.is_whitespace() {
+                    // Flush word buffer to current line
+                    if current_width + word_width <= terminal_width {
+                        current_line_chars.append(&mut word_buffer);
+                        current_width += word_width;
+                        word_width = 0;
+
+                        // Add the whitespace if it fits
+                        if current_width < terminal_width {
+                            current_line_chars.push((ch, style));
+                            current_width += 1;
+                        } else {
+                            // Start new line, add indent
+                            wrapped_lines.push(self.chars_to_line(current_line_chars));
+                            current_line_chars = Vec::new();
+                            for indent_ch in indent.chars() {
+                                current_line_chars.push((indent_ch, Style::default()));
+                            }
+                            current_width = indent.len();
+                        }
+                    } else {
+                        // Word doesn't fit, start new line
+                        if !current_line_chars.is_empty() {
+                            wrapped_lines.push(self.chars_to_line(current_line_chars));
+                            current_line_chars = Vec::new();
+                        }
+                        // Add indent
+                        for indent_ch in indent.chars() {
+                            current_line_chars.push((indent_ch, Style::default()));
+                        }
+                        current_width = indent.len();
+
+                        // Add the word
+                        current_line_chars.append(&mut word_buffer);
+                        current_width += word_width;
+                        word_width = 0;
+
+                        // Add whitespace if it fits
+                        if current_width < terminal_width {
+                            current_line_chars.push((ch, style));
+                            current_width += 1;
+                        }
+                    }
+                } else {
+                    // Add to word buffer
+                    word_buffer.push((ch, style));
+                    word_width += 1;
+                }
+            }
+
+            // Flush remaining word buffer
+            if !word_buffer.is_empty() {
+                if current_width + word_width <= terminal_width {
+                    current_line_chars.extend(word_buffer);
+                } else {
+                    // Start new line for the word
+                    if !current_line_chars.is_empty() {
+                        wrapped_lines.push(self.chars_to_line(current_line_chars));
+                        current_line_chars = Vec::new();
+                    }
+                    // Add indent
+                    for indent_ch in indent.chars() {
+                        current_line_chars.push((indent_ch, Style::default()));
+                    }
+                    current_line_chars.extend(word_buffer);
+                }
+            }
+
+            // Flush current line
+            if !current_line_chars.is_empty() {
+                wrapped_lines.push(self.chars_to_line(current_line_chars));
+            }
+        }
+
+        wrapped_lines
+    }
+
+    /// Converts a vector of (char, Style) tuples back into a styled Line
+    fn chars_to_line(&self, chars: Vec<(char, Style)>) -> Line<'static> {
+        if chars.is_empty() {
+            return Line::from("");
+        }
+
+        let mut spans = Vec::new();
+        let mut current_text = String::new();
+        let mut current_style = chars[0].1;
+
+        for (ch, style) in chars {
+            if style == current_style {
+                current_text.push(ch);
+            } else {
+                // Style changed, flush current span
+                if !current_text.is_empty() {
+                    spans.push(Span::styled(current_text.clone(), current_style));
+                    current_text.clear();
+                }
+                current_style = style;
+                current_text.push(ch);
+            }
+        }
+
+        // Flush final span
+        if !current_text.is_empty() {
+            spans.push(Span::styled(current_text, current_style));
+        }
+
+        Line::from(spans)
     }
 }
 
@@ -253,5 +407,163 @@ mod tests {
 
         // Should still wrap, even if narrower than word
         assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_wrap_styled_lines_short_line() {
+        let renderer = MessageRenderer::new();
+        let lines = vec![Line::from(vec![
+            Span::raw("Hello "),
+            Span::styled("world", Style::default().fg(ratatui::style::Color::Red)),
+        ])];
+
+        let wrapped = renderer.wrap_styled_lines(lines, 80);
+        assert_eq!(wrapped.len(), 1);
+    }
+
+    #[test]
+    fn test_wrap_styled_lines_long_line() {
+        let renderer = MessageRenderer::new();
+        let lines = vec![Line::from(vec![Span::raw(
+            "This is a very long message that definitely needs to be wrapped because it exceeds the terminal width and should be split across multiple lines",
+        )])];
+
+        let wrapped = renderer.wrap_styled_lines(lines, 50);
+        assert!(wrapped.len() > 1);
+    }
+
+    #[test]
+    fn test_wrap_styled_lines_preserves_formatting() {
+        let renderer = MessageRenderer::new();
+        let red_style = Style::default().fg(ratatui::style::Color::Red);
+        let lines = vec![Line::from(vec![
+            Span::raw("Normal text "),
+            Span::styled(
+                "red colored text that is quite long and needs wrapping",
+                red_style,
+            ),
+        ])];
+
+        let wrapped = renderer.wrap_styled_lines(lines, 30);
+        assert!(wrapped.len() > 1);
+
+        // Check that red styling is preserved in wrapped lines
+        let has_red_spans = wrapped.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|span| span.style.fg == Some(ratatui::style::Color::Red))
+        });
+        assert!(
+            has_red_spans,
+            "Red styling should be preserved after wrapping"
+        );
+    }
+
+    #[test]
+    fn test_wrap_styled_lines_with_indentation() {
+        let renderer = MessageRenderer::new();
+        let lines = vec![Line::from(vec![Span::raw(
+            "  Indented text that is very long and needs to be wrapped to fit within the terminal width",
+        )])];
+
+        let wrapped = renderer.wrap_styled_lines(lines, 40);
+        assert!(wrapped.len() > 1);
+
+        // All wrapped lines should preserve indentation
+        for line in &wrapped {
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            assert!(
+                text.starts_with("  "),
+                "Wrapped line should preserve indentation: '{}'",
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn test_chars_to_line_single_style() {
+        let renderer = MessageRenderer::new();
+        let chars = vec![('H', Style::default()), ('i', Style::default())];
+
+        let line = renderer.chars_to_line(chars);
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content, "Hi");
+    }
+
+    #[test]
+    fn test_chars_to_line_multiple_styles() {
+        let renderer = MessageRenderer::new();
+        let style1 = Style::default();
+        let style2 = Style::default().fg(ratatui::style::Color::Red);
+
+        let chars = vec![('H', style1), ('i', style1), (' ', style2), ('!', style2)];
+
+        let line = renderer.chars_to_line(chars);
+        assert_eq!(line.spans.len(), 2);
+        assert_eq!(line.spans[0].content, "Hi");
+        assert_eq!(line.spans[1].content, " !");
+    }
+
+    #[test]
+    fn test_chars_to_line_empty() {
+        let renderer = MessageRenderer::new();
+        let line = renderer.chars_to_line(vec![]);
+        assert_eq!(line.spans.len(), 0);
+    }
+
+    #[test]
+    fn test_wrap_styled_lines_preserves_heading_colors() {
+        let renderer = MessageRenderer::new();
+        let heading_style = Style::default()
+            .fg(ratatui::style::Color::Magenta)
+            .add_modifier(ratatui::style::Modifier::BOLD);
+
+        // Short heading that doesn't need wrapping
+        let short_heading = vec![Line::from(vec![Span::styled(
+            "Introduction",
+            heading_style,
+        )])];
+        let wrapped = renderer.wrap_styled_lines(short_heading, 80);
+
+        assert_eq!(wrapped.len(), 1);
+        assert_eq!(
+            wrapped[0].spans[0].style.fg,
+            Some(ratatui::style::Color::Magenta)
+        );
+        assert!(
+            wrapped[0].spans[0]
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD)
+        );
+
+        // Long heading that needs wrapping
+        let long_heading = vec![Line::from(vec![Span::styled(
+            "A Comprehensive Guide to Markdown with Very Long Heading Text",
+            heading_style,
+        )])];
+        let wrapped = renderer.wrap_styled_lines(long_heading, 30);
+
+        assert!(wrapped.len() > 1);
+        // Check that all wrapped lines preserve the heading style
+        for line in &wrapped {
+            for span in &line.spans {
+                if !span.content.trim().is_empty() {
+                    assert_eq!(
+                        span.style.fg,
+                        Some(ratatui::style::Color::Magenta),
+                        "Heading color should be preserved in wrapped line: '{}'",
+                        span.content
+                    );
+                    assert!(
+                        span.style
+                            .add_modifier
+                            .contains(ratatui::style::Modifier::BOLD),
+                        "Heading bold modifier should be preserved in wrapped line: '{}'",
+                        span.content
+                    );
+                }
+            }
+        }
     }
 }
