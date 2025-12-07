@@ -44,7 +44,7 @@ impl Component for SubagentResultsComponent {
             // Show each recent step
             for (i, step) in recent_steps.iter().enumerate() {
                 let prefix = if i == 0 {
-                    Span::styled("  ⎿ ", Style::default().fg(palette::DIMMED_TEXT))
+                    Span::styled("  ⎿ ", Style::default().fg(palette::SUBDUED_TEXT))
                 } else {
                     Span::styled("    ", Style::default())
                 };
@@ -53,7 +53,7 @@ impl Component for SubagentResultsComponent {
                     prefix,
                     Span::styled(
                         step.description.to_string(),
-                        Style::default().fg(palette::DIMMED_TEXT),
+                        Style::default().fg(palette::SUBDUED_TEXT),
                     ),
                 ];
 
@@ -64,7 +64,7 @@ impl Component for SubagentResultsComponent {
             if has_more {
                 lines.push(Line::from(vec![
                     Span::styled("    ", Style::default()),
-                    Span::styled("...", Style::default().fg(palette::DIMMED_TEXT)),
+                    Span::styled("...", Style::default().fg(palette::SUBDUED_TEXT)),
                 ]));
             }
         }

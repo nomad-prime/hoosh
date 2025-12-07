@@ -19,6 +19,7 @@ pub mod palette {
     pub const PRIMARY_TEXT: Color = Color::White;
     pub const SECONDARY_TEXT: Color = Color::Gray;
     pub const DIMMED_TEXT: Color = Color::DarkGray;
+    pub const SUBDUED_TEXT: Color = Color::Rgb(100, 100, 100);
 
     // Markdown specific colors
     pub const MARKDOWN_HEADING: Color = Color::Magenta;

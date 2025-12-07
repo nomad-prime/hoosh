@@ -286,9 +286,14 @@ async fn test_task_manager_bridges_subagent_events() {
             crate::agent::AgentEvent::SubagentTaskComplete {
                 tool_call_id,
                 total_steps,
+                total_tool_uses,
+                total_input_tokens,
+                total_output_tokens,
             } => {
                 assert_eq!(tool_call_id, "test-task-123");
                 assert!(total_steps > 0);
+                // Token and tool use counts may be 0 in tests
+                let _ = (total_tool_uses, total_input_tokens, total_output_tokens);
                 found_complete = true;
                 break;
             }

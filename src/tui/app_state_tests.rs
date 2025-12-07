@@ -99,6 +99,8 @@ fn active_tool_call_add_subagent_step() {
         bash_output_lines: Vec::new(),
         is_bash_streaming: false,
         start_time: Instant::now(),
+        total_tool_uses: None,
+        total_tokens: None,
     };
 
     let step = SubagentStepSummary {
@@ -126,6 +128,8 @@ fn active_tool_call_add_bash_output_line() {
         is_bash_streaming: false,
         budget_pct: None,
         start_time: Instant::now(),
+        total_tool_uses: None,
+        total_tokens: None,
     };
 
     let line = BashOutputLine {

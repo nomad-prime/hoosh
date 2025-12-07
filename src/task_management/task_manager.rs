@@ -104,11 +104,25 @@ impl TaskManager {
         let event_collector = tokio::spawn(async move {
             let mut collected_events = Vec::new();
             let mut current_step = 0;
+            let mut total_tool_uses = 0;
+            let mut total_input_tokens = 0;
+            let mut total_output_tokens = 0;
 
             while let Some(event) = event_rx.recv().await {
                 // Track the actual step number from StepStarted events
                 if let AgentEvent::StepStarted { step } = event {
                     current_step = step;
+                }
+
+                // Track token usage
+                if let AgentEvent::TokenUsage { input_tokens, output_tokens, .. } = event {
+                    total_input_tokens += input_tokens;
+                    total_output_tokens += output_tokens;
+                }
+
+                // Track tool uses
+                if let AgentEvent::ToolCalls(calls) = &event {
+                    total_tool_uses += calls.len();
                 }
 
                 let event_string = format!("{:?}", event);
@@ -130,7 +144,7 @@ impl TaskManager {
                     let _ = tx.send(progress_event);
                 }
             }
-            (collected_events, current_step)
+            (collected_events, current_step, total_tool_uses, total_input_tokens, total_output_tokens)
         });
 
         let execute_result = if let Some(timeout_secs) = task_def.timeout_seconds {
@@ -145,7 +159,8 @@ impl TaskManager {
 
         drop(agent);
 
-        let (events, final_step) = event_collector.await.unwrap_or_else(|_| (Vec::new(), 0));
+        let (events, final_step, total_tool_uses, total_input_tokens, total_output_tokens) =
+            event_collector.await.unwrap_or_else(|_| (Vec::new(), 0, 0, 0, 0));
 
         let total_steps = final_step + 1;
 
@@ -153,6 +168,9 @@ impl TaskManager {
             let _ = tx.send(AgentEvent::SubagentTaskComplete {
                 tool_call_id: tcid.clone(),
                 total_steps,
+                total_tool_uses,
+                total_input_tokens,
+                total_output_tokens,
             });
         }
 
