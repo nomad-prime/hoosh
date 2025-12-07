@@ -6,33 +6,15 @@
 
 ### Warm up
 
-a feature where at startup when project is ran, agent is asked to create a list of all commands its going to need, so we can
+a feature where at startup when project is ran, agent is asked to create a list of all commands its going to need, so we
+can
 have them added to permission before hand
 
 ### google backend Support
 
-
-### Timer
-
-add timer when processing and tool calling etc.
-
-### Tool Status
-
-currently I add the tool and then append tool result (preview) in messages. Ideally there is a space above status and
-keeps tool calls there -> important for parallel tools calls
-(especially because tool calls can be in parallel). one the tool call is complete I can add it to message history, till
-then I keep it above status bar
-
 ### Parallel tool runs
+
 currently tools are ran serially, lets have them parallel
-
-### add custom commands
-like clippy etc that can be sent back to llm
-
-#### Running Todos
-
-currently there are no running todos like in claude code, this can create a better ux and system prompting for the model
-CRUDing todos could also be a tool call for the model
 
 #### Memory-> and the tool to load
 
@@ -40,16 +22,8 @@ I find myself referencing previous conversations often, so having a way to load 
 be helpful. Maybe a command like /load_conversation <conversation_id> that fetches and loads the conversation into the
 current context.
 
-### Tool results preview
-claude code shows
-
-⏺ Bash(cat Cargo.toml | grep version)
-⎿  version = "0.1.4"                                
-clap = { version = "4.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
-… +3 lines (ctrl+o to expand)
-
 ### in bash tool
+
 explanation of what bash does underneath approval dialog
 
 ### File Expansion
@@ -72,77 +46,16 @@ should always cancel current operation instead of exiting the program, with seco
 
 for LLM calls when repeated failures occur
 
-#### Status Flaky
-
-after approval rejection status line stucks on processing
-
-### System Reminder
-
-Claude code uses system reminder to observe the changes done in the system in realtime
-
 ### switch backend
 
 currently switching models and backends is only possible through configs. lets make it into a command
 
-### Approve Plan
-
-very often AI creates a plan before moving on, this should be a
-
-### ways forward (question and answer tool)
-
-have llm give forks as to possible implementations, user chooses the way
-
 ### Tools
-
-Core Development Tools
-
-- BashOutput - Retrieve output from background bash shells
-- KillShell - Terminate background bash shells
-
-Search & Navigation Tools
-
-- Task - Launch specialized agents for complex tasks:
-    - general-purpose - Multi-step tasks and research
-    - Explore - Fast codebase exploration -> should show tokens
-    - Plan - Planning and analysis -> should show token usage
 
 Web Tools
 
 - WebSearch - Search the web for current information
 - WebFetch - Fetch and analyze content from URLs
-
-Planning & Organization
-
-- TodoWrite - Create and manage task lists for tracking progress
-- ExitPlanMode - Exit planning mode when ready to implement
-
-User Interaction
-
-- AskUserQuestion - Ask users questions with multiple choice options
-
-Extensions
-
-- Skill - Execute skills for specialized capabilities
-- SlashCommand - Execute custom slash commands from .claude/commands/
-
-### 8. Config Validation & Defaults
-
-- **Issue**: Silent failures when config is invalid
-- **Required**:
-    - Validate config on load with helpful error messages
-    - Better defaults (e.g., use mock backend if no API key)
-    - Config migration/upgrade system for future versions
-    - `hoosh config validate` command
-- **Priority**: MEDIUM
-- **Effort**: 2-3 hours
-
-### 9. Command History Persistence
-
-- **Status**: In-memory only (mentioned in ROADMAP)
-- **Required**: Save command history to `~/.config/hoosh/command_history`
-- **Why Useful**: Improve UX with persistent history across sessions
-- **Priority**: MEDIUM
-- **Effort**: 1-2 hours
 
 ### 10. Better Logging System
 
@@ -613,24 +526,7 @@ struct Symbol {
 **Why it matters:** Some coding tasks involve visual elements (e.g., UI design, bug reproduction). Screenshots allow the
 AI to access visual context and provide better assistance.
 
-### 12. Markdown rendering in TUI
-
-**Current State:** Plain text only in TUI
-**What's Missing:**
-
-- Render markdown formatting (bold, italics, code blocks, lists)
-- Support for inline code highlighting
-- Render links and allow opening in browser
-
-### Config Pricing API Open AI Compatible
-
-- add support for pricing API for open ai compatible (openrouter e.g.)
-
 ### Checkpoint stopping after 100 (configurable steps)
 
 - when in autopilot, we should have llm stop
-
-### Show elapsed time like in claude code
-
-Processing… (esc to interrupt · 24s · ↓ 1.0k tokens)
 
