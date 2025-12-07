@@ -86,7 +86,7 @@ pub mod file_ops;
 pub mod glob;
 pub mod grep;
 pub mod provider;
-pub mod subagent_provider;
+pub mod readonly_provider;
 pub mod task_tool;
 pub mod task_tool_provider;
 pub mod todo_state;
@@ -98,7 +98,7 @@ pub use file_ops::{EditFileTool, ListDirectoryTool, ReadFileTool, WriteFileTool}
 pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use provider::{BuiltinToolProvider, ToolProvider};
-pub use subagent_provider::SubAgentToolProvider;
+pub use readonly_provider::ReadOnlyToolProvider;
 pub use task_tool::TaskTool;
 pub use task_tool_provider::TaskToolProvider;
 pub use todo_state::TodoState;

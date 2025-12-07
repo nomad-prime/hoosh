@@ -44,4 +44,4 @@ pub use security::PathValidator;
 pub use skill_management::{Skill, SkillManager};
 pub use storage::{ConversationMetadata, ConversationStorage};
 pub use tool_executor::ToolExecutor;
-pub use tools::{BuiltinToolProvider, SubAgentToolProvider, TaskToolProvider, Tool, ToolRegistry};
+pub use tools::{BuiltinToolProvider, ReadOnlyToolProvider, TaskToolProvider, Tool, ToolRegistry};

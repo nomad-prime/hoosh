@@ -205,8 +205,8 @@ async fn test_task_manager_with_custom_model() {
 }
 
 #[tokio::test]
-async fn test_task_manager_uses_subagent_registry() {
-    use crate::tools::SubAgentToolProvider;
+async fn test_task_manager_uses_readonly_registry() {
+    use crate::tools::ReadOnlyToolProvider;
     crate::console::init_console(crate::console::VerbosityLevel::Quiet);
 
     let mock_backend: Arc<dyn LlmBackend> = Arc::new(MockBackend::new());
@@ -216,17 +216,21 @@ async fn test_task_manager_uses_subagent_registry() {
     let permission_manager =
         Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
-    // Create a subagent registry (without task tool to prevent recursion)
-    let subagent_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
-        SubAgentToolProvider::new(std::path::PathBuf::from(".")),
+    // Create a readonly registry for subagents
+    let readonly_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+        ReadOnlyToolProvider::new(std::path::PathBuf::from(".")),
     )));
 
-    // Verify task tool is NOT in subagent registry
-    assert!(subagent_registry.get_tool("task").is_none());
-    // But other tools should be present
-    assert!(subagent_registry.get_tool("read_file").is_some());
+    // Verify task tool is NOT in readonly registry
+    assert!(readonly_registry.get_tool("task").is_none());
+    // Verify write tools are NOT in readonly registry
+    assert!(readonly_registry.get_tool("write_file").is_none());
+    assert!(readonly_registry.get_tool("edit_file").is_none());
+    assert!(readonly_registry.get_tool("bash").is_none());
+    // But read-only tools should be present
+    assert!(readonly_registry.get_tool("read_file").is_some());
 
-    let task_manager = TaskManager::new(mock_backend, subagent_registry, permission_manager);
+    let task_manager = TaskManager::new(mock_backend, readonly_registry, permission_manager);
 
     let task_def = TaskDefinition::new(
         crate::task_management::AgentType::Plan,
