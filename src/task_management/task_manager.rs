@@ -115,7 +115,12 @@ impl TaskManager {
                 }
 
                 // Track token usage
-                if let AgentEvent::TokenUsage { input_tokens, output_tokens, .. } = event {
+                if let AgentEvent::TokenUsage {
+                    input_tokens,
+                    output_tokens,
+                    ..
+                } = event
+                {
                     total_input_tokens += input_tokens;
                     total_output_tokens += output_tokens;
                 }
@@ -144,7 +149,13 @@ impl TaskManager {
                     let _ = tx.send(progress_event);
                 }
             }
-            (collected_events, current_step, total_tool_uses, total_input_tokens, total_output_tokens)
+            (
+                collected_events,
+                current_step,
+                total_tool_uses,
+                total_input_tokens,
+                total_output_tokens,
+            )
         });
 
         let execute_result = if let Some(timeout_secs) = task_def.timeout_seconds {
@@ -160,7 +171,9 @@ impl TaskManager {
         drop(agent);
 
         let (events, final_step, total_tool_uses, total_input_tokens, total_output_tokens) =
-            event_collector.await.unwrap_or_else(|_| (Vec::new(), 0, 0, 0, 0));
+            event_collector
+                .await
+                .unwrap_or_else(|_| (Vec::new(), 0, 0, 0, 0));
 
         let total_steps = final_step + 1;
 
