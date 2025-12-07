@@ -10,19 +10,19 @@ use std::sync::Arc;
 
 pub struct TaskTool {
     backend: Arc<dyn LlmBackend>,
-    tool_registry: Arc<ToolRegistry>,
+    readonly_tool_registry: Arc<ToolRegistry>,
     permission_manager: Arc<PermissionManager>,
 }
 
 impl TaskTool {
     pub fn new(
         backend: Arc<dyn LlmBackend>,
-        tool_registry: Arc<ToolRegistry>,
+        readonly_tool_registry: Arc<ToolRegistry>,
         permission_manager: Arc<PermissionManager>,
     ) -> Self {
         Self {
             backend,
-            tool_registry,
+            readonly_tool_registry,
             permission_manager,
         }
     }
@@ -44,15 +44,18 @@ impl TaskTool {
                 message: e.to_string(),
             })?;
 
-        let mut task_def = TaskDefinition::new(agent_type, args.prompt, args.description);
+        let mut task_def = TaskDefinition::new(agent_type.clone(), args.prompt, args.description);
 
         if let Some(model) = args.model {
             task_def = task_def.with_model(model);
         }
 
+        // Get agent-type-specific tool registry
+        let subagent_tools = self.get_tool_registry_for_agent(&agent_type);
+
         let mut task_manager = TaskManager::new(
             self.backend.clone(),
-            self.tool_registry.clone(),
+            subagent_tools,
             self.permission_manager.clone(),
         );
 
@@ -76,6 +79,9 @@ impl TaskTool {
         } else {
             Err(ToolError::execution_failed(result.output))
         }
+    }
+    fn get_tool_registry_for_agent(&self, _agent_type: &AgentType) -> Arc<ToolRegistry> {
+        self.readonly_tool_registry.clone()
     }
 }
 
@@ -110,7 +116,8 @@ impl Tool for TaskTool {
         "Launch a specialized sub-agent to handle complex, multi-step tasks autonomously.\n\n\
         Available agent types:\n\
         - plan: Analyzes codebases and creates detailed implementation plans. Use for complex feature planning, architecture decisions, or multi-file refactoring strategies. (max 100 steps, 600s timeout)\n\
-        - explore: Fast agent for codebase exploration and research. Use for finding files, understanding code structure, or answering questions about the codebase. (max 75 steps, 300s timeout)\n\n\
+        - explore: Fast agent for codebase exploration and research. Use for finding files, understanding code structure, or answering questions about the codebase. (max 75 steps, 300s timeout)\n\
+        - review: Read-only code review agent for analyzing code quality, identifying bugs, security issues, and suggesting improvements. Use for PR reviews, code audits, or quality assessments. (max 75 steps, 600s timeout)\n\n\
         Usage:\n\
         - Write a detailed, self-contained prompt describing exactly what the agent should do\n\
         - The agent runs autonomously and returns a final report - you cannot interact with it\n\
@@ -134,8 +141,8 @@ impl Tool for TaskTool {
             "properties": {
                 "subagent_type": {
                     "type": "string",
-                    "enum": ["plan", "explore"],
-                    "description": "Agent type: \"explore\" for codebase research/search, \"plan\" for implementation planning. Choose based on task complexity."
+                    "enum": ["plan", "explore", "review"],
+                    "description": "Agent type: \"explore\" for research, \"plan\" for implementation planning, \"review\" for code quality analysis."
                 },
                 "prompt": {
                     "type": "string",
@@ -524,5 +531,63 @@ mod tests {
         let summary = task_tool.result_summary(&long_result);
         assert!(summary.len() <= 103);
         assert!(summary.ends_with("..."));
+    }
+
+    #[tokio::test]
+    async fn test_task_tool_execute_review() {
+        crate::console::init_console(crate::console::VerbosityLevel::Quiet);
+
+        let mock_backend: Arc<dyn crate::backends::LlmBackend> =
+            Arc::new(MockBackend::new(vec![LlmResponse::content_only(
+                "Found 3 security issues".to_string(),
+            )]));
+
+        let tool_registry = Arc::new(ToolRegistry::new());
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager = Arc::new(
+            crate::permissions::PermissionManager::new(event_tx, response_rx)
+                .with_skip_permissions(true),
+        );
+
+        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+
+        let args = json!({
+            "subagent_type": "review",
+            "prompt": "Review authentication code",
+            "description": "Auth review"
+        });
+
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+
+        let result = task_tool.execute(&args, &context).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_task_tool_format_call_display_review() {
+        let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
+        let tool_registry = Arc::new(ToolRegistry::new());
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager = Arc::new(
+            crate::permissions::PermissionManager::new(event_tx, response_rx)
+                .with_skip_permissions(true),
+        );
+
+        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+
+        let args = json!({
+            "subagent_type": "review",
+            "prompt": "Review code",
+            "description": "Code review"
+        });
+
+        let display = task_tool.format_call_display(&args);
+        assert_eq!(display, "Review (Code review)");
     }
 }

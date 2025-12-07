@@ -5,6 +5,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+use crate::TaskToolProvider;
 use crate::agent::Conversation;
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
@@ -31,7 +32,6 @@ use crate::tui::app_state::AppState;
 use crate::tui::handlers;
 use crate::tui::header;
 use crate::tui::input_handler::InputHandler;
-use crate::{SubAgentToolProvider, TaskToolProvider};
 
 /// Represents the fully initialized session resources needed to run the agent
 pub struct AgentSession {
@@ -135,13 +135,13 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         &mut app_state,
     )?;
 
-    let subagent_tool_registry = Arc::new(
-        ToolRegistry::new().with_provider(Arc::new(SubAgentToolProvider::new(working_dir.clone()))),
-    );
+    let readonly_tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
+        crate::ReadOnlyToolProvider::new(working_dir.clone()),
+    )));
 
     tool_registry.add_provider(Arc::new(TaskToolProvider::new(
         Arc::clone(&backend),
-        Arc::clone(&subagent_tool_registry),
+        Arc::clone(&readonly_tool_registry),
         Arc::clone(&permission_manager),
     )));
 

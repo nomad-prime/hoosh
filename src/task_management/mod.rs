@@ -9,6 +9,7 @@ pub use execution_budget::{BudgetInfo, ExecutionBudget};
 pub enum AgentType {
     Plan,
     Explore,
+    Review,
 }
 
 impl AgentType {
@@ -16,7 +17,11 @@ impl AgentType {
         match s.to_lowercase().as_str() {
             "plan" => Ok(AgentType::Plan),
             "explore" => Ok(AgentType::Explore),
-            _ => anyhow::bail!("Unknown agent type: {}. Valid types are: plan, explore", s),
+            "review" => Ok(AgentType::Review),
+            _ => anyhow::bail!(
+                "Unknown agent type: {}. Valid types are: plan, explore, review",
+                s
+            ),
         }
     }
 
@@ -24,6 +29,7 @@ impl AgentType {
         match self {
             AgentType::Plan => 100,
             AgentType::Explore => 75,
+            AgentType::Review => 75,
         }
     }
 
@@ -42,6 +48,14 @@ impl AgentType {
             Provide concrete findings with file paths and line references.\
             strive to be brief. Providing one result or one brief document should be prefered.
             "
+            }
+            AgentType::Review => {
+                "Conduct thorough code review and quality analysis. \
+            Use available tools to examine code for issues and improvements. \
+            Focus on: bugs and logic errors, security vulnerabilities, performance issues, \
+            code smells and anti-patterns, best practices violations, documentation gaps. \
+            Provide specific findings with file paths, line numbers, and actionable recommendations. \
+            Prioritize critical issues first."
             }
         };
 
@@ -241,5 +255,21 @@ mod tests {
         assert!(result.token_usage.is_some());
         assert_eq!(result.token_usage.as_ref().unwrap().input_tokens, 100);
         assert_eq!(result.token_usage.as_ref().unwrap().output_tokens, 50);
+    }
+
+    #[test]
+    fn test_agent_type_review() {
+        assert!(matches!(
+            AgentType::from_name("review"),
+            Ok(AgentType::Review)
+        ));
+        assert_eq!(AgentType::Review.max_steps(), 75);
+    }
+
+    #[test]
+    fn test_review_system_message() {
+        let msg = AgentType::Review.system_message("Review auth code", None);
+        assert!(msg.contains("code review"));
+        assert!(msg.contains("Review auth code"));
     }
 }
