@@ -76,6 +76,9 @@ pub enum AgentEvent {
     SubagentTaskComplete {
         tool_call_id: String,
         total_steps: usize,
+        total_tool_uses: usize,
+        total_input_tokens: usize,
+        total_output_tokens: usize,
     },
     BashOutputChunk {
         tool_call_id: String,

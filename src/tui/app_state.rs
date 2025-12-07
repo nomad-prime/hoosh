@@ -47,6 +47,8 @@ pub struct ActiveToolCall {
     pub is_bash_streaming: bool,
     pub start_time: Instant,
     pub budget_pct: Option<f32>,
+    pub total_tool_uses: Option<usize>,
+    pub total_tokens: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -411,6 +413,8 @@ impl AppState {
             is_bash_streaming: false,
             start_time: Instant::now(),
             budget_pct: None,
+            total_tool_uses: None,
+            total_tokens: None,
         });
     }
 
@@ -463,7 +467,27 @@ impl AppState {
 
             self.add_message(format!("\n● {}", tool_call.display_name));
 
-            if let Some(summary) = &tool_call.result_summary {
+            // For subagent tasks, show completion stats
+            if tool_call.is_subagent_task {
+                if let (Some(tool_uses), Some(tokens)) =
+                    (tool_call.total_tool_uses, tool_call.total_tokens)
+                {
+                    let tokens_formatted = if tokens >= 1000 {
+                        format!("{:.1}k", tokens as f64 / 1000.0)
+                    } else {
+                        tokens.to_string()
+                    };
+
+                    let completion_text = format!(
+                        "Done ({} tool uses · {} tokens · {})",
+                        tool_uses,
+                        tokens_formatted,
+                        tool_call.elapsed_time()
+                    );
+                    self.add_message(format!("  ⎿ {}", completion_text));
+                }
+            } else if let Some(summary) = &tool_call.result_summary {
+                // For regular tools, show the result summary
                 self.add_message(format!("  ⎿  {}", summary));
             }
 
@@ -625,7 +649,18 @@ impl AppState {
                     tool_call.add_subagent_step(step);
                 }
             }
-            AgentEvent::SubagentTaskComplete { .. } => {}
+            AgentEvent::SubagentTaskComplete {
+                tool_call_id,
+                total_tool_uses,
+                total_input_tokens,
+                total_output_tokens,
+                ..
+            } => {
+                if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+                    tool_call.total_tool_uses = Some(total_tool_uses);
+                    tool_call.total_tokens = Some(total_input_tokens + total_output_tokens);
+                }
+            }
             AgentEvent::BashOutputChunk {
                 tool_call_id,
                 output_line,
