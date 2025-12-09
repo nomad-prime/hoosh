@@ -1,6 +1,7 @@
 mod agents_command;
 mod clear_command;
 mod compact_command;
+pub mod custom;
 mod exit_command;
 mod help_command;
 mod permissions_command;
@@ -10,5 +11,5 @@ mod status_command;
 mod tools_command;
 mod untrust_command;
 
-pub use register::register_default_commands;
+pub use register::{register_default_commands, register_custom_commands};
 pub use registry::{Command, CommandContext, CommandRegistry, CommandResult};

@@ -1,6 +1,6 @@
 [package]
 name = "hoosh"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2024"
 repository = "https://github.com/nomad-prime/hoosh"
 
@@ -54,6 +54,7 @@ pulldown-cmark = "0.11"
 syntect = "5.2"
 shlex = "1.3.0"
 fs2 = "0.4"
+gray_matter = "0.2"
 
 [dev-dependencies]
 tempfile = "3.0"
