@@ -11,5 +11,5 @@ mod status_command;
 mod tools_command;
 mod untrust_command;
 
-pub use register::{register_default_commands, register_custom_commands};
+pub use register::{register_custom_commands, register_default_commands};
 pub use registry::{Command, CommandContext, CommandRegistry, CommandResult};

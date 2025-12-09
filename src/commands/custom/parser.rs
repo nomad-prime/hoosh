@@ -20,12 +20,11 @@ pub fn parse_command_file(file_path: &Path) -> Result<ParsedCommand> {
         .to_string();
 
     let content = fs::read_to_string(file_path)
-        .with_context(|| {
-            format!("Failed to read command file: {}", file_path.display())
-        })?;
+        .with_context(|| format!("Failed to read command file: {}", file_path.display()))?;
 
     let matter = Matter::<YAML>::new();
-    let result = matter.parse_with_struct::<CommandMetadata>(&content)
+    let result = matter
+        .parse_with_struct::<CommandMetadata>(&content)
         .with_context(|| format!("Failed to parse frontmatter in: {}", file_path.display()))?;
 
     validate_metadata(&result.data, file_path)?;

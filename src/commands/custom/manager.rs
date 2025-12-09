@@ -1,6 +1,6 @@
+use crate::commands::CommandRegistry;
 use crate::commands::custom::parser::{ParsedCommand, parse_command_file};
 use crate::commands::custom::wrapper::CustomCommandWrapper;
-use crate::commands::CommandRegistry;
 use anyhow::{Context, Result};
 use std::env;
 use std::fs;
@@ -17,11 +17,16 @@ impl CustomCommandManager {
         let commands_dir = Self::commands_dir()?;
 
         if !commands_dir.exists() {
-            fs::create_dir_all(&commands_dir)
-                .with_context(|| {
-                    format!("Failed to create commands directory: {}", commands_dir.display())
-                })?;
-            eprintln!("Created custom commands directory: {}", commands_dir.display());
+            fs::create_dir_all(&commands_dir).with_context(|| {
+                format!(
+                    "Failed to create commands directory: {}",
+                    commands_dir.display()
+                )
+            })?;
+            eprintln!(
+                "Created custom commands directory: {}",
+                commands_dir.display()
+            );
         }
 
         Ok(Self {
@@ -31,8 +36,7 @@ impl CustomCommandManager {
     }
 
     fn commands_dir() -> Result<PathBuf> {
-        let current_dir = env::current_dir()
-            .context("Could not determine current directory")?;
+        let current_dir = env::current_dir().context("Could not determine current directory")?;
         Ok(current_dir.join(".hoosh").join("commands"))
     }
 

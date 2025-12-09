@@ -108,7 +108,6 @@ pub async fn run_agent_on_conversation(
     context_manager: Arc<ContextManager>,
     system_reminder: Arc<crate::system_reminders::SystemReminder>,
 ) {
-
     let agent = Agent::new(backend, tool_registry, tool_executor)
         .with_event_sender(event_tx.clone())
         .with_context_manager(context_manager)

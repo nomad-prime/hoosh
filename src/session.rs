@@ -9,7 +9,7 @@ use crate::TaskToolProvider;
 use crate::agent::Conversation;
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands, register_custom_commands};
+use crate::commands::{CommandRegistry, register_custom_commands, register_default_commands};
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
