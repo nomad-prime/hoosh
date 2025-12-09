@@ -9,7 +9,7 @@ use crate::TaskToolProvider;
 use crate::agent::Conversation;
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
-use crate::commands::{CommandRegistry, register_default_commands};
+use crate::commands::{CommandRegistry, register_custom_commands, register_default_commands};
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
@@ -272,6 +272,18 @@ async fn setup_completers(app_state: &mut AppState, working_dir: &Path) -> Resul
 fn setup_command_registry() -> Result<Arc<CommandRegistry>> {
     let mut command_registry = CommandRegistry::new();
     register_default_commands(&mut command_registry)?;
+
+    match register_custom_commands(&mut command_registry) {
+        Ok(count) => {
+            if count > 0 {
+                eprintln!("Loaded {} custom command(s)", count);
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to load custom commands: {}", e);
+        }
+    }
+
     let command_registry = Arc::new(command_registry);
     Ok(command_registry)
 }
