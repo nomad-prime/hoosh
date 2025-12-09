@@ -12,6 +12,7 @@ use crate::tools::ToolRegistry;
 #[derive(Debug, Clone)]
 pub enum CommandResult {
     Success(String),
+    RunAgent,
     Exit,
     ClearConversation,
 }

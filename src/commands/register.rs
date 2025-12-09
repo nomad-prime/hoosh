@@ -4,6 +4,7 @@ use std::sync::Arc;
 use super::agents_command::AgentsCommand;
 use super::clear_command::ClearCommand;
 use super::compact_command::CompactCommand;
+use super::custom::CustomCommandManager;
 use super::exit_command::ExitCommand;
 use super::help_command::HelpCommand;
 use super::permissions_command::PermissionsCommand;
@@ -23,4 +24,11 @@ pub fn register_default_commands(registry: &mut CommandRegistry) -> Result<()> {
     registry.register(Arc::new(CompactCommand))?;
     registry.register(Arc::new(PermissionsCommand))?;
     Ok(())
+}
+
+pub fn register_custom_commands(registry: &mut CommandRegistry) -> Result<usize> {
+    let mut manager = CustomCommandManager::new()?;
+    manager.load_commands()?;
+    let count = manager.register_commands(registry)?;
+    Ok(count)
 }
