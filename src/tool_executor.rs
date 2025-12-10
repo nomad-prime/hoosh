@@ -73,6 +73,43 @@ impl ToolExecutor {
         self
     }
 
+    async fn emit_tool_completion_events(
+        &self,
+        tool_call_id: &str,
+        tool_name: &str,
+        display_name: &str,
+        result: &ToolCallResponse,
+        is_hidden: bool,
+    ) {
+        if !is_hidden {
+            if let Some(sender) = &self.event_sender {
+                let summary = match &result.result {
+                    Ok(output) => {
+                        // Get tool to compute summary
+                        if let Some(tool) = self.tool_registry.get_tool(tool_name) {
+                            tool.result_summary(output)
+                        } else {
+                            output.clone()
+                        }
+                    }
+                    Err(e) => format!("Error: {}", e),
+                };
+                let _ = sender.send(AgentEvent::ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    tool_name: display_name.to_string(),
+                    summary,
+                });
+            }
+
+            if let Some(sender) = &self.event_sender {
+                let _ = sender.send(AgentEvent::ToolExecutionCompleted {
+                    tool_call_id: tool_call_id.to_string(),
+                    tool_name: tool_name.to_string(),
+                });
+            }
+        }
+    }
+
     pub async fn execute_tool_call(
         &self,
         tool_call: &ToolCall,
@@ -85,12 +122,14 @@ impl ToolExecutor {
         let tool = match self.tool_registry.get_tool(tool_name) {
             Some(tool) => tool,
             None => {
-                return ToolCallResponse::error(
-                    tool_call_id,
+                let result = ToolCallResponse::error(
+                    tool_call_id.clone(),
                     tool_name.clone(),
                     tool_name.clone(),
                     ToolError::tool_not_found(tool_name),
                 );
+                self.emit_tool_completion_events(&tool_call_id, tool_name, tool_name, &result, false).await;
+                return result;
             }
         };
 
@@ -98,12 +137,14 @@ impl ToolExecutor {
         let args = match serde_json::from_str(&tool_call.function.arguments) {
             Ok(args) => args,
             Err(e) => {
-                return ToolCallResponse::error(
-                    tool_call_id,
+                let result = ToolCallResponse::error(
+                    tool_call_id.clone(),
                     tool_name.clone(),
                     tool_name.clone(),
                     ToolError::execution_failed(format!("Invalid tool arguments: {}", e)),
                 );
+                self.emit_tool_completion_events(&tool_call_id, tool_name, tool_name, &result, tool.is_hidden()).await;
+                return result;
             }
         };
 
@@ -113,11 +154,15 @@ impl ToolExecutor {
         // Validate arguments against the tool's schema
         let schema = tool.parameter_schema();
         if let Err(e) = validate_against_schema(&args, &schema, tool_name) {
-            return ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e);
+            let result = ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name.clone(), e);
+            self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, tool.is_hidden()).await;
+            return result;
         }
 
         if let Err(e) = self.check_tool_permissions(tool, &args).await {
-            return ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e);
+            let result = ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name.clone(), e);
+            self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, tool.is_hidden()).await;
+            return result;
         }
 
         // Generate and emit preview if available
@@ -135,7 +180,9 @@ impl ToolExecutor {
 
             // If not in autopilot mode, request approval before continuing
             if !is_autopilot && let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
-                return ToolCallResponse::error(tool_call_id, tool_name.clone(), display_name, e);
+                let result = ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name.clone(), e);
+                self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, tool.is_hidden()).await;
+                return result;
             }
         }
 
@@ -170,26 +217,7 @@ impl ToolExecutor {
         };
 
         // Emit tool result and completion events (skip for hidden tools)
-        if !is_hidden {
-            if let Some(sender) = &self.event_sender {
-                let summary = match &result.result {
-                    Ok(output) => tool.result_summary(output),
-                    Err(e) => format!("Error: {}", e),
-                };
-                let _ = sender.send(AgentEvent::ToolResult {
-                    tool_call_id: tool_call_id.clone(),
-                    tool_name: display_name.clone(),
-                    summary,
-                });
-            }
-
-            if let Some(sender) = &self.event_sender {
-                let _ = sender.send(AgentEvent::ToolExecutionCompleted {
-                    tool_call_id: tool_call_id.clone(),
-                    tool_name: tool_name.clone(),
-                });
-            }
-        }
+        self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, is_hidden).await;
 
         result
     }
