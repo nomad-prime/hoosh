@@ -128,7 +128,14 @@ impl ToolExecutor {
                     tool_name.clone(),
                     ToolError::tool_not_found(tool_name),
                 );
-                self.emit_tool_completion_events(&tool_call_id, tool_name, tool_name, &result, false).await;
+                self.emit_tool_completion_events(
+                    &tool_call_id,
+                    tool_name,
+                    tool_name,
+                    &result,
+                    false,
+                )
+                .await;
                 return result;
             }
         };
@@ -143,7 +150,14 @@ impl ToolExecutor {
                     tool_name.clone(),
                     ToolError::execution_failed(format!("Invalid tool arguments: {}", e)),
                 );
-                self.emit_tool_completion_events(&tool_call_id, tool_name, tool_name, &result, tool.is_hidden()).await;
+                self.emit_tool_completion_events(
+                    &tool_call_id,
+                    tool_name,
+                    tool_name,
+                    &result,
+                    tool.is_hidden(),
+                )
+                .await;
                 return result;
             }
         };
@@ -154,14 +168,38 @@ impl ToolExecutor {
         // Validate arguments against the tool's schema
         let schema = tool.parameter_schema();
         if let Err(e) = validate_against_schema(&args, &schema, tool_name) {
-            let result = ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name.clone(), e);
-            self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, tool.is_hidden()).await;
+            let result = ToolCallResponse::error(
+                tool_call_id.clone(),
+                tool_name.clone(),
+                display_name.clone(),
+                e,
+            );
+            self.emit_tool_completion_events(
+                &tool_call_id,
+                tool_name,
+                &display_name,
+                &result,
+                tool.is_hidden(),
+            )
+            .await;
             return result;
         }
 
         if let Err(e) = self.check_tool_permissions(tool, &args).await {
-            let result = ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name.clone(), e);
-            self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, tool.is_hidden()).await;
+            let result = ToolCallResponse::error(
+                tool_call_id.clone(),
+                tool_name.clone(),
+                display_name.clone(),
+                e,
+            );
+            self.emit_tool_completion_events(
+                &tool_call_id,
+                tool_name,
+                &display_name,
+                &result,
+                tool.is_hidden(),
+            )
+            .await;
             return result;
         }
 
@@ -180,8 +218,20 @@ impl ToolExecutor {
 
             // If not in autopilot mode, request approval before continuing
             if !is_autopilot && let Err(e) = self.request_approval(&tool_call_id, tool_name).await {
-                let result = ToolCallResponse::error(tool_call_id.clone(), tool_name.clone(), display_name.clone(), e);
-                self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, tool.is_hidden()).await;
+                let result = ToolCallResponse::error(
+                    tool_call_id.clone(),
+                    tool_name.clone(),
+                    display_name.clone(),
+                    e,
+                );
+                self.emit_tool_completion_events(
+                    &tool_call_id,
+                    tool_name,
+                    &display_name,
+                    &result,
+                    tool.is_hidden(),
+                )
+                .await;
                 return result;
             }
         }
@@ -217,7 +267,14 @@ impl ToolExecutor {
         };
 
         // Emit tool result and completion events (skip for hidden tools)
-        self.emit_tool_completion_events(&tool_call_id, tool_name, &display_name, &result, is_hidden).await;
+        self.emit_tool_completion_events(
+            &tool_call_id,
+            tool_name,
+            &display_name,
+            &result,
+            is_hidden,
+        )
+        .await;
 
         result
     }
