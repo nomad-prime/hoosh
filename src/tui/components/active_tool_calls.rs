@@ -51,7 +51,7 @@ impl Component for ActiveToolCallsComponent {
                 status_indicator,
                 Span::raw(" "),
                 Span::raw(&tool_call.display_name),
-                Span::styled(meta_info, Style::default().fg(palette::DIMMED_TEXT)),
+                Span::styled(meta_info, Style::default().fg(palette::SUBDUED_TEXT)),
             ];
 
             match &tool_call.status {
@@ -77,7 +77,7 @@ impl Component for ActiveToolCallsComponent {
             if let Some(summary) = &tool_call.result_summary {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("⎿ ", Style::default().fg(palette::DIMMED_TEXT)),
+                    Span::styled("⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
                     Span::styled(summary, Style::default().fg(palette::SECONDARY_TEXT)),
                 ]));
             }

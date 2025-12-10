@@ -39,7 +39,7 @@ impl Component for TodoListComponent {
 
         for (idx, todo) in state.todos.iter().enumerate() {
             let (status_icon, status_color) = match todo.status {
-                TodoStatus::Pending => ("○", palette::DIMMED_TEXT),
+                TodoStatus::Pending => ("○", palette::SUBDUED_TEXT),
                 TodoStatus::InProgress => ("◐", palette::TOOL_STATUS_RUNNING),
                 TodoStatus::Completed => ("●", palette::SUCCESS),
             };
@@ -61,7 +61,7 @@ impl Component for TodoListComponent {
             let prefix = if idx == 0 && has_status { "⎿ " } else { "  " };
 
             let line = Line::from(vec![
-                Span::styled(prefix, Style::default().fg(palette::DIMMED_TEXT)),
+                Span::styled(prefix, Style::default().fg(palette::SUBDUED_TEXT)),
                 Span::styled(
                     format!("{} ", status_icon),
                     Style::default().fg(status_color),
@@ -73,7 +73,7 @@ impl Component for TodoListComponent {
                     } else {
                         String::new()
                     },
-                    Style::default().fg(palette::DIMMED_TEXT),
+                    Style::default().fg(palette::SUBDUED_TEXT),
                 ),
             ]);
 
