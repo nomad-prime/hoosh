@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod agent_definition;
 pub mod backends;
+pub mod cascades;
 pub mod cli;
 pub mod commands;
 pub mod completion;
@@ -32,6 +33,7 @@ pub use backends::{LlmBackend, LlmResponse};
 pub use backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]
 pub use backends::{TogetherAiBackend, TogetherAiConfig};
+pub use cascades::{CascadeConfig, CascadeContext, CascadeError, CascadeRouter, ComplexityAnalyzer, ComplexityLevel, ComplexitySignals, DefaultCascadeRouter, DefaultComplexityAnalyzer, ExecutionTier, TaskComplexity};
 pub use commands::{
     Command, CommandContext, CommandRegistry, CommandResult, register_default_commands,
 };

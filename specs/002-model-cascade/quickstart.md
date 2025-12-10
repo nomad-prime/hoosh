@@ -1,390 +1,386 @@
 # Quickstart: Model Cascade Implementation
 
+**Phase**: 1 | **Date**: 2025-12-10
+
+---
+
 ## Overview
 
-Implementing model cascade system for hoosh involves 5 main components:
+This guide walks through integrating the cascade module into Hoosh's task execution loop. The cascade system routes tasks to appropriate model tiers (Light/Medium/Heavy) based on multi-signal complexity analysis, with human approval required for escalations.
 
-1. **Complexity Analyzer** - Measure task complexity from prompt
-2. **Tier Router** - Map complexity to model tier
-3. **Backend Factory** - Create tier-specific backends
-4. **Escalate Tool** - Allow runtime tier escalation
-5. **Integration Points** - Wire into existing task execution
+---
 
-## Phase 1 Implementation Path
+## Module Structure
 
-### Step 1: Configuration Extension
+```
+src/cascades/
+├── mod.rs                  # Public API exports
+├── complexity_analyzer.rs  # Multi-signal analysis
+├── router.rs               # Tier routing logic
+├── context.rs              # CascadeContext lifecycle
+├── approval_handler.rs     # HITL approval workflow
+├── events.rs               # Event logging & queries
+├── errors.rs               # Error types
+└── tests.rs                # Integration tests
+```
 
-Add to `config.toml`:
+---
+
+## Configuration (TOML)
+
+Add to `.hoosh.toml`:
 
 ```toml
-[cascade.light]
+[cascades]
+enabled = true
+routing_policy = "multi-signal"
+escalation_policy = "allow_all"
+default_tier = "Medium"
+escalation_needs_approval = true
+
+[[cascades.model_tiers]]
+tier = "Light"
 backend = "anthropic"
-model = "claude-haiku-4.5"
+models = ["claude-3-5-haiku-20241022"]
+max_cost_per_request_cents = 2
 
-[cascade.medium]
+[[cascades.model_tiers]]
+tier = "Medium"
 backend = "anthropic"
-model = "claude-sonnet-4.5"
+models = ["claude-3-5-sonnet-20241022"]
+max_cost_per_request_cents = 5
 
-[cascade.heavy]
+[[cascades.model_tiers]]
+tier = "Heavy"
 backend = "anthropic"
-model = "claude-opus-4"
+models = ["claude-3-opus-20250219"]
+max_cost_per_request_cents = 15
 ```
 
-**Files to modify:**
-- `src/config/mod.rs` - Add `CascadeConfig` struct
-- `config.rs tests` - Validate tier loading
+---
 
-### Step 2: Core Data Structures
+## Integration: Task Execution Loop
 
-**File**: `src/model_cascade/mod.rs` (new)
+**File**: `src/agent/core.rs`
 
 ```rust
-pub mod complexity;        // TaskComplexity, ComplexityMetrics
-pub mod tier;              // ModelTier, TierName enum
-pub mod context;           // CascadeContext, EscalationStep
-pub mod analyzer;          // analyze_task_complexity() function
+use cascades::{
+    ComplexityAnalyzer, Router, CascadeContext, 
+    EventLogger, ApprovalHandler
+};
 
-pub use complexity::*;
-pub use tier::*;
-pub use context::*;
-pub use analyzer::*;
-```
+pub async fn execute_task(
+    task: &TaskDefinition,
+    config: &Config,
+) -> Result<TaskResult> {
+    // 1. Load cascade config (if enabled)
+    let cascade_cfg = config.cascade_config();
+    if !cascade_cfg.enabled {
+        // Standard execution (no cascade)
+        return execute_standard(task).await;
+    }
 
-### Step 3: Complexity Analyzer
+    // 2. Analyze complexity
+    let analyzer = ComplexityAnalyzer::new();
+    let complexity = analyzer.analyze(&task.description)?;
+    
+    // 3. Route to initial tier
+    let router = Router::new(&cascade_cfg);
+    let initial_tier = router.route(&complexity);
+    
+    // 4. Create cascade context
+    let mut cascade_ctx = CascadeContext::new(
+        task.id.clone(),
+        initial_tier.clone(),
+        task.description.clone(),
+    );
 
-**File**: `src/model_cascade/analyzer.rs`
-
-Implement `analyze_task_complexity(prompt, depth, agent_type)`:
-
-```rust
-pub async fn analyze_task_complexity(
-    task_prompt: &str,
-    conversation_depth: usize,
-    agent_type: Option<&str>,
-) -> Result<TaskComplexity>
-```
-
-**Decision logic** (multi-signal heuristic):
-
-```rust
-// Collect signals
-let structural_depth = parse_requirement_nesting(prompt);
-let action_verbs = count_action_verbs(prompt);  // "design", "implement", "debug", etc.
-let code_signal = analyze_code_blocks(prompt);
-
-// Normalize to 0.0-1.0
-let depth_score = normalize(structural_depth, 1.0, 5.0);
-let action_score = normalize(action_verbs as f32, 0.0, 6.0);
-let code_score = if has_code { estimate_cyclomatic_complexity(code) / 10.0 } else { 0.0 };
-
-// Weighted combination
-let complexity_score = (0.35 * depth_score) + (0.35 * action_score) + (0.30 * code_score);
-
-// Route conservatively
-if complexity_score < 0.35 && confidence > 0.80 {
-    tier = Light
-} else if complexity_score > 0.65 && confidence > 0.75 {
-    tier = Heavy
-} else {
-    tier = Medium  // Safe default
-}
-```
-
-**Metrics to collect**:
-- Basic: `message_length`, `word_count`, `line_count`
-- Signals: `code_blocks`, `has_multiple_questions`, `conversation_depth`
-- Context: `agent_type`
-- **New Multi-Signal**: `structural_depth`, `action_verb_count`, `unique_concepts`, `code_cyclomatic_complexity`
-
-### Step 4: Backend Factory for Tiers
-
-**File**: `src/backends/cascade_factory.rs` (new)
-
-```rust
-pub struct CascadeBackendFactory;
-
-impl CascadeBackendFactory {
-    pub async fn create_backend_for_tier(
-        tier: &ModelTier,
-        config: &AppConfig,
-    ) -> Result<Arc<dyn LlmBackend>> {
-        // Get base backend config
-        let base = config.get_backend_config(&tier.backend_name)?;
+    // 5. Execute task with escalation support
+    loop {
+        let result = execute_on_tier(&mut cascade_ctx, &cascade_cfg).await;
         
-        // Override model with tier-specific model
-        let mut tier_config = base.clone();
-        tier_config.model = Some(tier.model_id.clone());
-        
-        // Create backend using existing factory
-        let backend = backends::create_backend(&tier.backend_name, &tier_config)?;
-        Ok(Arc::new(backend))
+        match result {
+            Ok(output) => {
+                log_event(
+                    &cascade_ctx,
+                    CascadeEventType::TaskCompleted,
+                    &output,
+                )?;
+                return Ok(TaskResult::success(output));
+            }
+            Err(NeedsEscalation(reason)) => {
+                // 6. Request escalation (with HITL approval)
+                if cascade_cfg.escalation_needs_approval {
+                    let approval = request_approval(
+                        &cascade_ctx,
+                        &reason,
+                    ).await?;
+                    
+                    if !approval.approved {
+                        log_event(
+                            &cascade_ctx,
+                            CascadeEventType::EscalationRejected,
+                            &approval.rejection_reason,
+                        )?;
+                        return Err(approval.rejection_reason.into());
+                    }
+                    cascade_ctx.approve_escalation(&approval);
+                }
+                
+                // 7. Move to next tier and retry
+                let next_tier = cascade_ctx.escalate()?;
+                log_event(
+                    &cascade_ctx,
+                    CascadeEventType::EscalationExecuted,
+                    &format!("Escalated to {:?}", next_tier),
+                )?;
+            }
+            Err(e) => {
+                log_event(
+                    &cascade_ctx,
+                    CascadeEventType::TaskFailed,
+                    &e.to_string(),
+                )?;
+                return Err(e);
+            }
+        }
     }
 }
 ```
 
-### Step 5: Escalate Tool
+---
 
-**File**: `src/tools/escalate_tool.rs` (new)
+## Complexity Analyzer
+
+**File**: `src/cascades/complexity_analyzer.rs`
 
 ```rust
-pub struct EscalateTool {
-    cascade_context: Arc<RwLock<Option<CascadeContext>>>,
-    backend_factory: Arc<CascadeBackendFactory>,
-    config: Arc<AppConfig>,
-}
+pub struct ComplexityAnalyzer;
 
-#[async_trait]
-impl Tool for EscalateTool {
-    async fn execute(
-        &self,
-        args: &Value,
-        context: &ToolExecutionContext,
-    ) -> ToolResult<String> {
-        // Parse request
-        let request: EscalateToolRequest = serde_json::from_value(args.clone())?;
+impl ComplexityAnalyzer {
+    pub fn analyze(&self, text: &str) -> Result<TaskComplexity> {
+        let depth_score = self.structural_depth(text);
+        let action_score = self.action_density(text);
+        let code_score = self.code_signals(text);
         
-        // Validate request
-        validate_escalate_request(&request)?;
+        let composite = (0.35 * depth_score) 
+                      + (0.35 * action_score)
+                      + (0.30 * code_score);
         
-        // Get current cascade context or create new
-        let mut cascade = self.get_or_create_cascade_context();
-        
-        // Check escalation constraints
-        if cascade.current_tier == TierName::Heavy {
-            return Err("Already at maximum tier".into());
-        }
-        if cascade.escalation_path.len() >= 2 {
-            return Err("Escalation limit reached".into());
-        }
-        
-        // Determine next tier
-        let next_tier = match cascade.current_tier {
-            TierName::Light => TierName::Medium,
-            TierName::Medium => TierName::Heavy,
-            TierName::Heavy => unreachable!(),
+        let level = match composite {
+            s if s < 0.35 => ComplexityLevel::Light,
+            s if s > 0.65 => ComplexityLevel::Heavy,
+            _ => ComplexityLevel::Medium,
         };
         
-        // Record escalation step
-        cascade.escalation_path.push(EscalationStep {
-            timestamp: now(),
-            from_tier: cascade.current_tier,
-            to_tier: next_tier,
-            reason: request.reason.clone(),
-            model_name: get_model_for_tier(next_tier),
-        });
+        // Confidence based on signal agreement
+        let agreement = 1.0 - ((depth_score - action_score).abs() 
+                            + (action_score - code_score).abs()) / 2.0;
         
-        // Signal Agent to switch backend
-        // (Agent will call create_backend_for_tier with next_tier)
+        let confidence = if level == ComplexityLevel::Medium {
+            agreement * 0.75  // Ambiguous tier
+        } else if agreement > 0.8 {
+            agreement * 0.95  // Strong consensus
+        } else {
+            agreement * 0.75  // Mixed signals
+        };
         
-        Ok(format!("Escalating to {:?} tier...", next_tier))
+        Ok(TaskComplexity {
+            level,
+            confidence: confidence.min(1.0),
+            reasoning: format!(
+                "Depth: {:.2}, Action: {:.2}, Code: {:.2} → {}",
+                depth_score, action_score, code_score, level
+            ),
+            metrics: ComplexityMetrics { /* ... */ },
+        })
     }
     
-    // Tool metadata
-    fn name(&self) -> &'static str { "escalate" }
-    fn description(&self) -> &'static str { 
-        "Request escalation to a higher-tier model when current tier is insufficient"
+    fn structural_depth(&self, text: &str) -> f32 {
+        // Count conditional depth
+        let depth = count_nesting_levels(text);
+        normalize(depth as f32, 1.0, 5.0)
+    }
+    
+    fn action_density(&self, text: &str) -> f32 {
+        let re = regex::Regex::new(
+            r"\b(implement|design|analyze|refactor|...)\b"
+        ).unwrap();
+        let count = re.find_iter(&text.to_lowercase()).count();
+        normalize(count as f32, 0.0, 6.0)
+    }
+    
+    fn code_signals(&self, text: &str) -> f32 {
+        let has_code = text.contains("```");
+        if !has_code { return 0.0; }
+        
+        let cc = cyclomatic_complexity(text);
+        match cc {
+            c if c < 3 => 0.3,
+            c if c < 5 => 0.6,
+            _ => 1.0,
+        }
     }
 }
 ```
 
-### Step 6: Integration with TaskManager
+---
 
-**File**: `src/task_management/task_manager.rs` (modify)
+## Router
+
+**File**: `src/cascades/router.rs`
 
 ```rust
-pub async fn execute_task(&self, task_def: TaskDefinition) -> Result<TaskResult> {
-    // NEW: Analyze task complexity
-    let complexity = model_cascade::analyze_task_complexity(
-        &task_def.prompt,
-        0,  // Initial task, no prior conversation
-        None,
-    ).await?;
-    
-    // NEW: Select tier
-    let (tier, tier_backend) = self.select_tier_for_complexity(&complexity)?;
-    
-    // Use tier-specific backend instead of default
-    let backend = tier_backend;
-    
-    // Rest of execution continues as before
-    let agent = Agent::new(backend, self.tool_registry.clone(), executor);
-    // ...
+pub struct Router<'a> {
+    config: &'a CascadeConfig,
 }
 
-fn select_tier_for_complexity(
-    &self,
-    complexity: &TaskComplexity,
-) -> Result<(TierName, Arc<dyn LlmBackend>)> {
-    // Map complexity to tier
-    let tier_name = match complexity.level {
-        ComplexityLevel::Light => TierName::Light,
-        ComplexityLevel::Medium => TierName::Medium,
-        ComplexityLevel::Heavy => TierName::Heavy,
-    };
-    
-    // Create tier-specific backend
-    let tier_config = self.config.get_cascade_tier(&tier_name)?;
-    let backend = CascadeBackendFactory::create_backend_for_tier(
-        &tier_config,
-        &self.config,
-    ).await?;
-    
-    Ok((tier_name, backend))
+impl<'a> Router<'a> {
+    pub fn route(&self, complexity: &TaskComplexity) -> ExecutionTier {
+        if complexity.confidence < 0.7
+            || (complexity.confidence < 0.8 
+                && complexity.level == ComplexityLevel::Medium) {
+            // Conservative default
+            return self.config.default_tier.clone();
+        }
+        
+        match complexity.level {
+            ComplexityLevel::Light => ExecutionTier::Light,
+            ComplexityLevel::Medium => ExecutionTier::Medium,
+            ComplexityLevel::Heavy => ExecutionTier::Heavy,
+        }
+    }
 }
 ```
 
-### Step 7: Agent Backend Switching
+---
 
-**File**: `src/agent/core.rs` (modify handle_turn)
+## Approval Handler (HITL)
 
-When escalate tool is executed:
+**File**: `src/cascades/approval_handler.rs`
 
 ```rust
-// In Agent::handle_turn(), after tool execution:
-if tool_name == "escalate" && tool_result.success {
-    // Extract new tier from result
-    let new_tier = extract_tier_from_result(&tool_result)?;
+pub async fn request_approval(
+    cascade_ctx: &CascadeContext,
+    reason: &str,
+) -> Result<ApprovalDecision> {
+    // Show TUI dialog to operator
+    let dialog = EscalationApprovalDialog::new(
+        &cascade_ctx.original_task,
+        &cascade_ctx.current_tier,
+        &cascade_ctx.escalation_path.last(),
+        reason,
+        &cascade_ctx.conversation_history,
+    );
     
-    // Create new backend
-    let new_backend = CascadeBackendFactory::create_backend_for_tier(
-        &new_tier,
-        &self.config,
-    ).await?;
-    
-    // Switch backend for next LLM call
-    self.backend = new_backend;
-    
-    // Emit event
-    self.emit_event(AgentEvent::EscalationApproved { ... });
+    match dialog.show_with_timeout(Duration::from_secs(300)).await {
+        Ok(decision) => {
+            log_audit(&cascade_ctx, &decision)?;
+            Ok(decision)
+        }
+        Err(TimeoutError) => {
+            Err("Operator approval timeout".into())
+        }
+    }
 }
 ```
 
-### Step 8: Tool Registration
+---
 
-**File**: `src/tools/mod.rs` (modify)
+## Event Logging
+
+**File**: `src/cascades/events.rs`
 
 ```rust
-pub fn create_tool_provider() -> ToolProvider {
-    let mut provider = DefaultToolProvider::new();
+pub struct EventLogger {
+    events: Arc<DashMap<String, Vec<CascadeEvent>>>,
+    // indices for queryability
+}
+
+impl EventLogger {
+    pub fn emit(&self, event: CascadeEvent) {
+        self.events
+            .entry(event.task_id.clone())
+            .or_insert_with(Vec::new)
+            .push(event);
+    }
     
-    // Register escalate tool
-    provider.register(Arc::new(EscalateTool::new(
-        Arc::new(RwLock::new(None)),
-        Arc::new(CascadeBackendFactory),
-        config.clone(),
-    )));
-    
-    provider
+    pub fn query_by_task(&self, task_id: &str) -> Vec<CascadeEvent> {
+        self.events.get(task_id)
+            .map(|e| e.clone())
+            .unwrap_or_default()
+    }
 }
 ```
 
-## Testing Strategy
+---
 
-### Unit Tests
+## Testing Integration
 
-**File**: `src/model_cascade/tests.rs`
+**File**: `src/cascades/tests.rs`
 
 ```rust
-#[test]
-fn simple_task_selects_light_tier() {
-    let prompt = "What is 2+2?";
-    let complexity = analyze_task_complexity(prompt, 0, None);
+#[tokio::test]
+async fn routes_simple_task_to_light_tier() {
+    let analyzer = ComplexityAnalyzer::new();
+    let complexity = analyzer.analyze("What is 2+2?").unwrap();
+    
     assert_eq!(complexity.level, ComplexityLevel::Light);
-}
-
-#[test]
-fn complex_task_selects_heavy_tier() {
-    let prompt = "Design a distributed consensus algorithm..."; // 2000+ chars
-    let complexity = analyze_task_complexity(prompt, 0, None);
-    assert_eq!(complexity.level, ComplexityLevel::Heavy);
-}
-
-#[test]
-fn ambiguous_defaults_to_medium() {
-    let prompt = "Moderate task"; // ~100-1500 chars
-    let complexity = analyze_task_complexity(prompt, 0, None);
-    assert_eq!(complexity.level, ComplexityLevel::Medium);
-}
-```
-
-### Integration Tests
-
-**File**: `tests/cascade_integration.rs`
-
-```rust
-#[tokio::test]
-async fn escalation_preserves_conversation() {
-    // Start with Light tier
-    // Execute some steps
-    // Call escalate tool
-    // Verify all messages transferred to Medium tier
-    // Verify model can reference prior messages
+    assert!(complexity.confidence > 0.8);
 }
 
 #[tokio::test]
-async fn cannot_escalate_beyond_heavy() {
-    // Start with Heavy tier
-    // Call escalate tool
-    // Verify error returned
+async fn preserves_conversation_during_escalation() {
+    let mut ctx = CascadeContext::new(
+        "task1".to_string(),
+        ExecutionTier::Light,
+        "complex task".to_string(),
+    );
+    
+    ctx.conversation_history.push(ChatMessage { /* ... */ });
+    ctx.escalate().unwrap();
+    
+    assert_eq!(ctx.conversation_history.len(), 1);
+    assert_eq!(ctx.escalation_path, vec![Light, Medium]);
 }
 ```
 
-## Validation Checklist
+---
 
-- [ ] Configuration loads tier definitions correctly
-- [ ] Complexity analyzer produces reasonable classifications
-- [ ] Backend factory creates tier-specific backends
-- [ ] Escalate tool validates input parameters
-- [ ] Escalate tool tracks escalation history
-- [ ] Agent switches backend on escalation
-- [ ] Conversation history 100% preserved
-- [ ] Token counts accurate across escalations
-- [ ] Error cases handled gracefully
-- [ ] All tests pass
-- [ ] No performance regression
+## Module Exports
 
-## Debugging Tips
-
-### Check Tier Selection
+**File**: `src/cascades/mod.rs`
 
 ```rust
-// Add to TaskManager::execute_task
-eprintln!("Task complexity: {:?}", complexity);
-eprintln!("Selected tier: {:?}", tier_name);
+pub mod complexity_analyzer;
+pub mod router;
+pub mod context;
+pub mod approval_handler;
+pub mod events;
+pub mod errors;
+
+pub use complexity_analyzer::ComplexityAnalyzer;
+pub use router::Router;
+pub use context::CascadeContext;
+pub use approval_handler::request_approval;
+pub use events::{EventLogger, CascadeEvent};
+pub use errors::{CascadeError, NeedsEscalation};
 ```
 
-### Monitor Escalations
+---
 
-```
-tail -f ~/.hoosh/cascade_history.jsonl
-```
+## Checklist
 
-### Backend Verification
+- [ ] Add `cascades/` module to `src/`
+- [ ] Update `src/lib.rs` to export cascades module
+- [ ] Modify `agent/core.rs` to integrate execute_task loop
+- [ ] Update config parser to handle `[cascades]` section
+- [ ] Register `escalate` tool in `tools/mod.rs`
+- [ ] Extend TUI approval dialog in `src/tui/`
+- [ ] Add tests in `src/cascades/tests.rs`
+- [ ] Update `Cargo.toml` with `dashmap`, `uuid` dependencies
+- [ ] Run `cargo test` and `cargo clippy`
 
-```toml
-# Verify in config.toml
-[cascade.light]
-model = "claude-haiku-4.5"  # ✓ Should be fast/cheap
+---
 
-[cascade.medium]
-model = "claude-sonnet-4.5" # ✓ Should be balanced
-
-[cascade.heavy]
-model = "claude-opus-4"     # ✓ Should be most capable
-```
-
-## Phase 1 vs Phase 2
-
-**Phase 1 (Current)**:
-- ✅ Single backend per cascade
-- ✅ Heuristic-based routing
-- ✅ Manual tier selection via config
-- ✅ Escalate tool only
-- ✅ Conservative Medium default
-
-**Phase 2 (Future)**:
-- Cross-backend escalation
-- ML-based complexity analysis
-- Automatic de-escalation
-- Cost tracking and optimization
-- Telemetry-driven learning
+**Next**: Run `/speckit.tasks` to generate task breakdown

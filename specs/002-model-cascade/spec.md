@@ -96,16 +96,25 @@ When escalation occurs, the conversation history and prior reasoning should be p
 ### Session 2025-12-10
 
 - Q: How should cascade activation be controlled? Should cascades always be active or can they be enabled/disabled? → A: Cascades are OFF by default. They are only activated if a `cascades` section exists in the config file with explicit cascade definitions.
+- Q: When a task reaches Heavy-tier (max tier), what should happen if escalation switching fails or Heavy-tier is unavailable (crash/timeout)? → A: Phase 1 addresses switching failures or Heavy-tier unavailability (crash/timeout). If Heavy-tier is unreachable, return graceful error to user with full escalation trace. Do NOT handle scenarios where Heavy-tier completes but declines the task (task too complex for any tier).
+- Q: How should CascadeContext (escalation state, conversation history, tier path) be stored and managed? → A: In-memory per request. CascadeContext exists only for the duration of a single task execution and is garbage-collected when the task completes.
+- Q: What observability level should Phase 1 implement (logging, metrics, tracing)? → A: Structured event logging + basic metrics. Emit JSON events for cascade lifecycle (created, escalated, completed, failed). Track: escalation_rate, success_rate, tier_distribution, latency_per_tier.
+- Q: How should complexity routing validation and accuracy testing be conducted? → A: Human-curated dataset with 50-100 diverse tasks, explicit tier labels, confidence scores (0-1), and justification annotations as ground truth. Additionally, all routing escalations (agent deciding to switch model) MUST be validated via HITL (human-in-the-loop) before automatic escalation is permitted.
+- Q: How should concurrent task handling and CascadeContext isolation be designed? → A: Sequential execution only (Phase 1). Agent operates in a loop processing one task at a time. No concurrent background processes. CascadeContext remains single-scoped for current task lifetime. Concurrency deferred to Phase 2 if needed.
 
 ---
 
 ### Edge Cases
 
-- What if escalation is requested when already at Heavy-tier (maximum tier)?
-- What if a model fails even after escalation to Heavy-tier?
-- How does the system handle cost tracking across escalations?
-- What if a task completes successfully on a lower tier but the user manually requests escalation for re-analysis?
-- How does the system handle network failures during escalation transitions?
+#### Phase 1 Scope (Addressed)
+- **Escalation at Heavy-tier**: If escalation is requested when already at Heavy-tier, system gracefully rejects with message that Heavy is maximum tier.
+- **Switching Failure or Heavy-tier Unavailable**: If escalation to Heavy-tier fails due to network error, backend crash, or timeout, system returns graceful error showing escalation path and reason.
+
+#### Phase 2+ Scope (Out of Scope for Phase 1)
+- What if a model completes execution on Heavy-tier but determines the task is unsolvable? → Deferred to Phase 2
+- How does the system handle cost tracking across escalations? → Deferred to Phase 2
+- What if a task completes successfully on a lower tier but the user manually requests escalation for re-analysis? → Deferred to Phase 2
+- Automatic downgrade/optimization after successful escalation → Deferred to Phase 2
 
 ## Requirements *(mandatory)*
 
@@ -128,8 +137,11 @@ When escalation occurs, the conversation history and prior reasoning should be p
 - **FR-008**: Escalate tool MUST preserve complete conversation history during escalation
 - **FR-009**: System MUST prevent unnecessary escalations by validating that task requires higher tier
 - **FR-010**: System MUST handle escalation gracefully when maximum tier (Heavy) is already active
+- **FR-010a**: If escalation to Heavy-tier fails due to switching error or Heavy-tier unavailability (crash/timeout), system MUST return graceful error with full escalation trace
+- **FR-010b**: System MUST NOT handle scenarios where Heavy-tier completes execution but declines the task (task exceeds all tier capabilities); such cases are out of scope for Phase 1
 - **FR-011**: System MUST track which tier executed each task for monitoring and analysis
-- **FR-012**: System MUST support rolling back if escalated model also fails (with appropriate messaging)
+- **FR-012**: System MUST provide clear error messages that include: original task, escalation path attempted, failure reason, and escalation trace for debugging
+- **FR-013**: System MUST implement HITL (human-in-the-loop) validation for all agent-initiated escalations in Phase 1. When an agent requests escalation via the `escalate` tool, the system MUST NOT immediately switch models. Instead, the system MUST present the escalation request to the human operator with: original task, reason for escalation, current tier, proposed tier, and conversation history. Escalation proceeds only after human approval.
 
 ### Key Entities
 
@@ -150,6 +162,7 @@ When escalation occurs, the conversation history and prior reasoning should be p
   - MaxCostPerRequest: Estimated max cost in cents
 
 - **CascadeContext**: Maintains state during escalation
+  - Lifecycle: In-memory per request. Created when task begins; garbage-collected when task completes (escalated or not). Not persisted in Phase 1.
   - CurrentTier: Active tier
   - EscalationPath: Vec of tiers used so far
   - OriginalTask: The initial task description
@@ -162,6 +175,7 @@ When escalation occurs, the conversation history and prior reasoning should be p
   - EscalationPolicy: Rules for when escalation is permitted (e.g., "allow_all", "light_to_medium_only")
   - DefaultTier: Default tier if complexity cannot be determined (defaults to "Medium" if cascades enabled)
   - CostLimits: Optional per-tier cost caps to enforce during escalations
+  - EscalationNeedsApproval: Boolean indicating if human approval is required before executing agent-initiated escalations (default: true in Phase 1)
 
 ## Success Criteria *(mandatory)*
 
@@ -178,6 +192,19 @@ When escalation occurs, the conversation history and prior reasoning should be p
 - **SC-009**: When no cascade configuration exists, system operates in standard mode with cascades disabled (zero escalations triggered)
 - **SC-010**: When cascade configuration is added and system restarts, cascades activate correctly 100% of the time
 
+## Non-Functional Requirements
+
+### Observability & Monitoring
+
+- **NFR-001**: System MUST emit structured JSON events for cascade lifecycle events: created, escalated, completed, failed
+- **NFR-002**: System MUST track and expose metrics:
+  - `cascade_escalation_rate`: Percentage of tasks that required escalation
+  - `cascade_success_rate`: Percentage of escalations that completed successfully
+  - `cascade_tier_distribution`: Count of tasks completed per tier (Light, Medium, Heavy)
+  - `cascade_latency_per_tier`: P50, P95, P99 latency by tier (excluding LLM response time)
+- **NFR-003**: Each cascade event log MUST include: task_id, initial_tier, final_tier, escalation_path, timestamp, duration, outcome (success/failure), and failure_reason if applicable
+- **NFR-004**: Logs MUST be queryable by task_id, tier, and timestamp range for debugging and analytics
+
 ## Assumptions
 
 - Phase 1 focuses on single-backend escalation (e.g., all Anthropic or all OpenAI)
@@ -191,6 +218,9 @@ When escalation occurs, the conversation history and prior reasoning should be p
 - Cascades are OFF by default and require explicit config file activation
 - If no `cascades` section exists in config, the system operates in standard mode (no complexity routing, no escalation)
 - Configuration changes (adding/removing `cascades` section) require system restart to take effect
+- Phase 1 assumes sequential task execution (agent main loop processes one task at a time)
+- No concurrent background processes or parallel task execution in Phase 1
+- CascadeContext is single-scoped per task lifetime; no multi-task concurrency isolation needed
 
 ## Appendix: Complexity Metrics Approach
 

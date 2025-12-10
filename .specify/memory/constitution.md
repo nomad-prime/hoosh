@@ -126,6 +126,7 @@ This constitution supersedes all other practices and documentation. When conflic
 - Complexity that violates principles MUST be explicitly justified in plan.md
 - Use AGENTS.md for runtime development guidance (language-specific patterns, testing strategies)
 - Use ARCHITECTURE.md for system design documentation (architectural decisions, component interactions)
+- Do not comment Code
 
 ### Versioning Policy
 
