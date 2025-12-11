@@ -172,10 +172,12 @@ impl Tool for EditFileTool {
             "properties": {
                 "path": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "The path to the file to edit. Examples: \"src/main.rs\", \"Cargo.toml\", \"src/lib.rs\""
                 },
                 "old_string": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "The exact string to find and replace. Must match precisely including whitespace and indentation. Include surrounding context to make the match unique. Example: \"fn old_name(\" or \"    let x = 5;\""
                 },
                 "new_string": {
