@@ -1,5 +1,6 @@
 use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
+use crate::cascades::CascadeConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -95,6 +96,8 @@ pub struct AppConfig {
     pub context_manager: Option<ContextManagerConfig>,
     #[serde(default)]
     pub core_reminder_token_threshold: Option<usize>,
+    #[serde(default)]
+    pub cascades: Option<CascadeConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -115,6 +118,8 @@ pub struct ProjectConfig {
     pub core_reminder_token_threshold: Option<usize>,
     #[serde(default)]
     pub core_instructions_file: Option<String>,
+    #[serde(default)]
+    pub cascades: Option<CascadeConfig>,
 }
 
 impl Default for AppConfig {
@@ -143,6 +148,7 @@ impl Default for AppConfig {
             agents,
             context_manager: None,
             core_reminder_token_threshold: None,
+            cascades: None,
         }
     }
 }
@@ -213,6 +219,12 @@ impl AppConfig {
                         name, core_file
                     ));
                 }
+            }
+        }
+
+        if let Some(cascades) = &self.cascades {
+            if let Err(e) = cascades.validate() {
+                console.warning(&format!("Cascades configuration invalid: {}", e));
             }
         }
 
@@ -342,6 +354,10 @@ impl AppConfig {
         self.context_manager.clone().unwrap_or_default()
     }
 
+    pub fn get_cascade_config(&self) -> CascadeConfig {
+        self.cascades.clone().unwrap_or_default()
+    }
+
     pub fn load_core_instructions(&self, agent_name: Option<&str>) -> ConfigResult<String> {
         // First, try agent-specific core instructions file
         if let Some(agent) = agent_name
@@ -426,6 +442,10 @@ impl AppConfig {
 
         if other.core_reminder_token_threshold.is_some() {
             self.core_reminder_token_threshold = other.core_reminder_token_threshold;
+        }
+
+        if other.cascades.is_some() {
+            self.cascades = other.cascades;
         }
     }
 
