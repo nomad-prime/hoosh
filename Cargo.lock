@@ -1260,7 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "hoosh"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1294,6 +1294,7 @@ dependencies = [
  "tokio",
  "toml 0.9.5",
  "tui-textarea",
+ "unicode-width 0.1.14",
  "walkdir",
  "which",
 ]
