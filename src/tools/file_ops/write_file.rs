@@ -113,6 +113,7 @@ impl Tool for WriteFileTool {
             "properties": {
                 "path": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "The path to the file to write. Examples: \"src/new_module.rs\", \"config/settings.toml\", \"tests/new_test.rs\""
                 },
                 "content": {

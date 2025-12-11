@@ -142,6 +142,7 @@ impl Tool for ReadFileTool {
             "properties": {
                 "path": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "The path to the file to read. Can be relative (e.g., \"src/main.rs\") or absolute. Examples: \"Cargo.toml\", \"src/lib.rs\", \"tests/integration_test.rs\""
                 },
                 "start_line": {

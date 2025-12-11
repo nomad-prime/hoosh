@@ -296,6 +296,7 @@ impl Tool for GrepTool {
             "properties": {
                 "pattern": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "Regex pattern to search for (ripgrep syntax). Examples: \"TODO\", \"fn \\w+\", \"impl.*Trait\", \"^use \". Escape special regex chars with backslash."
                 },
                 "path": {

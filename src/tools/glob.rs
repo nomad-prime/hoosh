@@ -132,6 +132,7 @@ impl Tool for GlobTool {
             "properties": {
                 "pattern": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "The glob pattern to match files against. Examples: \"**/*.rs\" (all Rust files), \"src/**/*.ts\" (TypeScript in src), \"**/Cargo.toml\" (all Cargo.toml files), \"*.json\" (JSON in current dir only)"
                 },
                 "path": {
