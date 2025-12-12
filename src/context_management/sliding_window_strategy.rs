@@ -814,8 +814,7 @@ mod tests {
         let last_system = conversation
             .messages
             .iter()
-            .filter(|msg| msg.role == "system")
-            .next_back()
+            .rfind(|msg| msg.role == "system")
             .unwrap()
             .content
             .as_ref()

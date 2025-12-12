@@ -5,3 +5,8 @@
 .DS_Store
 .claude
 .hoosh
+*.log
+.env*
+*.rs.bk
+*.rlib
+*.prof*
