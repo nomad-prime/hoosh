@@ -95,6 +95,8 @@ pub struct AppConfig {
     pub context_manager: Option<ContextManagerConfig>,
     #[serde(default)]
     pub core_reminder_token_threshold: Option<usize>,
+    #[serde(default)]
+    pub conversation_storage: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -115,6 +117,8 @@ pub struct ProjectConfig {
     pub core_reminder_token_threshold: Option<usize>,
     #[serde(default)]
     pub core_instructions_file: Option<String>,
+    #[serde(default)]
+    pub conversation_storage: Option<bool>,
 }
 
 impl Default for AppConfig {
@@ -143,6 +147,7 @@ impl Default for AppConfig {
             agents,
             context_manager: None,
             core_reminder_token_threshold: None,
+            conversation_storage: None,
         }
     }
 }
@@ -426,6 +431,10 @@ impl AppConfig {
 
         if other.core_reminder_token_threshold.is_some() {
             self.core_reminder_token_threshold = other.core_reminder_token_threshold;
+        }
+
+        if other.conversation_storage.is_some() {
+            self.conversation_storage = other.conversation_storage;
         }
     }
 
