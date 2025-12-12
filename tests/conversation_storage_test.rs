@@ -27,7 +27,7 @@ fn test_conversation_without_storage_creates_no_files() {
 #[test]
 fn test_conversation_with_storage_creates_files() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(ConversationStorage::new(temp_dir.path().to_path_buf()).unwrap());
+    let storage = Arc::new(ConversationStorage::new(temp_dir.path()).unwrap());
 
     let mut conversation = Conversation::with_storage("test-id".to_string(), storage).unwrap();
 
