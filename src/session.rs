@@ -148,22 +148,49 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     let tool_registry = Arc::new(tool_registry);
 
     // Setup conversation storage and load conversation
-    let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
-    let conversation_id = setup_conversation(
-        &conversation_storage,
-        continue_conversation_id,
-        &mut app_state,
-    )?;
+    // Check if storage is enabled in config (privacy-first: defaults to false if None)
+    let storage_enabled = config.conversation_storage.unwrap_or(false);
 
-    // Initialize conversation
-    let conversation = load_or_create_conversation(
-        Arc::clone(&conversation_storage),
-        &conversation_id,
-        default_agent.as_ref(),
-        &backend,
-        &working_dir,
-    )?;
+    let (conversation_storage, conversation_id, conversation) = if storage_enabled {
+        // Storage enabled: create with persistence
+        let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
+        let conversation_id = setup_conversation(
+            &conversation_storage,
+            continue_conversation_id,
+            &mut app_state,
+        )?;
+
+        let conversation = load_or_create_conversation(
+            Some(Arc::clone(&conversation_storage)),
+            &conversation_id,
+            default_agent.as_ref(),
+            &backend,
+            &working_dir,
+        )?;
+
+        (conversation_storage, conversation_id, conversation)
+    } else {
+        // Storage disabled (privacy-first): create ephemeral conversation
+        let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
+        let conversation_id = ConversationStorage::generate_conversation_id();
+
+        let conversation = load_or_create_conversation(
+            None, // No storage - ephemeral mode
+            &conversation_id,
+            default_agent.as_ref(),
+            &backend,
+            &working_dir,
+        )?;
+
+        (conversation_storage, conversation_id, conversation)
+    };
+
     let conversation = Arc::new(tokio::sync::Mutex::new(conversation));
+
+    // Display message when storage is disabled (privacy-first mode)
+    if !storage_enabled {
+        app_state.add_message("Conversation storage disabled".to_string());
+    }
 
     app_state.add_message("\n".to_string());
 
@@ -404,15 +431,17 @@ fn generate_environment_context(
 }
 
 fn load_or_create_conversation(
-    conversation_storage: Arc<ConversationStorage>,
+    conversation_storage: Option<Arc<ConversationStorage>>,
     conversation_id: &str,
     default_agent: Option<&crate::agent_definition::AgentDefinition>,
     backend: &Arc<dyn LlmBackend>,
     working_dir: &Path,
 ) -> Result<Conversation> {
-    // Try to load existing conversation
-    if conversation_storage.conversation_exists(conversation_id) {
-        match Conversation::load(conversation_id, conversation_storage) {
+    // If storage is provided, try to load existing conversation
+    if let Some(ref storage) = conversation_storage
+        && storage.conversation_exists(conversation_id)
+    {
+        match Conversation::load(conversation_id, Arc::clone(storage)) {
             Ok(conv) => return Ok(conv),
             Err(e) => {
                 use crate::console::console;
@@ -422,8 +451,18 @@ fn load_or_create_conversation(
         }
     }
 
-    // Create new conversation with storage
-    let mut conv = Conversation::with_storage(conversation_id.to_string(), conversation_storage)?;
+    // Create new conversation (with or without storage)
+    let mut conv = match conversation_storage {
+        Some(storage) => {
+            // Storage enabled: persist conversations
+            Conversation::with_storage(conversation_id.to_string(), storage)?
+        }
+        None => {
+            // Storage disabled (privacy-first): ephemeral mode, no persistence
+            Conversation::new()
+        }
+    };
+
     if let Some(agent) = default_agent {
         conv.add_system_message(agent.content.clone());
     }

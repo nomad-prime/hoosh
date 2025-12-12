@@ -12,6 +12,23 @@ default_agent = "coder"
 # Verbosity level: "quiet", "normal", "verbose", or "debug"
 verbosity = "normal"
 
+# Conversation storage control (optional, defaults to false - privacy-first)
+# When false or omitted: conversations run in memory only with no persistence
+# When true: conversations are saved to ~/.hoosh/conversations/
+# Previously saved conversations remain accessible for reading regardless of this setting
+#
+# This can be set at two levels:
+#   - Global: ~/.config/hoosh/config.toml (user-wide default)
+#   - Project: <project_root>/.hoosh/config.toml (overrides global)
+#
+# Use cases:
+#   - Omit or set to false for privacy by default (ephemeral conversations)
+#   - Set globally to true to enable persistence for all projects
+#   - Override per-project to disable storage for sensitive client work
+#   - Use project config to enforce ephemeral conversations
+#
+# conversation_storage = false  # Default: false (privacy-first, no persistence)
+
 # Context manager configuration
 # Manages conversation context size and token usage
 # Note: Both tool_output_truncation and sliding_window are enabled by default
