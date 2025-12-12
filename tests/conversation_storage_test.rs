@@ -16,31 +16,34 @@ fn test_conversation_without_storage_creates_no_files() {
     conversation.add_user_message("test message".to_string());
 
     // Verify no conversation files were created in temp directory
-    let entries: Vec<_> = std::fs::read_dir(temp_path)
-        .unwrap()
-        .collect();
-    assert_eq!(entries.len(), 0, "No files should be created when storage is disabled");
+    let entries: Vec<_> = std::fs::read_dir(temp_path).unwrap().collect();
+    assert_eq!(
+        entries.len(),
+        0,
+        "No files should be created when storage is disabled"
+    );
 }
 
 #[test]
 fn test_conversation_with_storage_creates_files() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(
-        ConversationStorage::new(temp_dir.path().to_path_buf()).unwrap()
-    );
+    let storage = Arc::new(ConversationStorage::new(temp_dir.path().to_path_buf()).unwrap());
 
-    let mut conversation = Conversation::with_storage(
-        "test-id".to_string(),
-        storage
-    ).unwrap();
+    let mut conversation = Conversation::with_storage("test-id".to_string(), storage).unwrap();
 
     conversation.add_user_message("test message".to_string());
 
     // Verify files were created when storage is enabled
     let conv_dir = temp_dir.path().join("test-id");
     assert!(conv_dir.exists(), "Conversation directory should exist");
-    assert!(conv_dir.join("messages.jsonl").exists(), "Messages file should exist");
-    assert!(conv_dir.join("meta.json").exists(), "Metadata file should exist");
+    assert!(
+        conv_dir.join("messages.jsonl").exists(),
+        "Messages file should exist"
+    );
+    assert!(
+        conv_dir.join("meta.json").exists(),
+        "Metadata file should exist"
+    );
 }
 
 #[test]
