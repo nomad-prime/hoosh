@@ -1,6 +1,7 @@
 use super::clipboard::ClipboardManager;
 use super::events::AgentState;
 use crate::agent::AgentEvent;
+use ratatui::widgets::ScrollbarState;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
@@ -188,6 +189,10 @@ pub struct AppState {
     pub total_cost: f64,
     pub active_tool_calls: Vec<ActiveToolCall>,
     pub todos: Vec<TodoItem>,
+    pub vertical_scroll: usize,
+    pub vertical_scroll_state: ScrollbarState,
+    pub vertical_scroll_content_length: usize,
+    pub vertical_scroll_viewport_length: usize,
 }
 
 impl AppState {
@@ -208,7 +213,7 @@ impl AppState {
             agent_state: AgentState::Idle,
             should_quit: false,
             should_cancel_task: false,
-            max_messages: 1000,
+            max_messages: 100_000,
             completion_state: None,
             completers: Vec::new(),
             tool_permission_dialog_state: None,
@@ -225,6 +230,10 @@ impl AppState {
             total_cost: 0.0,
             active_tool_calls: Vec::new(),
             todos: Vec::new(),
+            vertical_scroll: 0,
+            vertical_scroll_state: ScrollbarState::default(),
+            vertical_scroll_content_length: 0,
+            vertical_scroll_viewport_length: 0,
         }
     }
 

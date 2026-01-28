@@ -3,6 +3,7 @@ mod agents;
 mod config;
 mod conversations;
 mod setup;
+pub mod shell_setup;
 
 use crate::console::VerbosityLevel;
 use clap::{Parser, Subcommand};
@@ -39,6 +40,10 @@ pub struct Cli {
     /// Continue the last conversation
     #[arg(long = "continue")]
     pub continue_last: bool,
+
+    /// Terminal display mode (inline, fullview, tagged)
+    #[arg(long, value_parser = ["inline", "fullview", "tagged"])]
+    pub mode: Option<String>,
 
     #[command(subcommand)]
     pub command: Option<Commands>,

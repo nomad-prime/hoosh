@@ -15,6 +15,7 @@ pub async fn handle_agent(
     add_dirs: Vec<String>,
     skip_permissions: bool,
     continue_last: bool,
+    mode: Option<String>,
     config: &AppConfig,
 ) -> anyhow::Result<()> {
     let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
@@ -84,12 +85,15 @@ pub async fn handle_agent(
         continue_conversation_id,
         todo_state,
     )
-    .with_working_dir(working_dir);
+    .with_working_dir(working_dir)
+    .with_terminal_mode(mode);
 
     let session = initialize_session(session_config).await?;
 
-    // Run the TUI with initialized session
-    crate::tui::run_with_session(session).await?;
+    match session.terminal_mode.as_str() {
+        "fullview" => crate::tui::run_with_session_fullview(session).await?,
+        _ => crate::tui::run_with_session_inline(session).await?,
+    }
 
     Ok(())
 }

@@ -1,0 +1,27 @@
+# Example Hoosh Configuration with Terminal Modes
+# Location: ~/.config/hoosh/config.toml (global) or .hoosh/config.toml (project)
+
+default_backend = "anthropic"
+
+# Terminal display mode configuration
+# Options: "inline" (default), "fullview", "tagged"
+#
+# - inline: Messages flow with terminal scrollback (current behavior)
+# - fullview: Fullscreen mode with internal scrolling (best for VSCode)
+# - tagged: Non-hijacking mode via @hoosh alias (requires `hoosh setup`)
+terminal_mode = "fullview"
+
+# Enable session context persistence for tagged mode
+# When true, conversation history persists across @hoosh invocations within the same terminal
+# Default: true
+session_context_enabled = true
+
+# Backend configurations
+[backends.anthropic]
+model = "claude-sonnet-4-5-20250929"
+# api_key loaded from environment variable
+
+[backends.openai]
+model = "gpt-4-turbo"
+base_url = "https://api.openai.com/v1"
+# api_key loaded from environment variable

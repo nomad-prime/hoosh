@@ -56,6 +56,10 @@ pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
     ),
 ];
 
+fn default_session_context_enabled() -> bool {
+    true
+}
+
 #[cfg(test)]
 mod mod_tests;
 
@@ -97,6 +101,10 @@ pub struct AppConfig {
     pub core_reminder_token_threshold: Option<usize>,
     #[serde(default)]
     pub conversation_storage: Option<bool>,
+    #[serde(default)]
+    pub terminal_mode: Option<String>,
+    #[serde(default = "default_session_context_enabled")]
+    pub session_context_enabled: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -119,6 +127,10 @@ pub struct ProjectConfig {
     pub core_instructions_file: Option<String>,
     #[serde(default)]
     pub conversation_storage: Option<bool>,
+    #[serde(default)]
+    pub terminal_mode: Option<String>,
+    #[serde(default)]
+    pub session_context_enabled: Option<bool>,
 }
 
 impl Default for AppConfig {
@@ -148,6 +160,8 @@ impl Default for AppConfig {
             context_manager: None,
             core_reminder_token_threshold: None,
             conversation_storage: None,
+            terminal_mode: None,
+            session_context_enabled: default_session_context_enabled(),
         }
     }
 }
@@ -435,6 +449,14 @@ impl AppConfig {
 
         if other.conversation_storage.is_some() {
             self.conversation_storage = other.conversation_storage;
+        }
+
+        if other.terminal_mode.is_some() {
+            self.terminal_mode = other.terminal_mode;
+        }
+
+        if other.session_context_enabled.is_some() {
+            self.session_context_enabled = other.session_context_enabled.unwrap_or(true);
         }
     }
 

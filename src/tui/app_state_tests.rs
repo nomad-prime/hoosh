@@ -156,7 +156,7 @@ fn app_state_new_initializes_correctly() {
     assert_eq!(state.agent_state, AgentState::Idle);
     assert!(!state.should_quit);
     assert!(!state.should_cancel_task);
-    assert_eq!(state.max_messages, 1000);
+    assert_eq!(state.max_messages, 100_000);
     assert!(state.messages.is_empty());
     assert!(state.completion_state.is_none());
     assert!(state.approval_dialog_state.is_none());

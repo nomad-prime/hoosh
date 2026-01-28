@@ -31,15 +31,7 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Verify compliance with `.specify/memory/constitution.md`:
-
-- [ ] **Modularity First**: Feature follows modular organization (clear module boundaries, single responsibility)
-- [ ] **Explicit Error Handling**: All error paths use `anyhow::Result<T>` with context
-- [ ] **Async-First Architecture**: All I/O operations are async, shared state uses `Arc<T>`
-- [ ] **Testing Discipline**: Tests focus on behavior, not implementation; test names describe behavior
-- [ ] **Simplicity and Clarity**: Code prioritizes clarity; naming follows conventions; dependencies justified
-
-**Violations**: [Document any required violations with justification in Complexity Tracking section below]
+[Gates determined based on constitution file]
 
 ## Project Structure
 

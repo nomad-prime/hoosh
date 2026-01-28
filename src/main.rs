@@ -84,6 +84,7 @@ async fn main() -> Result<()> {
                 cli.add_dir,
                 cli.skip_permissions,
                 cli.continue_last,
+                cli.mode,
                 &config,
             )
             .await?;
