@@ -126,9 +126,16 @@ pub async fn run_tagged_mode(session: AgentSession, message: Option<String>) -> 
     // Listen for events and display output
     let mut event_rx = event_loop_context.channels.event_rx;
     let mut response_content = String::new();
+    let mut interrupted = false;
 
     loop {
         tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                spinner.stop();
+                eprintln!("\n⚠️  Interrupted - saving partial context...");
+                interrupted = true;
+                break;
+            }
             Some(event) = event_rx.recv() => {
                 match event {
                     AgentEvent::Thinking => {
@@ -168,11 +175,13 @@ pub async fn run_tagged_mode(session: AgentSession, message: Option<String>) -> 
         }
     }
 
-    // Display response
-    eprintln!(); // Clear spinner line
-    println!("{}", response_content);
+    // Display response (unless interrupted)
+    if !interrupted {
+        eprintln!(); // Clear spinner line
+        println!("{}", response_content);
+    }
 
-    // Save session file with updated messages
+    // Save session file with updated messages (including partial state on interruption)
     {
         let conv = conversation.lock().await;
         session_file.messages = conv
@@ -184,6 +193,8 @@ pub async fn run_tagged_mode(session: AgentSession, message: Option<String>) -> 
 
     if let Err(e) = session_file.save() {
         eprintln!("⚠️  Warning: Failed to save session: {}", e);
+    } else if interrupted {
+        eprintln!("✓ Partial context saved");
     }
 
     Ok(())

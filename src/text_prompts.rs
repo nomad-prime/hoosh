@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::io::{self, Write};
+use crate::tools::ToolRegistry;
 
 pub fn prompt_yes_no(message: &str) -> Result<bool> {
     eprintln!("\n┌─────────────────────────────────────────┐");
@@ -44,4 +45,57 @@ pub fn display_message(message: &str) {
         eprintln!("│ {:<39} │", line);
     }
     eprintln!("└─────────────────────────────────────────┘\n");
+}
+
+pub fn handle_initial_permissions(
+    working_dir: &std::path::Path,
+    tool_registry: &ToolRegistry,
+) -> Result<bool> {
+    eprintln!("\n╔═══════════════════════════════════════════════╗");
+    eprintln!("║        Hoosh Initial Permission Setup         ║");
+    eprintln!("╚═══════════════════════════════════════════════╝");
+
+    eprintln!("\nWorking directory: {}", working_dir.display());
+    eprintln!("\nHoosh needs permissions to:");
+    eprintln!("  • Read and write files in the working directory");
+    eprintln!("  • Execute shell commands");
+    eprintln!("  • Access tools: {}",
+        tool_registry.list_tools()
+            .iter()
+            .take(5)
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    eprintln!("\n┌─────────────────────────────────────────┐");
+    eprintln!("│ Grant initial permissions?              │");
+    eprintln!("└─────────────────────────────────────────┘");
+    eprintln!("  1. Grant all (recommended)");
+    eprintln!("  2. Prompt for each action");
+    eprintln!("  3. Cancel");
+    eprint!("\n  Choice (1-3): ");
+    io::stderr().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    match input.trim() {
+        "1" => {
+            eprintln!("\n✓ All permissions granted");
+            Ok(true)
+        }
+        "2" => {
+            eprintln!("\n✓ Will prompt for each action");
+            Ok(false)
+        }
+        "3" | "" => {
+            eprintln!("\n✗ Cancelled");
+            anyhow::bail!("User cancelled permission setup")
+        }
+        _ => {
+            eprintln!("\n✗ Invalid choice");
+            anyhow::bail!("Invalid choice")
+        }
+    }
 }

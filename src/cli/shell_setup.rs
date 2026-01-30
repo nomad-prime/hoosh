@@ -109,7 +109,21 @@ pub fn install_shell_alias(shell_type: ShellType) -> Result<()> {
     if config_path.exists() {
         let content =
             std::fs::read_to_string(&config_path).context("Failed to read shell config file")?;
-        if content.contains("@hoosh") {
+
+        let is_already_defined = match shell_type {
+            ShellType::Bash | ShellType::Zsh => {
+                content.contains("@hoosh()") || content.contains("function @hoosh")
+            }
+            ShellType::Fish => {
+                content.contains("function @hoosh")
+            }
+            #[cfg(windows)]
+            ShellType::PowerShell => {
+                content.contains("function @hoosh")
+            }
+        };
+
+        if is_already_defined {
             eprintln!("⚠️  @hoosh already defined in {}", config_path.display());
             eprintln!("   Skipping installation. Remove existing definition to reinstall.");
             return Ok(());

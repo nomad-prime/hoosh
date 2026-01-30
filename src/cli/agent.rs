@@ -42,26 +42,48 @@ pub async fn handle_agent(
         BuiltinToolProvider::with_todo_state(working_dir.clone(), todo_state.clone()),
     ));
 
-    let terminal = init_terminal()?;
-    let terminal = match init_permission::run(
-        terminal,
-        working_dir.clone(),
-        &tool_registry,
-        skip_permissions,
-    )
-    .await?
-    {
-        (terminal, init_permission::InitialPermissionDialogResult::Cancelled) => {
-            restore_terminal(terminal)?;
-            return Ok(());
+    // Parse mode string to TerminalMode enum
+    let terminal_mode = mode
+        .as_deref()
+        .and_then(|s| s.parse::<TerminalMode>().ok())
+        .unwrap_or_default();
+
+    // Handle permissions based on mode
+    if !skip_permissions {
+        match terminal_mode {
+            TerminalMode::Tagged => {
+                // Text-based permissions for tagged mode
+                use crate::text_prompts;
+                if let Err(e) = text_prompts::handle_initial_permissions(&working_dir, &tool_registry) {
+                    eprintln!("Permission setup failed: {}", e);
+                    return Ok(());
+                }
+            }
+            TerminalMode::Inline | TerminalMode::Fullview => {
+                // TUI-based permissions for inline/fullview modes
+                let terminal = init_terminal()?;
+                let terminal = match init_permission::run(
+                    terminal,
+                    working_dir.clone(),
+                    &tool_registry,
+                    skip_permissions,
+                )
+                .await?
+                {
+                    (terminal, init_permission::InitialPermissionDialogResult::Cancelled) => {
+                        restore_terminal(terminal)?;
+                        return Ok(());
+                    }
+                    (terminal, init_permission::InitialPermissionDialogResult::SkippedPermissionsExist) => {
+                        terminal
+                    }
+                    (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => terminal,
+                };
+                restore_terminal(terminal)?;
+                println!();
+            }
         }
-        (terminal, init_permission::InitialPermissionDialogResult::SkippedPermissionsExist) => {
-            terminal
-        }
-        (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => terminal,
-    };
-    restore_terminal(terminal)?;
-    println!();
+    }
 
     let continue_conversation_id = if continue_last {
         let storage = ConversationStorage::with_default_path()?;
@@ -77,9 +99,6 @@ pub async fn handle_agent(
         None
     };
 
-    // Parse mode string to TerminalMode enum
-    let terminal_mode = mode.as_deref().and_then(|s| s.parse::<TerminalMode>().ok());
-
     // Initialize session with all resources
     let session_config = SessionConfig::new(
         Arc::clone(&backend_arc),
@@ -91,7 +110,7 @@ pub async fn handle_agent(
         todo_state,
     )
     .with_working_dir(working_dir)
-    .with_terminal_mode(terminal_mode);
+    .with_terminal_mode(Some(terminal_mode));
 
     let session = initialize_session(session_config).await?;
 
