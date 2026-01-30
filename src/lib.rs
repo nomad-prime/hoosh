@@ -16,6 +16,7 @@ pub mod session_files;
 pub mod skill_management;
 pub mod storage;
 pub mod system_reminders;
+pub mod tagged_mode;
 pub mod task_management;
 pub mod terminal_capabilities;
 pub mod terminal_mode;

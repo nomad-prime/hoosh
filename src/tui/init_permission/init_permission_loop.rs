@@ -51,8 +51,7 @@ async fn run_dialog_loop(
     loop {
         let layout = Layout::create(app);
 
-        resize_terminal(&mut terminal, layout.total_height())
-            .expect("could not resize terminal");
+        resize_terminal(&mut terminal, layout.total_height()).expect("could not resize terminal");
 
         terminal
             .draw(|frame| {

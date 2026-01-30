@@ -1,6 +1,3 @@
-use crate::cli::shell_setup::{
-    ShellType, detect_shell, install_shell_alias as install_shell_function,
-};
 use crate::config::AppConfig;
 use crate::console::console;
 use crate::tui::setup::{run, save_wizard_result};
@@ -60,7 +57,12 @@ pub async fn handle_setup() -> Result<()> {
                     }
                 }
 
-                prompt_shell_setup()?;
+                console().info("\n─── Next Steps ───");
+                console().info("To enable quick shell invocations with @hoosh, run:");
+                console().info("  hoosh alias install");
+                console().info("");
+                console().info("Or start chatting directly with:");
+                console().info("  hoosh");
             }
             Err(e) => {
                 console().error(&format!("\n✗ Failed to save configuration: {}", e));
@@ -75,43 +77,4 @@ pub async fn handle_setup() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn prompt_shell_setup() -> Result<()> {
-    console().info("\n─── Shell Integration ───");
-    console().info("Would you like to set up the @hoosh shell alias?");
-    console().info("This enables quick invocations like: @hoosh \"what files changed?\"");
-    console().info("Install shell integration? (y/n)");
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-
-    if !input.trim().eq_ignore_ascii_case("y") {
-        console().info("Shell integration skipped.");
-        console().info("You can run 'hoosh setup' again later to install it.");
-        return Ok(());
-    }
-
-    match detect_shell() {
-        Ok(shell_type) => {
-            console().info(&format!("Detected shell: {}", shell_type_name(&shell_type)));
-            install_shell_function(shell_type)?;
-        }
-        Err(e) => {
-            console().warning(&format!("Could not detect shell: {}", e));
-            console().info("Shell integration skipped.");
-        }
-    }
-
-    Ok(())
-}
-
-fn shell_type_name(shell_type: &ShellType) -> &'static str {
-    match shell_type {
-        ShellType::Bash => "Bash",
-        ShellType::Zsh => "Zsh",
-        ShellType::Fish => "Fish",
-        #[cfg(windows)]
-        ShellType::PowerShell => "PowerShell",
-    }
 }

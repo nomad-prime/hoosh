@@ -73,23 +73,23 @@ pub fn generate_shell_function(shell_type: ShellType) -> String {
     match shell_type {
         ShellType::Bash | ShellType::Zsh => r#"# Added by hoosh setup
 @hoosh() {
-    export PPID="$$"
-    hoosh agent --mode tagged "$@"
+    export HOOSH_TERMINAL_PID="$$"
+    hoosh --mode tagged "$@"
 }
 "#
         .to_string(),
         ShellType::Fish => r#"# Added by hoosh setup
 function @hoosh --description 'Hoosh AI assistant in tagged mode'
-    set -x PPID %self
-    hoosh agent --mode tagged $argv
+    set -x HOOSH_TERMINAL_PID %self
+    hoosh --mode tagged $argv
 end
 "#
         .to_string(),
         #[cfg(windows)]
         ShellType::PowerShell => r#"# Added by hoosh setup
 function @hoosh {
-    $env:PID = $PID
-    hoosh agent --mode tagged $args
+    $env:HOOSH_TERMINAL_PID = $PID
+    hoosh --mode tagged $args
 }
 "#
         .to_string(),

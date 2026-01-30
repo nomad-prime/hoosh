@@ -1,5 +1,6 @@
 use crate::backends::backend_factory::create_backend;
 use crate::session::{SessionConfig, initialize_session};
+use crate::terminal_mode::TerminalMode;
 use crate::tools::todo_state::TodoState;
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
@@ -16,6 +17,7 @@ pub async fn handle_agent(
     skip_permissions: bool,
     continue_last: bool,
     mode: Option<String>,
+    message: Vec<String>,
     config: &AppConfig,
 ) -> anyhow::Result<()> {
     let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
@@ -75,6 +77,9 @@ pub async fn handle_agent(
         None
     };
 
+    // Parse mode string to TerminalMode enum
+    let terminal_mode = mode.as_deref().and_then(|s| s.parse::<TerminalMode>().ok());
+
     // Initialize session with all resources
     let session_config = SessionConfig::new(
         Arc::clone(&backend_arc),
@@ -86,13 +91,22 @@ pub async fn handle_agent(
         todo_state,
     )
     .with_working_dir(working_dir)
-    .with_terminal_mode(mode);
+    .with_terminal_mode(terminal_mode);
 
     let session = initialize_session(session_config).await?;
 
-    match session.terminal_mode.as_str() {
-        "fullview" => crate::tui::run_with_session_fullview(session).await?,
-        _ => crate::tui::run_with_session_inline(session).await?,
+    // Prepare message for tagged mode (join all args into single string)
+    let message_text = if !message.is_empty() {
+        Some(message.join(" "))
+    } else {
+        None
+    };
+
+    // Single switch statement over TerminalMode - routes to appropriate mode implementation
+    match session.terminal_mode {
+        TerminalMode::Fullview => crate::tui::run_with_session_fullview(session).await?,
+        TerminalMode::Inline => crate::tui::run_with_session_inline(session).await?,
+        TerminalMode::Tagged => crate::tagged_mode::run_tagged_mode(session, message_text).await?,
     }
 
     Ok(())

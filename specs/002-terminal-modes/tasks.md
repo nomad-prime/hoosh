@@ -127,12 +127,12 @@
 - [X] T045 [P] [US2] Create tagged mode implementation in `src/tui/modes/tagged.rs` (STUB - needs terminal-native rendering)
 - [X] T046 [P] [US2] Create terminal spinner module in `src/terminal_spinner.rs` (reuse braille patterns, carriage return animation to stderr)
 - [X] T047 [P] [US2] Create text prompt module in `src/text_prompts.rs` (permission prompts using stdin/stderr, box drawing characters)
-- [ ] T048 [US2] Implement tagged mode message rendering in `src/tui/modes/tagged.rs` (stdout for responses, stderr for status) (deferred - requires agent execution refactor)
-- [ ] T049 [US2] Modify session initialization in `src/session.rs` to load session file when mode is tagged (deferred - requires agent execution refactor)
-- [ ] T050 [US2] Implement session file save on command completion in tagged mode in `src/session.rs` (deferred - requires agent execution refactor)
-- [ ] T051 [US2] Add SIGINT handler for tagged mode in `src/session.rs` (save partial context on Ctrl+C) (deferred - requires agent execution refactor)
-- [ ] T052 [US2] Replace TUI permission dialogs with text prompts in tagged mode in permission handlers (deferred - requires agent execution refactor)
-- [ ] T053 [US2] Add session cleanup call to main() in `src/main.rs` (cleanup stale sessions on startup) (deferred - requires agent execution refactor)
+- [X] T048 [US2] Implement tagged mode message rendering in `src/tagged_mode.rs` (stdout for responses, stderr for status) - Implemented with terminal-native output
+- [X] T049 [US2] Load session file when mode is tagged in `src/tagged_mode.rs` - Loads session file by terminal PID
+- [X] T050 [US2] Implement session file save on command completion in `src/tagged_mode.rs` - Saves updated conversation messages
+- [ ] T051 [US2] Add SIGINT handler for tagged mode (save partial context on Ctrl+C) - TODO: Add graceful shutdown with Ctrl+C handler
+- [ ] T052 [US2] Replace TUI permission dialogs with text prompts in tagged mode - TODO: Integrate text_prompts module with permission manager
+- [X] T053 [US2] Add session cleanup call to main() in `src/main.rs` (cleanup stale sessions on startup)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - tagged mode with @hoosh alias works
 

@@ -1,5 +1,6 @@
 mod agent;
 mod agents;
+mod alias;
 mod config;
 mod conversations;
 mod setup;
@@ -10,6 +11,7 @@ use clap::{Parser, Subcommand};
 
 pub use agent::handle_agent;
 pub use agents::handle_agents;
+pub use alias::handle_alias_install;
 pub use config::handle_config;
 pub use conversations::handle_conversations;
 pub use setup::handle_setup;
@@ -45,6 +47,10 @@ pub struct Cli {
     #[arg(long, value_parser = ["inline", "fullview", "tagged"])]
     pub mode: Option<String>,
 
+    /// Message to send (for tagged mode non-interactive use)
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub message: Vec<String>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -62,6 +68,10 @@ pub enum Commands {
     Agent {
         #[command(subcommand)]
         action: AgentAction,
+    },
+    Alias {
+        #[command(subcommand)]
+        action: AliasAction,
     },
     Setup,
 }
@@ -85,6 +95,11 @@ pub enum AgentAction {
         #[arg(short, long)]
         description: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum AliasAction {
+    Install,
 }
 
 impl Cli {

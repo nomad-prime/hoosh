@@ -112,14 +112,21 @@ impl SessionFile {
 
 /// Get terminal PID from environment variable with fallback
 pub fn get_terminal_pid() -> Result<u32> {
-    // Try $PPID environment variable (shell's PID)
+    // Try $HOOSH_TERMINAL_PID environment variable (set by shell function)
+    if let Ok(ppid) = std::env::var("HOOSH_TERMINAL_PID")
+        && let Ok(pid) = ppid.parse()
+    {
+        return Ok(pid);
+    }
+
+    // Fallback: Try reading the actual PPID (parent process ID)
     if let Ok(ppid) = std::env::var("PPID")
         && let Ok(pid) = ppid.parse()
     {
         return Ok(pid);
     }
 
-    // Fallback to current process ID
+    // Last resort: use current process ID
     Ok(std::process::id())
 }
 

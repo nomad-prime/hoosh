@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 use tokio::time::interval;
 
 use super::app_state::AppState;
+use super::app_state::MessageLine;
 use super::message_renderer::MessageRenderer;
 use crate::agent::AgentEvent;
 use crate::console::{VerbosityLevel, console};
@@ -15,7 +16,6 @@ use crate::tui::layout::Layout;
 use crate::tui::terminal::lifecycle_fullview::HooshTerminal;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Widget};
-use super::app_state::MessageLine;
 
 pub use super::app_loop::EventLoopContext;
 
@@ -108,7 +108,8 @@ fn render_frame(
         };
 
         app.vertical_scroll_viewport_length = message_area.height as usize;
-        app.vertical_scroll_state = app.vertical_scroll_state
+        app.vertical_scroll_state = app
+            .vertical_scroll_state
             .viewport_content_length(message_area.height as usize);
 
         render_messages_fullview(app, message_area, frame.buffer_mut());
@@ -135,7 +136,10 @@ fn process_pending_messages_fullview(app: &mut AppState) {
         };
     }
 
-    let was_at_bottom = app.vertical_scroll >= app.vertical_scroll_content_length.saturating_sub(app.vertical_scroll_viewport_length);
+    let was_at_bottom = app.vertical_scroll
+        >= app
+            .vertical_scroll_content_length
+            .saturating_sub(app.vertical_scroll_viewport_length);
 
     app.vertical_scroll_content_length = total_lines;
     app.vertical_scroll_state = app.vertical_scroll_state.content_length(total_lines);

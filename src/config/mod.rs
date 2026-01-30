@@ -1,5 +1,6 @@
 use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
+use crate::terminal_mode::TerminalMode;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -102,7 +103,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub conversation_storage: Option<bool>,
     #[serde(default)]
-    pub terminal_mode: Option<String>,
+    pub terminal_mode: Option<TerminalMode>,
     #[serde(default = "default_session_context_enabled")]
     pub session_context_enabled: bool,
 }
@@ -128,7 +129,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub conversation_storage: Option<bool>,
     #[serde(default)]
-    pub terminal_mode: Option<String>,
+    pub terminal_mode: Option<TerminalMode>,
     #[serde(default)]
     pub session_context_enabled: Option<bool>,
 }

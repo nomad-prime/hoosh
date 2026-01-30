@@ -1,7 +1,6 @@
 use super::clipboard::ClipboardManager;
 use super::events::AgentState;
 use crate::agent::AgentEvent;
-use ratatui::widgets::ScrollbarState;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
@@ -10,6 +9,7 @@ use crate::tui::palette;
 use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::ScrollbarState;
 use std::collections::VecDeque;
 use std::time::Instant;
 use tui_textarea::TextArea;

@@ -29,34 +29,44 @@ impl InputHandler for ScrollHandler {
             Event::Key(key) => match key.code {
                 KeyCode::Down => {
                     app.vertical_scroll = app.vertical_scroll.saturating_add(1);
-                    app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                    app.vertical_scroll_state =
+                        app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::Up => {
                     app.vertical_scroll = app.vertical_scroll.saturating_sub(1);
-                    app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                    app.vertical_scroll_state =
+                        app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::PageDown => {
-                    app.vertical_scroll = app.vertical_scroll.saturating_add(app.vertical_scroll_viewport_length.saturating_sub(1));
-                    app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                    app.vertical_scroll = app
+                        .vertical_scroll
+                        .saturating_add(app.vertical_scroll_viewport_length.saturating_sub(1));
+                    app.vertical_scroll_state =
+                        app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::PageUp => {
-                    app.vertical_scroll = app.vertical_scroll.saturating_sub(app.vertical_scroll_viewport_length.saturating_sub(1));
-                    app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                    app.vertical_scroll = app
+                        .vertical_scroll
+                        .saturating_sub(app.vertical_scroll_viewport_length.saturating_sub(1));
+                    app.vertical_scroll_state =
+                        app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     let half_page = app.vertical_scroll_viewport_length / 2;
                     app.vertical_scroll = app.vertical_scroll.saturating_add(half_page);
-                    app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                    app.vertical_scroll_state =
+                        app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     let half_page = app.vertical_scroll_viewport_length / 2;
                     app.vertical_scroll = app.vertical_scroll.saturating_sub(half_page);
-                    app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                    app.vertical_scroll_state =
+                        app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
                 }
                 _ => KeyHandlerResult::NotHandled,
