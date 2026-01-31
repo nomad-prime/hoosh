@@ -112,7 +112,8 @@ fn render_frame(
                 .vertical_scroll_content_length
                 .saturating_sub(app.vertical_scroll_viewport_length);
 
-        app.vertical_scroll_content_length = calculate_wrapped_line_count(app, content_width);
+        app.vertical_scroll_content_length = calculate_wrapped_line_count(app, content_width)
+            .saturating_add(10);
 
         if has_pending && was_at_bottom {
             app.vertical_scroll = app
@@ -171,7 +172,7 @@ fn calculate_wrapped_line_count(app: &AppState, content_width: usize) -> usize {
 
 fn calculate_wrapped_lines_for_text(text: &str, width: usize) -> usize {
     if text.is_empty() {
-        return 1;
+        return 0;
     }
 
     let mut line_count = 0;
@@ -183,7 +184,7 @@ fn calculate_wrapped_lines_for_text(text: &str, width: usize) -> usize {
         }
     }
 
-    line_count
+    line_count.max(1)
 }
 
 fn calculate_wrapped_lines_for_styled_lines(lines: &[Line], width: usize) -> usize {
