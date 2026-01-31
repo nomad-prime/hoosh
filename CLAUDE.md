@@ -8,6 +8,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-09
 - File-based (.hoosh/conversations/) - JSONL for messages, JSON for metadata/index (001-disable-conversation-storage)
 - Rust 2024 edition (matches project `Cargo.toml:4`) + ratatui 0.29 (TUI), crossterm 0.27 (terminal control), tokio 1.0 (async runtime), clap 4.0 (CLI), serde/serde_json (serialization) (002-terminal-modes)
 - Session files in ~/.hoosh/sessions/ (JSON format, keyed by terminal PID) (002-terminal-modes)
+- Rust 2024 edition (matches Cargo.toml:4) (003-input-field-refinement)
+- In-memory only (attachments are ephemeral, cleared after submission) (003-input-field-refinement)
 
 - Rust 2024 edition (matches project `Cargo.toml:4`) (001-custom-commands)
 
@@ -27,9 +29,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 2024 edition (matches project `Cargo.toml:4`): Follow standard conventions
 
 ## Recent Changes
+- 003-input-field-refinement: Added Rust 2024 edition (matches Cargo.toml:4)
 - 002-terminal-modes: Added Rust 2024 edition (matches project `Cargo.toml:4`) + ratatui 0.29 (TUI), crossterm 0.27 (terminal control), tokio 1.0 (async runtime), clap 4.0 (CLI), serde/serde_json (serialization)
 - 001-disable-conversation-storage: Added Rust 2024 edition + okio (async runtime), serde/toml (config), anyhow (errors), ratatui (TUI)
-- 001-markdown-table-rendering: Added Rust 2024 edition (matches project `Cargo.toml:4`)
 
 
 <!-- MANUAL ADDITIONS START -->
