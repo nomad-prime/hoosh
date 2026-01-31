@@ -15,7 +15,7 @@ use crate::tui::app_layout::AppLayout;
 use crate::tui::layout::Layout;
 use crate::tui::terminal::lifecycle_fullview::HooshTerminal;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Widget};
+use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Widget, Wrap};
 
 pub use super::app_loop::EventLoopContext;
 
@@ -76,7 +76,8 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     _message_renderer: &MessageRenderer,
 ) -> Result<()> {
-    process_pending_messages_fullview(app);
+    let has_pending = app.has_pending_messages();
+    let _ = app.drain_pending_messages();
 
     terminal.draw(|frame| {
         let area = frame.area();
@@ -100,8 +101,26 @@ fn render_frame(
         let viewport_height = message_area.height as usize;
         app.vertical_scroll_viewport_length = viewport_height;
 
-        let max_scroll = app.vertical_scroll_content_length
-            .saturating_sub(viewport_height);
+        let content_width = if app.vertical_scroll_content_length > viewport_height {
+            message_area.width.saturating_sub(1)
+        } else {
+            message_area.width
+        } as usize;
+
+        let was_at_bottom = app.vertical_scroll
+            >= app
+                .vertical_scroll_content_length
+                .saturating_sub(app.vertical_scroll_viewport_length);
+
+        app.vertical_scroll_content_length = calculate_wrapped_line_count(app, content_width);
+
+        if has_pending && was_at_bottom {
+            app.vertical_scroll = app
+                .vertical_scroll_content_length
+                .saturating_sub(viewport_height);
+        }
+
+        let max_scroll = app.vertical_scroll_content_length.saturating_sub(viewport_height);
         app.vertical_scroll = app.vertical_scroll.min(max_scroll);
 
         app.vertical_scroll_state = app
@@ -117,11 +136,8 @@ fn render_frame(
     Ok(())
 }
 
-fn process_pending_messages_fullview(app: &mut AppState) {
+fn calculate_wrapped_line_count(app: &AppState, content_width: usize) -> usize {
     use crate::tui::markdown::MarkdownRenderer;
-
-    let has_pending = app.has_pending_messages();
-    let _ = app.drain_pending_messages();
 
     let markdown_renderer = MarkdownRenderer::new();
     let mut total_lines = 0;
@@ -131,23 +147,55 @@ fn process_pending_messages_fullview(app: &mut AppState) {
             MessageLine::Plain(text) => {
                 use crate::tui::text_utils;
                 let clean_text = text_utils::strip_ansi_codes(text);
-                clean_text.lines().count()
+                calculate_wrapped_lines_for_text(&clean_text, content_width)
             }
-            MessageLine::Styled(_) => 1,
-            MessageLine::Markdown(md) => markdown_renderer.render(md).len(),
+            MessageLine::Styled(line) => {
+                let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+                if line_text.is_empty() {
+                    1
+                } else {
+                    textwrap::wrap(&line_text, content_width).len()
+                }
+            }
+            MessageLine::Markdown(md) => {
+                let rendered = markdown_renderer.render(md);
+                calculate_wrapped_lines_for_styled_lines(&rendered, content_width)
+            }
         };
     }
 
-    let was_at_bottom = app.vertical_scroll
-        >= app
-            .vertical_scroll_content_length
-            .saturating_sub(app.vertical_scroll_viewport_length);
+    total_lines
+}
 
-    app.vertical_scroll_content_length = total_lines;
-
-    if has_pending && was_at_bottom {
-        app.vertical_scroll = total_lines.saturating_sub(app.vertical_scroll_viewport_length);
+fn calculate_wrapped_lines_for_text(text: &str, width: usize) -> usize {
+    if text.is_empty() {
+        return 1;
     }
+
+    let mut line_count = 0;
+    for line in text.lines() {
+        if line.is_empty() {
+            line_count += 1;
+        } else {
+            line_count += textwrap::wrap(line, width).len();
+        }
+    }
+
+    line_count
+}
+
+fn calculate_wrapped_lines_for_styled_lines(lines: &[Line], width: usize) -> usize {
+    let mut total = 0;
+    for line in lines {
+        let text_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
+        if text_width <= width {
+            total += 1;
+        } else {
+            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            total += textwrap::wrap(&line_text, width).len().max(1);
+        }
+    }
+    total
 }
 
 fn render_messages_fullview(
@@ -193,6 +241,7 @@ fn render_messages_fullview(
     };
 
     Paragraph::new(all_lines)
+        .wrap(Wrap { trim: false })
         .scroll((app.vertical_scroll as u16, 0))
         .render(content_area, buf);
 
