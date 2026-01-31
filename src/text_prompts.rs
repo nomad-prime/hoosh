@@ -51,9 +51,12 @@ pub fn handle_initial_permissions(
     working_dir: &std::path::Path,
     tool_registry: &ToolRegistry,
 ) -> Result<bool> {
-    eprintln!("\n╔═══════════════════════════════════════════════╗");
-    eprintln!("║        Hoosh Initial Permission Setup         ║");
-    eprintln!("╚═══════════════════════════════════════════════╝");
+    use crate::permissions::storage::PermissionsFile;
+
+    let permissions_path = PermissionsFile::get_permissions_path(working_dir);
+    if permissions_path.exists() {
+        return Ok(true);
+    }
 
     eprintln!("\nWorking directory: {}", working_dir.display());
     eprintln!("\nHoosh needs permissions to:");

@@ -221,10 +221,10 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             .with_autopilot_state(Arc::clone(&app_state.autopilot_enabled))
             .with_approval_receiver(approval_response_rx);
 
-    // Setup input handlers
+    // Setup input handlers (clone channels for input handlers)
     let input_handlers = create_input_handlers(
-        permission_response_tx,
-        approval_response_tx,
+        permission_response_tx.clone(),
+        approval_response_tx.clone(),
         detected_terminal_mode,
     );
 
@@ -284,6 +284,12 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     // Build event channels
     let channels = EventChannels { event_rx, event_tx };
 
+    // Build tagged mode channels (used only by tagged mode, but always present to avoid Option)
+    let tagged_mode_channels = crate::tui::app_loop::TaggedModeChannels {
+        permission_response_tx,
+        approval_response_tx,
+    };
+
     // Build runtime state
     let runtime = RuntimeState {
         permission_manager: Arc::clone(&permission_manager),
@@ -298,6 +304,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         conversation_state,
         channels,
         runtime,
+        tagged_mode_channels,
     };
 
     Ok(AgentSession {

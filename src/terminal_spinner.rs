@@ -42,6 +42,10 @@ impl TerminalSpinner {
 
     pub fn stop(&mut self) {
         self.running.store(false, Ordering::SeqCst);
+        // Give the async task a moment to see the flag and clear itself
+        std::thread::sleep(Duration::from_millis(100));
+        // Clear the spinner line using console
+        crate::console::console().clear_line();
     }
 
     pub fn update_message(&mut self, message: impl Into<String>) {

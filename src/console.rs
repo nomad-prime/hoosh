@@ -60,7 +60,7 @@ impl Console {
             println!("⚠️  {}", message);
         }
     }
-
+    
     pub fn info(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
             println!("ℹ️  {}", message);
@@ -101,6 +101,23 @@ impl Console {
         if self.should_show(VerbosityLevel::Normal) {
             println!();
         }
+    }
+
+    /// Print an interactive prompt to stdout and flush immediately
+    /// Use this for user input prompts like "(y/n):" to ensure it appears before reading stdin
+    pub fn prompt(&self, message: &str) {
+        use std::io::Write;
+        if self.should_show(VerbosityLevel::Normal) {
+            print!("{}", message);
+            let _ = std::io::stdout().flush();
+        }
+    }
+
+    /// Clear the current line on stderr (for cleaning up spinner/progress indicators)
+    pub fn clear_line(&self) {
+        use std::io::Write;
+        eprint!("\r\x1b[2K");
+        let _ = std::io::stderr().flush();
     }
 }
 

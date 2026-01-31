@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use std::io::{self, Write};
 
 use crate::agent::{Agent, AgentEvent};
+use crate::console::console;
 use crate::session::AgentSession;
 use crate::session_files::store::{SessionFile, get_terminal_pid};
 use crate::terminal_spinner::TerminalSpinner;
@@ -26,7 +27,14 @@ use crate::terminal_spinner::TerminalSpinner;
 /// # Arguments
 /// * `session` - Initialized agent session
 /// * `message` - Optional message text. If None, prompts for input via stdin (interactive mode)
-pub async fn run_tagged_mode(session: AgentSession, message: Option<String>) -> Result<()> {
+/// * `permission_response_tx` - Channel to send permission responses
+/// * `approval_response_tx` - Channel to send approval responses
+pub async fn run_tagged_mode(
+    session: AgentSession,
+    message: Option<String>,
+    permission_response_tx: tokio::sync::mpsc::UnboundedSender<crate::agent::PermissionResponse>,
+    approval_response_tx: tokio::sync::mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
+) -> Result<()> {
     let AgentSession {
         event_loop_context, ..
     } = session;
@@ -147,6 +155,36 @@ pub async fn run_tagged_mode(session: AgentSession, message: Option<String>) -> 
                     AgentEvent::ToolExecutionStarted { tool_name, .. } => {
                         spinner.update_message(format!("Executing: {}", tool_name));
                     }
+                    AgentEvent::ToolPermissionRequest { descriptor, request_id } => {
+                        spinner.stop();
+                        if let Some((allowed, scope)) = prompt_permission(&descriptor)? {
+                            let response = crate::agent::PermissionResponse {
+                                request_id,
+                                allowed,
+                                scope,
+                            };
+                            let _ = permission_response_tx.send(response);
+                        }
+                        spinner.start();
+                    }
+                    AgentEvent::ToolPreview { preview } => {
+                        spinner.stop();
+                        console().newline();
+                        console().plain(&preview);
+                        spinner.start();
+                    }
+                    AgentEvent::ApprovalRequest { tool_call_id, .. } => {
+                        spinner.stop();
+                        if let Some((approved, rejection_reason)) = prompt_approval()? {
+                            let response = crate::agent::ApprovalResponse {
+                                tool_call_id,
+                                approved,
+                                rejection_reason,
+                            };
+                            let _ = approval_response_tx.send(response);
+                        }
+                        spinner.start();
+                    }
                     AgentEvent::FinalResponse(content) => {
                         response_content = content;
                         spinner.stop();
@@ -198,4 +236,81 @@ pub async fn run_tagged_mode(session: AgentSession, message: Option<String>) -> 
     }
 
     Ok(())
+}
+
+/// Prompt user for permission via CLI (text-based, Linux-style)
+fn prompt_permission(
+    descriptor: &crate::permissions::ToolPermissionDescriptor,
+) -> Result<Option<(bool, Option<crate::permissions::PermissionScope>)>> {
+    use crate::console::console;
+
+    console().newline();
+    console().warning(&format!("Permission required: {} {}", descriptor.kind(), descriptor.target()));
+    console().plain("  y = yes (once), n = no, a = always for this, t = trust project");
+    console().prompt("Allow? (y/n/a/t): ");
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+
+    match input.as_str() {
+        "y" | "yes" => {
+            console().success("Allowed (once)");
+            Ok(Some((true, None)))
+        }
+        "n" | "no" => {
+            console().plain("Denied");
+            Ok(Some((false, None)))
+        }
+        "a" | "always" => {
+            let target = descriptor.target().to_string();
+            console().success(&format!("Allowed (always for {})", target));
+            Ok(Some((
+                true,
+                Some(crate::permissions::PermissionScope::Specific(target)),
+            )))
+        }
+        "t" | "trust" => {
+            if let Ok(current_dir) = std::env::current_dir() {
+                console().success(&format!("Trusted (project-wide: {})", current_dir.display()));
+                Ok(Some((
+                    true,
+                    Some(crate::permissions::PermissionScope::ProjectWide(current_dir)),
+                )))
+            } else {
+                console().error("Could not determine current directory");
+                Ok(Some((false, None)))
+            }
+        }
+        _ => {
+            console().error("Invalid input, denying permission");
+            Ok(Some((false, None)))
+        }
+    }
+}
+
+fn prompt_approval() -> Result<Option<(bool, Option<String>)>> {
+    use crate::console::console;
+
+    console().newline();
+    console().prompt("Approve? (y/n): ");
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+
+    match input.as_str() {
+        "y" | "yes" => {
+            console().success("Approved");
+            Ok(Some((true, None)))
+        }
+        "n" | "no" => {
+            console().plain("Rejected");
+            Ok(Some((false, Some("User rejected".to_string()))))
+        }
+        _ => {
+            console().error("Invalid input, rejecting");
+            Ok(Some((false, Some("Invalid input".to_string()))))
+        }
+    }
 }

@@ -125,7 +125,16 @@ pub async fn handle_agent(
     match session.terminal_mode {
         TerminalMode::Fullview => crate::tui::run_with_session_fullview(session).await?,
         TerminalMode::Inline => crate::tui::run_with_session_inline(session).await?,
-        TerminalMode::Tagged => crate::tagged_mode::run_tagged_mode(session, message_text).await?,
+        TerminalMode::Tagged => {
+            let permission_response_tx = session.event_loop_context.tagged_mode_channels.permission_response_tx.clone();
+            let approval_response_tx = session.event_loop_context.tagged_mode_channels.approval_response_tx.clone();
+            crate::tagged_mode::run_tagged_mode(
+                session,
+                message_text,
+                permission_response_tx,
+                approval_response_tx,
+            ).await?
+        }
     }
 
     Ok(())

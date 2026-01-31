@@ -49,6 +49,11 @@ pub struct EventChannels {
     pub event_tx: mpsc::UnboundedSender<AgentEvent>,
 }
 
+pub struct TaggedModeChannels {
+    pub permission_response_tx: mpsc::UnboundedSender<crate::agent::PermissionResponse>,
+    pub approval_response_tx: mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
+}
+
 pub struct RuntimeState {
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
     pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
@@ -62,6 +67,7 @@ pub struct EventLoopContext {
     pub conversation_state: ConversationState,
     pub channels: EventChannels,
     pub runtime: RuntimeState,
+    pub tagged_mode_channels: TaggedModeChannels,
 }
 
 pub async fn run_event_loop(
