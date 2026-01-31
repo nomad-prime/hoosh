@@ -33,8 +33,8 @@ impl Command for ToolsCommand {
             let mut output = String::from("🛠️  Available Tools:\n\n");
 
             for (name, description) in tools {
-                output.push_str(&format!("  • {}\n", name));
-                output.push_str(&format!("    {}\n", description));
+                let first_line = description.lines().next().unwrap_or("");
+                output.push_str(&format!("- **{}** - {}\n", name, first_line));
             }
 
             Ok(CommandResult::Success(output))

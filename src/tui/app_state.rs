@@ -9,6 +9,7 @@ use crate::tui::palette;
 use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::ScrollbarState;
 use std::collections::VecDeque;
 use std::time::Instant;
 use tui_textarea::TextArea;
@@ -188,6 +189,10 @@ pub struct AppState {
     pub total_cost: f64,
     pub active_tool_calls: Vec<ActiveToolCall>,
     pub todos: Vec<TodoItem>,
+    pub vertical_scroll: usize,
+    pub vertical_scroll_state: ScrollbarState,
+    pub vertical_scroll_content_length: usize,
+    pub vertical_scroll_viewport_length: usize,
 }
 
 impl AppState {
@@ -208,7 +213,7 @@ impl AppState {
             agent_state: AgentState::Idle,
             should_quit: false,
             should_cancel_task: false,
-            max_messages: 1000,
+            max_messages: 100_000,
             completion_state: None,
             completers: Vec::new(),
             tool_permission_dialog_state: None,
@@ -225,6 +230,10 @@ impl AppState {
             total_cost: 0.0,
             active_tool_calls: Vec::new(),
             todos: Vec::new(),
+            vertical_scroll: 0,
+            vertical_scroll_state: ScrollbarState::default(),
+            vertical_scroll_content_length: 0,
+            vertical_scroll_viewport_length: 0,
         }
     }
 
@@ -534,11 +543,9 @@ impl AppState {
             }
             AgentEvent::ToolExecutionCompleted { tool_call_id, .. } => {
                 self.update_tool_call_status(&tool_call_id, ToolCallStatus::Completed);
-                self.complete_single_tool_call(&tool_call_id);
             }
             AgentEvent::AllToolsComplete => {
-                // Individual tools are now completed as they finish
-                // This event just signals we're done executing and can start thinking
+                self.complete_active_tool_calls();
                 self.agent_state = AgentState::Thinking;
             }
             AgentEvent::FinalResponse(content) => {
@@ -559,19 +566,19 @@ impl AppState {
             AgentEvent::ToolPermissionRequest { .. } => {}
             AgentEvent::ApprovalRequest { .. } => {}
             AgentEvent::UserRejection(rejected_tool_calls) => {
-                rejected_tool_calls.iter().for_each(|rtc| {
+                for rtc in &rejected_tool_calls {
                     self.add_tool_call(rtc);
                     self.add_status_message("Rejected, tell me what to do instead");
-                });
+                }
                 self.clear_active_tool_calls();
 
                 self.agent_state = AgentState::Idle;
             }
             AgentEvent::PermissionDenied(rejected_tool_calls) => {
-                rejected_tool_calls.iter().for_each(|rtc| {
+                for rtc in &rejected_tool_calls {
                     self.add_tool_call(rtc);
                     self.add_status_message("Permission denied, tell me what to do instead");
-                });
+                }
                 self.clear_active_tool_calls();
 
                 self.agent_state = AgentState::Idle;
@@ -732,7 +739,7 @@ impl AppState {
 
     pub fn add_final_response(&mut self, content: &str) {
         // Add blank line before response
-        self.add_message("".to_string());
+        self.add_message("\n".to_string());
 
         let msg_line = MessageLine::Markdown(content.to_string());
         self.add_message_line(msg_line);

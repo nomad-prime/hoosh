@@ -1,6 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use hoosh::cli::{handle_agent, handle_agents, handle_config, handle_conversations, handle_setup};
+use hoosh::cli::{
+    handle_agent, handle_agents, handle_alias_install, handle_config, handle_conversations,
+    handle_setup,
+};
+use hoosh::session_files::cleanup_stale_sessions;
 use hoosh::{
     cli::{Cli, Commands},
     config::{AppConfig, ConfigError},
@@ -9,6 +13,10 @@ use hoosh::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Cleanup stale session files on startup (>7 days old)
+    // This runs silently in the background - failures are non-fatal
+    let _ = cleanup_stale_sessions();
+
     let cli = Cli::parse();
 
     if matches!(
@@ -16,6 +24,7 @@ async fn main() -> Result<()> {
         Some(Commands::Config { .. })
             | Some(Commands::Conversations { .. })
             | Some(Commands::Agent { .. })
+            | Some(Commands::Alias { .. })
     ) {
         init_console(cli.get_effective_verbosity(VerbosityLevel::Normal));
     }
@@ -35,6 +44,12 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Agent { action }) => {
             handle_agents(action)?;
+        }
+        Some(Commands::Alias { action }) => {
+            use hoosh::cli::AliasAction;
+            match action {
+                AliasAction::Install => handle_alias_install()?,
+            }
         }
         Some(Commands::Setup) => {
             handle_setup().await?;
@@ -84,6 +99,8 @@ async fn main() -> Result<()> {
                 cli.add_dir,
                 cli.skip_permissions,
                 cli.continue_last,
+                cli.mode,
+                cli.message,
                 &config,
             )
             .await?;

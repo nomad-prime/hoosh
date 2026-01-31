@@ -1,5 +1,6 @@
 use crate::backends::backend_factory::create_backend;
 use crate::session::{SessionConfig, initialize_session};
+use crate::terminal_mode::TerminalMode;
 use crate::tools::todo_state::TodoState;
 use crate::tui::init_permission;
 use crate::tui::terminal::{init_terminal, restore_terminal};
@@ -15,6 +16,8 @@ pub async fn handle_agent(
     add_dirs: Vec<String>,
     skip_permissions: bool,
     continue_last: bool,
+    mode: Option<String>,
+    message: Vec<String>,
     config: &AppConfig,
 ) -> anyhow::Result<()> {
     let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
@@ -39,26 +42,53 @@ pub async fn handle_agent(
         BuiltinToolProvider::with_todo_state(working_dir.clone(), todo_state.clone()),
     ));
 
-    let terminal = init_terminal()?;
-    let terminal = match init_permission::run(
-        terminal,
-        working_dir.clone(),
-        &tool_registry,
-        skip_permissions,
-    )
-    .await?
-    {
-        (terminal, init_permission::InitialPermissionDialogResult::Cancelled) => {
-            restore_terminal(terminal)?;
-            return Ok(());
+    // Parse mode string to TerminalMode enum
+    let terminal_mode = mode
+        .as_deref()
+        .and_then(|s| s.parse::<TerminalMode>().ok())
+        .unwrap_or_default();
+
+    // Handle permissions based on mode
+    if !skip_permissions {
+        match terminal_mode {
+            TerminalMode::Tagged => {
+                // Text-based permissions for tagged mode
+                use crate::text_prompts;
+                if let Err(e) =
+                    text_prompts::handle_initial_permissions(&working_dir, &tool_registry)
+                {
+                    eprintln!("Permission setup failed: {}", e);
+                    return Ok(());
+                }
+            }
+            TerminalMode::Inline | TerminalMode::Fullview => {
+                // TUI-based permissions for inline/fullview modes
+                let terminal = init_terminal()?;
+                let terminal = match init_permission::run(
+                    terminal,
+                    working_dir.clone(),
+                    &tool_registry,
+                    skip_permissions,
+                )
+                .await?
+                {
+                    (terminal, init_permission::InitialPermissionDialogResult::Cancelled) => {
+                        restore_terminal(terminal)?;
+                        return Ok(());
+                    }
+                    (
+                        terminal,
+                        init_permission::InitialPermissionDialogResult::SkippedPermissionsExist,
+                    ) => terminal,
+                    (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => {
+                        terminal
+                    }
+                };
+                restore_terminal(terminal)?;
+                println!();
+            }
         }
-        (terminal, init_permission::InitialPermissionDialogResult::SkippedPermissionsExist) => {
-            terminal
-        }
-        (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => terminal,
-    };
-    restore_terminal(terminal)?;
-    println!();
+    }
 
     let continue_conversation_id = if continue_last {
         let storage = ConversationStorage::with_default_path()?;
@@ -84,12 +114,42 @@ pub async fn handle_agent(
         continue_conversation_id,
         todo_state,
     )
-    .with_working_dir(working_dir);
+    .with_working_dir(working_dir)
+    .with_terminal_mode(Some(terminal_mode));
 
     let session = initialize_session(session_config).await?;
 
-    // Run the TUI with initialized session
-    crate::tui::run_with_session(session).await?;
+    // Prepare message for tagged mode (join all args into single string)
+    let message_text = if !message.is_empty() {
+        Some(message.join(" "))
+    } else {
+        None
+    };
+
+    // Single switch statement over TerminalMode - routes to appropriate mode implementation
+    match session.terminal_mode {
+        TerminalMode::Fullview => crate::tui::run_with_session_fullview(session).await?,
+        TerminalMode::Inline => crate::tui::run_with_session_inline(session).await?,
+        TerminalMode::Tagged => {
+            let permission_response_tx = session
+                .event_loop_context
+                .tagged_mode_channels
+                .permission_response_tx
+                .clone();
+            let approval_response_tx = session
+                .event_loop_context
+                .tagged_mode_channels
+                .approval_response_tx
+                .clone();
+            crate::tagged_mode::run_tagged_mode(
+                session,
+                message_text,
+                permission_response_tx,
+                approval_response_tx,
+            )
+            .await?
+        }
+    }
 
     Ok(())
 }

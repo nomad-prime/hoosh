@@ -1,5 +1,7 @@
 mod custom_terminal;
 mod lifecycle;
+pub mod lifecycle_fullview;
+pub mod lifecycle_inline;
 
 pub use custom_terminal::Terminal;
 pub use lifecycle::HooshTerminal;

@@ -1,5 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
+use crate::terminal_markdown::TerminalMarkdownRenderer;
+
 /// Verbosity levels for console output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum VerbosityLevel {
@@ -91,6 +93,14 @@ impl Console {
         }
     }
 
+    pub fn markdown(&self, markdown: &str) {
+        if self.should_show(VerbosityLevel::Normal) {
+            let renderer = TerminalMarkdownRenderer::new();
+            let rendered = renderer.render(markdown);
+            print!("{}", rendered);
+        }
+    }
+
     pub fn print(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
             print!("{}", message);
@@ -101,6 +111,23 @@ impl Console {
         if self.should_show(VerbosityLevel::Normal) {
             println!();
         }
+    }
+
+    /// Print an interactive prompt to stdout and flush immediately
+    /// Use this for user input prompts like "(y/n):" to ensure it appears before reading stdin
+    pub fn prompt(&self, message: &str) {
+        use std::io::Write;
+        if self.should_show(VerbosityLevel::Normal) {
+            print!("{}", message);
+            let _ = std::io::stdout().flush();
+        }
+    }
+
+    /// Clear the current line on stderr (for cleaning up spinner/progress indicators)
+    pub fn clear_line(&self) {
+        use std::io::Write;
+        eprint!("\r\x1b[2K");
+        let _ = std::io::stderr().flush();
     }
 }
 
