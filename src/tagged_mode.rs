@@ -7,7 +7,7 @@
 // - Simple text-based prompts for permissions
 
 use anyhow::{Context, Result};
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Read};
 
 use crate::agent::{Agent, AgentEvent};
 use crate::console::console;
@@ -63,31 +63,55 @@ pub async fn run_tagged_mode(
                     conv.messages.push(msg);
                 }
                 Err(e) => {
-                    eprintln!("⚠️  Warning: Failed to deserialize message: {}", e);
+                    console().warning(&format!("Failed to deserialize message: {}", e));
                 }
             }
         }
     }
 
-    // Get input: either from CLI argument or prompt via stdin
-    let input = if let Some(msg) = message {
-        // Non-interactive mode: use provided message
-        msg
+    // Get input: handle piped stdin, CLI argument, or interactive prompt
+    let stdin = io::stdin();
+    let stdin_is_piped = !stdin.is_terminal();
+
+    // Read piped input if available
+    let piped_content = if stdin_is_piped {
+        let mut buffer = String::new();
+        stdin.lock().read_to_string(&mut buffer)
+            .context("Failed to read piped input")?;
+        Some(buffer)
     } else {
-        // Interactive mode: prompt for input
-        eprint!("🤖 > ");
-        io::stderr().flush()?;
-
-        let mut line = String::new();
-        io::stdin()
-            .read_line(&mut line)
-            .context("Failed to read input")?;
-
-        line.trim().to_string()
+        None
     };
 
-    if input.is_empty() {
-        eprintln!("No input provided");
+    // Combine piped input with message argument
+    let input = match (piped_content, message) {
+        (Some(piped), Some(msg)) => {
+            // Both piped input and message: combine them
+            format!("{}\n\n{}", piped, msg)
+        }
+        (Some(piped), None) => {
+            // Only piped input
+            piped
+        }
+        (None, Some(msg)) => {
+            // Only message argument
+            msg
+        }
+        (None, None) => {
+            // Interactive mode: prompt for input
+            console().prompt("🤖 > ");
+
+            let mut line = String::new();
+            io::stdin()
+                .read_line(&mut line)
+                .context("Failed to read input")?;
+
+            line.trim().to_string()
+        }
+    };
+
+    if input.trim().is_empty() {
+        console().error("No input provided");
         return Ok(());
     }
 
@@ -121,6 +145,7 @@ pub async fn run_tagged_mode(
     .with_system_reminder(event_loop_context.system_resources.system_reminder.clone());
 
     // Start spinner
+    console().newline();
     let mut spinner = TerminalSpinner::new("Processing");
     spinner.start();
 
@@ -140,7 +165,8 @@ pub async fn run_tagged_mode(
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 spinner.stop();
-                eprintln!("\n⚠️  Interrupted - saving partial context...");
+                console().newline();
+                console().warning("Interrupted - saving partial context...");
                 interrupted = true;
                 break;
             }
@@ -150,7 +176,11 @@ pub async fn run_tagged_mode(
                         spinner.update_message("Thinking");
                     }
                     AgentEvent::AssistantThought(thought) => {
-                        spinner.update_message(format!("Thinking: {}", thought));
+                        spinner.stop();
+                        console().newline();
+                        console().markdown(&thought);
+                        console().newline();
+                        spinner.start();
                     }
                     AgentEvent::ToolExecutionStarted { tool_name, .. } => {
                         spinner.update_message(format!("Executing: {}", tool_name));
@@ -165,12 +195,14 @@ pub async fn run_tagged_mode(
                             };
                             let _ = permission_response_tx.send(response);
                         }
+                        console().newline();
                         spinner.start();
                     }
                     AgentEvent::ToolPreview { preview } => {
                         spinner.stop();
                         console().newline();
                         console().plain(&preview);
+                        console().newline();
                         spinner.start();
                     }
                     AgentEvent::ApprovalRequest { tool_call_id, .. } => {
@@ -183,6 +215,7 @@ pub async fn run_tagged_mode(
                             };
                             let _ = approval_response_tx.send(response);
                         }
+                        console().newline();
                         spinner.start();
                     }
                     AgentEvent::FinalResponse(content) => {
@@ -192,7 +225,8 @@ pub async fn run_tagged_mode(
                     }
                     AgentEvent::Error(err) => {
                         spinner.stop();
-                        eprintln!("\n❌ Error: {}", err);
+                        console().newline();
+                        console().error(&err);
                         return Ok(());
                     }
                     AgentEvent::Exit => {
@@ -205,7 +239,8 @@ pub async fn run_tagged_mode(
             result = &mut agent_handle => {
                 spinner.stop();
                 if let Err(e) = result {
-                    eprintln!("\n❌ Agent execution failed: {}", e);
+                    console().newline();
+                    console().error(&format!("Agent execution failed: {}", e));
                     return Err(e.into());
                 }
                 break;
@@ -215,8 +250,8 @@ pub async fn run_tagged_mode(
 
     // Display response (unless interrupted)
     if !interrupted {
-        eprintln!(); // Clear spinner line
-        println!("{}", response_content);
+        console().newline();
+        console().markdown(&response_content);
     }
 
     // Save session file with updated messages (including partial state on interruption)
@@ -230,9 +265,9 @@ pub async fn run_tagged_mode(
     }
 
     if let Err(e) = session_file.save() {
-        eprintln!("⚠️  Warning: Failed to save session: {}", e);
+        console().warning(&format!("Failed to save session: {}", e));
     } else if interrupted {
-        eprintln!("✓ Partial context saved");
+        console().success("Partial context saved");
     }
 
     Ok(())

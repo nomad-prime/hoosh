@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -20,6 +20,12 @@ impl TerminalSpinner {
     }
 
     pub fn start(&mut self) {
+        // Only show animated spinner if stderr is a terminal
+        // When piped or redirected, skip the spinner to avoid visual artifacts
+        if !io::stderr().is_terminal() {
+            return;
+        }
+
         self.running.store(true, Ordering::SeqCst);
         let message = self.message.clone();
         let running = Arc::clone(&self.running);
@@ -42,10 +48,14 @@ impl TerminalSpinner {
 
     pub fn stop(&mut self) {
         self.running.store(false, Ordering::SeqCst);
-        // Give the async task a moment to see the flag and clear itself
-        std::thread::sleep(Duration::from_millis(100));
-        // Clear the spinner line using console
-        crate::console::console().clear_line();
+
+        // Only clear line if stderr is a terminal (spinner was actually shown)
+        if io::stderr().is_terminal() {
+            // Give the async task a moment to see the flag and clear itself
+            std::thread::sleep(Duration::from_millis(100));
+            // Clear the spinner line using console
+            crate::console::console().clear_line();
+        }
     }
 
     pub fn update_message(&mut self, message: impl Into<String>) {

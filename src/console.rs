@@ -1,5 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
+use crate::terminal_markdown::TerminalMarkdownRenderer;
+
 /// Verbosity levels for console output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum VerbosityLevel {
@@ -88,6 +90,14 @@ impl Console {
     pub fn plain(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
             println!("{}", message);
+        }
+    }
+
+    pub fn markdown(&self, markdown: &str) {
+        if self.should_show(VerbosityLevel::Normal) {
+            let renderer = TerminalMarkdownRenderer::new();
+            let rendered = renderer.render(markdown);
+            print!("{}", rendered);
         }
     }
 

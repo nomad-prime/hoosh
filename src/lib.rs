@@ -19,6 +19,7 @@ pub mod system_reminders;
 pub mod tagged_mode;
 pub mod task_management;
 pub mod terminal_capabilities;
+pub mod terminal_markdown;
 pub mod terminal_mode;
 pub mod terminal_spinner;
 pub mod text_prompts;
