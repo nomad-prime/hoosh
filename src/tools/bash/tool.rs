@@ -319,7 +319,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &'static str {
-        r#"Execute bash commands with timeout and security restrictions.\n\n\
+        r#"Execute bash commands with timeout and security restrictions.
         IMPORTANT: This tool is for terminal operations ONLY. Do NOT use it for:\n\
         - Reading files - use read_file instead of cat/head/tail\n\
         - Editing files - use edit_file instead of sed/awk\n\

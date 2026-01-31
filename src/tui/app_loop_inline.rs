@@ -179,7 +179,7 @@ async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) 
     app.input_tokens = 0;
     app.output_tokens = 0;
     app.total_cost = 0.0;
-    app.add_message("Conversation cleared.\n".to_string());
+    app.add_status_message("Conversation cleared.");
 }
 
 fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>) {

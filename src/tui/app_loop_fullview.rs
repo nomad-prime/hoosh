@@ -112,8 +112,8 @@ fn render_frame(
                 .vertical_scroll_content_length
                 .saturating_sub(app.vertical_scroll_viewport_length);
 
-        app.vertical_scroll_content_length = calculate_wrapped_line_count(app, content_width)
-            .saturating_add(10);
+        app.vertical_scroll_content_length =
+            calculate_wrapped_line_count(app, content_width).saturating_add(10);
 
         if has_pending && was_at_bottom {
             app.vertical_scroll = app
@@ -376,7 +376,7 @@ async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) 
     app.input_tokens = 0;
     app.output_tokens = 0;
     app.total_cost = 0.0;
-    app.add_message("Conversation cleared.\n".to_string());
+    app.add_status_message("Conversation cleared.");
 }
 
 fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>) {
