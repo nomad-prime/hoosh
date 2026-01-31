@@ -209,6 +209,8 @@ For complex modules, use a separate test file to keep tests organized:
 mod tests;
 ```
 
+otherwise tests should be added at the bottom of the same file. 
+
 Use descriptive test names that describe **what behavior is being verified**, not implementation details.
 
 Good test names:

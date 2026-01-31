@@ -1,11 +1,13 @@
 use super::clipboard::ClipboardManager;
 use super::events::AgentState;
+use super::input::{PasteDetector, TextAttachment};
 use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
 use crate::tools::todo_write::{TodoItem, TodoStatus};
 use crate::tui::palette;
+use anyhow::Result;
 use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -13,6 +15,14 @@ use ratatui::widgets::ScrollbarState;
 use std::collections::VecDeque;
 use std::time::Instant;
 use tui_textarea::TextArea;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum InputMode {
+    Normal,
+    Expanded,
+    AttachmentList,
+    AttachmentView,
+}
 
 #[derive(Clone)]
 pub enum MessageLine {
@@ -165,6 +175,12 @@ impl CompletionState {
     }
 }
 
+pub struct AttachmentViewState {
+    pub attachment_id: usize,
+    pub editor: TextArea<'static>,
+    pub is_modified: bool,
+}
+
 pub struct AppState {
     pub input: TextArea<'static>,
     pub messages: VecDeque<MessageLine>,
@@ -193,6 +209,11 @@ pub struct AppState {
     pub vertical_scroll_state: ScrollbarState,
     pub vertical_scroll_content_length: usize,
     pub vertical_scroll_viewport_length: usize,
+    pub attachments: Vec<TextAttachment>,
+    pub next_attachment_id: usize,
+    pub input_mode: InputMode,
+    pub attachment_view: Option<AttachmentViewState>,
+    pub paste_detector: PasteDetector,
 }
 
 impl AppState {
@@ -234,6 +255,11 @@ impl AppState {
             vertical_scroll_state: ScrollbarState::default(),
             vertical_scroll_content_length: 0,
             vertical_scroll_viewport_length: 0,
+            attachments: Vec::new(),
+            next_attachment_id: 1,
+            input_mode: InputMode::Normal,
+            attachment_view: None,
+            paste_detector: PasteDetector::new(),
         }
     }
 
@@ -774,6 +800,59 @@ impl AppState {
         // Remove the underline from the cursor line
         self.input.set_cursor_line_style(Style::default());
     }
+
+    pub fn create_attachment(&mut self, content: String) -> Result<usize> {
+        let size_bytes = content.len();
+
+        if size_bytes > 5_000_000 {
+            anyhow::bail!("Paste rejected: exceeds 5MB limit");
+        }
+
+        if content.chars().count() <= 200 {
+            anyhow::bail!("Content too small for attachment (must be >200 chars)");
+        }
+
+        let id = self.next_attachment_id;
+        self.next_attachment_id += 1;
+
+        let attachment = TextAttachment::new(id, content);
+        self.attachments.push(attachment);
+
+        Ok(id)
+    }
+
+    pub fn delete_attachment(&mut self, id: usize) -> Result<()> {
+        let index = self
+            .attachments
+            .iter()
+            .position(|a| a.id == id)
+            .ok_or_else(|| anyhow::anyhow!("Attachment not found: {}", id))?;
+
+        self.attachments.remove(index);
+        Ok(())
+    }
+
+    pub fn clear_attachments(&mut self) {
+        self.attachments.clear();
+        self.next_attachment_id = 1;
+    }
+
+    pub fn get_attachment(&self, id: usize) -> Option<&TextAttachment> {
+        self.attachments.iter().find(|a| a.id == id)
+    }
+
+    pub fn get_attachment_mut(&mut self, id: usize) -> Option<&mut TextAttachment> {
+        self.attachments.iter_mut().find(|a| a.id == id)
+    }
+
+    pub fn expand_attachments(&self, input: &str) -> String {
+        let mut expanded = input.to_string();
+        for attachment in &self.attachments {
+            let token = format!("[pasted text-{}]", attachment.id);
+            expanded = expanded.replace(&token, &attachment.content);
+        }
+        expanded
+    }
 }
 
 impl Default for AppState {
@@ -785,3 +864,184 @@ impl Default for AppState {
 #[cfg(test)]
 #[path = "app_state_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+
+    #[test]
+    fn test_create_attachment_success() {
+        let mut state = AppState::new();
+        let content = "a".repeat(201);
+
+        let result = state.create_attachment(content.clone());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+        assert_eq!(state.attachments.len(), 1);
+        assert_eq!(state.next_attachment_id, 2);
+    }
+
+    #[test]
+    fn test_create_attachment_sequential_ids() {
+        let mut state = AppState::new();
+
+        let id1 = state.create_attachment("a".repeat(201)).unwrap();
+        let id2 = state.create_attachment("b".repeat(201)).unwrap();
+        let id3 = state.create_attachment("c".repeat(201)).unwrap();
+
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        assert_eq!(id3, 3);
+        assert_eq!(state.attachments.len(), 3);
+        assert_eq!(state.next_attachment_id, 4);
+    }
+
+    #[test]
+    fn test_create_attachment_rejects_too_small() {
+        let mut state = AppState::new();
+        let small_content = "a".repeat(200);
+
+        let result = state.create_attachment(small_content);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("too small for attachment"));
+        assert_eq!(state.attachments.len(), 0);
+    }
+
+    #[test]
+    fn test_create_attachment_rejects_exceeds_5mb() {
+        let mut state = AppState::new();
+        let huge_content = "a".repeat(5_000_001);
+
+        let result = state.create_attachment(huge_content);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("exceeds 5MB"));
+        assert_eq!(state.attachments.len(), 0);
+    }
+
+    #[test]
+    fn test_create_attachment_calculates_size_chars() {
+        let mut state = AppState::new();
+        let content = "🦀".repeat(300);
+
+        let id = state.create_attachment(content.clone()).unwrap();
+        let attachment = state.get_attachment(id).unwrap();
+
+        assert_eq!(attachment.size_chars, 300);
+        assert!(attachment.content.len() > 300);
+    }
+
+    #[test]
+    fn test_create_attachment_calculates_line_count() {
+        let mut state = AppState::new();
+        let content = "line1\nline2\nline3\n".to_string() + &"a".repeat(200);
+
+        let id = state.create_attachment(content.clone()).unwrap();
+        let attachment = state.get_attachment(id).unwrap();
+
+        assert_eq!(attachment.line_count, 4);
+    }
+
+    #[test]
+    fn test_create_attachment_line_count_minimum_one() {
+        let mut state = AppState::new();
+        let content = "a".repeat(201);
+
+        let id = state.create_attachment(content).unwrap();
+        let attachment = state.get_attachment(id).unwrap();
+
+        assert_eq!(attachment.line_count, 1);
+    }
+
+    #[test]
+    fn test_delete_attachment_success() {
+        let mut state = AppState::new();
+        let id = state.create_attachment("a".repeat(201)).unwrap();
+
+        let result = state.delete_attachment(id);
+        assert!(result.is_ok());
+        assert_eq!(state.attachments.len(), 0);
+    }
+
+    #[test]
+    fn test_delete_attachment_not_found() {
+        let mut state = AppState::new();
+
+        let result = state.delete_attachment(999);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_delete_attachment_correct_id() {
+        let mut state = AppState::new();
+        let id1 = state.create_attachment("a".repeat(201)).unwrap();
+        let id2 = state.create_attachment("b".repeat(201)).unwrap();
+        let id3 = state.create_attachment("c".repeat(201)).unwrap();
+
+        state.delete_attachment(id2).unwrap();
+
+        assert_eq!(state.attachments.len(), 2);
+        assert!(state.get_attachment(id1).is_some());
+        assert!(state.get_attachment(id2).is_none());
+        assert!(state.get_attachment(id3).is_some());
+    }
+
+    #[test]
+    fn test_clear_attachments() {
+        let mut state = AppState::new();
+        state.create_attachment("a".repeat(201)).unwrap();
+        state.create_attachment("b".repeat(201)).unwrap();
+        state.create_attachment("c".repeat(201)).unwrap();
+
+        state.clear_attachments();
+
+        assert_eq!(state.attachments.len(), 0);
+        assert_eq!(state.next_attachment_id, 1);
+    }
+
+    #[test]
+    fn test_clear_attachments_resets_id_counter() {
+        let mut state = AppState::new();
+        state.create_attachment("a".repeat(201)).unwrap();
+        state.clear_attachments();
+
+        let new_id = state.create_attachment("b".repeat(201)).unwrap();
+        assert_eq!(new_id, 1);
+    }
+
+    #[test]
+    fn test_get_attachment_found() {
+        let mut state = AppState::new();
+        let content = "test content".repeat(20);
+        let id = state.create_attachment(content.clone()).unwrap();
+
+        let attachment = state.get_attachment(id);
+        assert!(attachment.is_some());
+        assert_eq!(attachment.unwrap().content, content);
+    }
+
+    #[test]
+    fn test_get_attachment_not_found() {
+        let state = AppState::new();
+        let attachment = state.get_attachment(999);
+        assert!(attachment.is_none());
+    }
+
+    #[test]
+    fn test_get_attachment_mut() {
+        let mut state = AppState::new();
+        let id = state.create_attachment("a".repeat(201)).unwrap();
+
+        let new_content = "b".repeat(300);
+        if let Some(attachment) = state.get_attachment_mut(id) {
+            attachment.update_content(new_content.clone());
+        }
+
+        let attachment = state.get_attachment(id).unwrap();
+        assert_eq!(attachment.content, new_content);
+        assert_eq!(attachment.size_chars, 300);
+    }
+}
