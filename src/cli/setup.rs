@@ -56,6 +56,13 @@ pub async fn handle_setup() -> Result<()> {
                         return Err(e.into());
                     }
                 }
+
+                console().info("\n─── Next Steps ───");
+                console().info("To enable quick shell invocations with @hoosh, run:");
+                console().info("  hoosh alias install");
+                console().info("");
+                console().info("Or start chatting directly with:");
+                console().info("  hoosh");
             }
             Err(e) => {
                 console().error(&format!("\n✗ Failed to save configuration: {}", e));

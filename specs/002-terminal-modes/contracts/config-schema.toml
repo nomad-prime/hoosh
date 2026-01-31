@@ -1,0 +1,115 @@
+# Hoosh Configuration Schema Extensions
+# Feature: 002-terminal-modes
+# This document defines the new config fields added for terminal display modes
+
+# Terminal Display Mode Configuration
+# =====================================
+
+# terminal_mode: Select the terminal display mode
+# Type: String (optional)
+# Values: "inline" | "fullview" | "tagged"
+# Default: "inline"
+# Priority: CLI flag > project config > global config > default
+#
+# Description:
+#   - "inline": Default mode with dynamic viewport growth and native scrollback
+#   - "fullview": Fullscreen mode with internal scrolling (VSCode-compatible)
+#   - "tagged": Non-hijacking shell integration mode (@hoosh alias)
+#
+# Examples:
+terminal_mode = "inline"      # Use inline mode (default)
+# terminal_mode = "fullview"  # Use fullview mode for VSCode
+# terminal_mode = "tagged"    # Use tagged mode (requires `hoosh setup`)
+
+
+# Session Context Persistence (Tagged Mode)
+# ==========================================
+
+# session_context_enabled: Enable session file persistence for tagged mode
+# Type: Boolean
+# Default: true
+#
+# Description:
+#   When true, tagged mode creates session files in ~/.hoosh/sessions/ to
+#   persist conversation context across @hoosh invocations within the same
+#   terminal session. Session files are keyed by terminal PID and cleaned up
+#   after 7 days of inactivity.
+#
+#   When false, each @hoosh invocation starts with fresh context (ephemeral mode).
+#
+#   Note: This setting is independent of conversation_storage. Both can be enabled.
+#
+# Examples:
+session_context_enabled = true   # Enable session persistence (default)
+# session_context_enabled = false # Disable session persistence (ephemeral)
+
+
+# Complete Example Configuration
+# ===============================
+
+# Example 1: VSCode user with fullview mode
+# [global: ~/.hoosh/config.toml]
+# terminal_mode = "fullview"
+# session_context_enabled = true
+
+# Example 2: Tagged mode user with ephemeral sessions
+# [global: ~/.hoosh/config.toml]
+# terminal_mode = "tagged"
+# session_context_enabled = false
+
+# Example 3: Project-specific fullview override
+# [project: .hoosh/config.toml]
+# terminal_mode = "fullview"  # Override global setting for this project
+
+
+# Config Priority Resolution
+# ===========================
+#
+# terminal_mode resolution:
+#   1. CLI flag: `hoosh --mode fullview`
+#   2. Project config: `.hoosh/config.toml` (current directory)
+#   3. Global config: `~/.hoosh/config.toml`
+#   4. Default: "inline"
+#
+# session_context_enabled resolution:
+#   1. Project config: `.hoosh/config.toml`
+#   2. Global config: `~/.hoosh/config.toml`
+#   3. Default: true
+
+
+# Validation Rules
+# ================
+#
+# terminal_mode:
+#   - Must be one of: "inline", "fullview", "tagged" (case-insensitive)
+#   - Invalid values log warning and fallback to "inline"
+#
+# session_context_enabled:
+#   - Must be boolean (true or false)
+#   - Invalid values log warning and fallback to true
+
+
+# Session File Storage
+# ====================
+#
+# When session_context_enabled = true:
+#   - Session files stored in: ~/.hoosh/sessions/session_{PID}.json
+#   - Format: JSON (see contracts/session-file-schema.json)
+#   - Size: Typically 2-50 KB (depends on conversation length)
+#   - Cleanup: Automatic removal of files >7 days old
+#   - Privacy: Same permissions as conversation storage (~/.hoosh/conversations/)
+#
+# When session_context_enabled = false:
+#   - No session files created
+#   - Each @hoosh invocation is independent (fresh context)
+#   - Conversation storage (if enabled) still works normally
+
+
+# Backward Compatibility
+# ======================
+#
+# These fields are optional. Existing config files without these fields will:
+#   - Use default terminal_mode = "inline"
+#   - Use default session_context_enabled = true
+#
+# No migration needed for existing configurations.

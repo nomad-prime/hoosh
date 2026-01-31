@@ -92,6 +92,93 @@ Resume your previous conversation:
 hoosh --continue
 ```
 
+## Terminal Display Modes
+
+Hoosh supports three terminal display modes to fit different workflows:
+
+### Inline Mode (Default)
+
+The standard interactive TUI mode that takes over your terminal:
+
+```bash
+hoosh
+# or explicitly
+hoosh --mode inline
+```
+
+- Full TUI interface with message history
+- Scrolls with terminal scrollback
+- Works best in standard terminal emulators
+
+### Fullview Mode
+
+Viewport-based mode with internal scrolling, ideal for VSCode terminals:
+
+```bash
+hoosh --mode fullview
+```
+
+- Takes over entire terminal viewport
+- Internal scrolling (doesn't rely on terminal scrollback)
+- Fixes visual corruption in VSCode and other limited terminals
+- Navigate with arrow keys, Page Up/Down, or vim-style j/k
+
+### Tagged Mode (Shell Integration)
+
+Non-hijacking mode that integrates seamlessly with your shell workflow:
+
+#### Installation
+
+Set up the `@hoosh` alias in your shell:
+
+```bash
+hoosh alias install
+```
+
+This automatically detects your shell (bash, zsh, or fish) and adds the `@hoosh` function to your shell configuration file.
+
+After installation, restart your terminal or run:
+
+```bash
+# For bash/zsh
+source ~/.bashrc  # or ~/.zshrc
+
+# For fish
+source ~/.config/fish/config.fish
+```
+
+#### Usage
+
+Once installed, use `@hoosh` directly in your terminal:
+
+```bash
+# Ask questions inline
+@hoosh "what files are in this directory?"
+
+# Get coding help
+@hoosh "fix the bug in main.rs"
+
+# Use with pipes
+git diff | @hoosh "explain these changes"
+
+# Slash commands work too
+@hoosh /commit
+```
+
+#### Features
+
+- **Non-hijacking**: Returns control to your shell immediately after completion
+- **Context preservation**: Conversation history persists across multiple `@hoosh` invocations within the same terminal session
+- **Terminal-native output**: All output flows naturally like any bash command, no TUI
+- **Visual feedback**: Shows braille spinner while processing
+
+#### How It Works
+
+- The `@hoosh` function is a shell alias that calls `hoosh --mode tagged`
+- Conversation context is saved to `~/.hoosh/sessions/session_[PID].json`
+- Context is tied to your terminal process (cleared when you close the terminal)
+- Old session files are automatically cleaned up after 7 days
+
 ### Review vs Autopilot Mode
 
 Hoosh operates in two modes to control how operations are executed:

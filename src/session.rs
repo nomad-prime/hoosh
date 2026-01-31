@@ -22,6 +22,7 @@ use crate::storage::ConversationStorage;
 use crate::system_reminders::{
     PeriodicCoreReminderStrategy, SkillReminderStrategy, SystemReminder, TodoReminderStrategy,
 };
+use crate::terminal_mode::TerminalMode;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::ToolRegistry;
 use crate::tools::todo_state::TodoState;
@@ -37,6 +38,7 @@ use crate::tui::input_handler::InputHandler;
 pub struct AgentSession {
     pub app_state: AppState,
     pub event_loop_context: EventLoopContext,
+    pub terminal_mode: TerminalMode,
 }
 
 /// Parameters needed to initialize an agent session
@@ -49,6 +51,7 @@ pub struct SessionConfig {
     pub continue_conversation_id: Option<String>,
     pub working_dir: PathBuf,
     pub todo_state: TodoState,
+    pub terminal_mode: Option<TerminalMode>,
 }
 
 impl SessionConfig {
@@ -71,11 +74,17 @@ impl SessionConfig {
             continue_conversation_id,
             working_dir,
             todo_state,
+            terminal_mode: None,
         }
     }
 
     pub fn with_working_dir(mut self, working_dir: PathBuf) -> Self {
         self.working_dir = working_dir;
+        self
+    }
+
+    pub fn with_terminal_mode(mut self, terminal_mode: Option<TerminalMode>) -> Self {
+        self.terminal_mode = terminal_mode;
         self
     }
 }
@@ -91,11 +100,22 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         continue_conversation_id,
         working_dir,
         todo_state,
+        terminal_mode,
     } = session_config;
+
+    let detected_terminal_mode = detect_terminal_mode(terminal_mode, config.terminal_mode);
 
     // Initialize app state with history
     let mut app_state = AppState::new();
     load_history(&mut app_state);
+
+    if detected_terminal_mode == TerminalMode::Fullview {
+        let (_, height) = crossterm::terminal::size()?;
+        app_state.vertical_scroll_viewport_length = height as usize;
+        app_state.vertical_scroll_state = app_state
+            .vertical_scroll_state
+            .viewport_content_length(height as usize);
+    }
 
     // Setup completers
     setup_completers(&mut app_state, &working_dir).await?;
@@ -201,8 +221,12 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             .with_autopilot_state(Arc::clone(&app_state.autopilot_enabled))
             .with_approval_receiver(approval_response_rx);
 
-    // Setup input handlers
-    let input_handlers = create_input_handlers(permission_response_tx, approval_response_tx);
+    // Setup input handlers (clone channels for input handlers)
+    let input_handlers = create_input_handlers(
+        permission_response_tx.clone(),
+        approval_response_tx.clone(),
+        detected_terminal_mode,
+    );
 
     // Setup context management
     let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
@@ -260,6 +284,12 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     // Build event channels
     let channels = EventChannels { event_rx, event_tx };
 
+    // Build tagged mode channels (used only by tagged mode, but always present to avoid Option)
+    let tagged_mode_channels = crate::tui::app_loop::TaggedModeChannels {
+        permission_response_tx,
+        approval_response_tx,
+    };
+
     // Build runtime state
     let runtime = RuntimeState {
         permission_manager: Arc::clone(&permission_manager),
@@ -274,11 +304,13 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         conversation_state,
         channels,
         runtime,
+        tagged_mode_channels,
     };
 
     Ok(AgentSession {
         app_state,
         event_loop_context,
+        terminal_mode: detected_terminal_mode,
     })
 }
 
@@ -474,19 +506,52 @@ fn load_or_create_conversation(
     Ok(conv)
 }
 
+fn detect_terminal_mode(
+    cli_mode: Option<TerminalMode>,
+    config_mode: Option<TerminalMode>,
+) -> TerminalMode {
+    if let Some(mode) = cli_mode {
+        return mode;
+    }
+
+    if let Some(mode) = config_mode {
+        return mode;
+    }
+
+    if std::env::var("TERM_PROGRAM")
+        .map(|v| v == "vscode")
+        .unwrap_or(false)
+    {
+        eprintln!("VSCode terminal detected. Consider using --mode fullview");
+        eprintln!(
+            "Defaulting to inline mode. Set terminal_mode in config to suppress this message."
+        );
+    }
+
+    TerminalMode::Inline
+}
+
 fn create_input_handlers(
     permission_response_tx: mpsc::UnboundedSender<crate::agent::PermissionResponse>,
     approval_response_tx: mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
+    terminal_mode: TerminalMode,
 ) -> Vec<Box<dyn InputHandler + Send>> {
-    vec![
+    let mut handlers: Vec<Box<dyn InputHandler + Send>> = vec![
         Box::new(handlers::PermissionHandler::new(permission_response_tx)),
         Box::new(handlers::ApprovalHandler::new(approval_response_tx)),
         Box::new(handlers::CompletionHandler::new()),
         Box::new(handlers::QuitHandler::new()),
-        Box::new(handlers::SubmitHandler::new()),
-        Box::new(handlers::PasteHandler::new()),
-        Box::new(handlers::TextInputHandler::new()),
-    ]
+    ];
+
+    if terminal_mode == TerminalMode::Fullview {
+        handlers.push(Box::new(handlers::ScrollHandler::new()));
+    }
+
+    handlers.push(Box::new(handlers::SubmitHandler::new()));
+    handlers.push(Box::new(handlers::PasteHandler::new()));
+    handlers.push(Box::new(handlers::TextInputHandler::new()));
+
+    handlers
 }
 
 fn setup_context_manager(config: &AppConfig) -> Arc<ContextManager> {

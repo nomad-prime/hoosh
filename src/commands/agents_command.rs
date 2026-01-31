@@ -30,21 +30,20 @@ impl Command for AgentsCommand {
     ) -> Result<CommandResult> {
         if let Some(agent_manager) = &context.agent_manager {
             let agents = agent_manager.list_agents();
-            let mut output = String::from(" ⎿ Available Agents:\n\n");
+            let mut output = String::from(" Available Agents:\n\n");
 
             let current_agent = context.current_agent_name.as_deref();
 
             for agent in agents {
-                // Mark current agent with an indicator
                 let marker = if Some(agent.name.as_str()) == current_agent {
-                    "→ "
+                    "→"
                 } else {
-                    "  "
+                    "-"
                 };
 
-                output.push_str(&format!("{}• {}\n", marker, agent.name));
+                output.push_str(&format!("{} **{}**\n", marker, agent.name));
                 if let Some(ref desc) = agent.description {
-                    output.push_str(&format!("    {}\n", desc));
+                    output.push_str(&format!("  {}\n\n", desc));
                 }
             }
 

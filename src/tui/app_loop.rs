@@ -49,6 +49,11 @@ pub struct EventChannels {
     pub event_tx: mpsc::UnboundedSender<AgentEvent>,
 }
 
+pub struct TaggedModeChannels {
+    pub permission_response_tx: mpsc::UnboundedSender<crate::agent::PermissionResponse>,
+    pub approval_response_tx: mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
+}
+
 pub struct RuntimeState {
     pub permission_manager: Arc<crate::permissions::PermissionManager>,
     pub input_handlers: Vec<Box<dyn InputHandler + Send>>,
@@ -62,6 +67,7 @@ pub struct EventLoopContext {
     pub conversation_state: ConversationState,
     pub channels: EventChannels,
     pub runtime: RuntimeState,
+    pub tagged_mode_channels: TaggedModeChannels,
 }
 
 pub async fn run_event_loop(
@@ -229,7 +235,7 @@ async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) 
     app.input_tokens = 0;
     app.output_tokens = 0;
     app.total_cost = 0.0;
-    app.add_message("Conversation cleared.\n".to_string());
+    app.add_status_message("Conversation cleared.");
 }
 
 fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>) {
