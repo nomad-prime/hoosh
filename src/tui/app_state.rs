@@ -543,11 +543,9 @@ impl AppState {
             }
             AgentEvent::ToolExecutionCompleted { tool_call_id, .. } => {
                 self.update_tool_call_status(&tool_call_id, ToolCallStatus::Completed);
-                self.complete_single_tool_call(&tool_call_id);
             }
             AgentEvent::AllToolsComplete => {
-                // Individual tools are now completed as they finish
-                // This event just signals we're done executing and can start thinking
+                self.complete_active_tool_calls();
                 self.agent_state = AgentState::Thinking;
             }
             AgentEvent::FinalResponse(content) => {
@@ -568,19 +566,19 @@ impl AppState {
             AgentEvent::ToolPermissionRequest { .. } => {}
             AgentEvent::ApprovalRequest { .. } => {}
             AgentEvent::UserRejection(rejected_tool_calls) => {
-                rejected_tool_calls.iter().for_each(|rtc| {
+                for rtc in &rejected_tool_calls {
                     self.add_tool_call(rtc);
                     self.add_status_message("Rejected, tell me what to do instead");
-                });
+                }
                 self.clear_active_tool_calls();
 
                 self.agent_state = AgentState::Idle;
             }
             AgentEvent::PermissionDenied(rejected_tool_calls) => {
-                rejected_tool_calls.iter().for_each(|rtc| {
+                for rtc in &rejected_tool_calls {
                     self.add_tool_call(rtc);
                     self.add_status_message("Permission denied, tell me what to do instead");
-                });
+                }
                 self.clear_active_tool_calls();
 
                 self.agent_state = AgentState::Idle;

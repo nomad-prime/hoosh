@@ -27,18 +27,6 @@ impl InputHandler for ScrollHandler {
     ) -> KeyHandlerResult {
         match event {
             Event::Key(key) => match key.code {
-                KeyCode::Down => {
-                    app.vertical_scroll = app.vertical_scroll.saturating_add(1);
-                    app.vertical_scroll_state =
-                        app.vertical_scroll_state.position(app.vertical_scroll);
-                    KeyHandlerResult::Handled
-                }
-                KeyCode::Up => {
-                    app.vertical_scroll = app.vertical_scroll.saturating_sub(1);
-                    app.vertical_scroll_state =
-                        app.vertical_scroll_state.position(app.vertical_scroll);
-                    KeyHandlerResult::Handled
-                }
                 KeyCode::PageDown => {
                     app.vertical_scroll = app
                         .vertical_scroll

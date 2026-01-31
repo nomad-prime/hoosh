@@ -130,7 +130,11 @@ fn process_pending_messages_fullview(app: &mut AppState) {
 
     for ml in app.messages.iter() {
         total_lines += match ml {
-            MessageLine::Plain(_) => 1,
+            MessageLine::Plain(text) => {
+                use crate::tui::text_utils;
+                let clean_text = text_utils::strip_ansi_codes(text);
+                clean_text.lines().count()
+            }
             MessageLine::Styled(_) => 1,
             MessageLine::Markdown(md) => markdown_renderer.render(md).len(),
         };
@@ -163,7 +167,11 @@ fn render_messages_fullview(
     for ml in app.messages.iter() {
         match ml {
             MessageLine::Plain(text) => {
-                all_lines.push(Line::from(Span::raw(text.clone())));
+                use crate::tui::text_utils;
+                let clean_text = text_utils::strip_ansi_codes(text);
+                for line_text in clean_text.lines() {
+                    all_lines.push(Line::from(Span::raw(line_text.to_string())));
+                }
             }
             MessageLine::Styled(line) => {
                 all_lines.push(line.clone());

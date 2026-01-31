@@ -26,6 +26,7 @@ pub mod modes;
 pub mod scroll_state;
 pub mod setup;
 pub mod terminal;
+mod text_utils;
 
 pub use app_main::run_with_session;
 pub use app_main_fullview::run_with_session_fullview;
