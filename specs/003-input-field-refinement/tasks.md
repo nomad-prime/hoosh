@@ -25,11 +25,11 @@ Repository root structure (single project):
 
 **Purpose**: Create module structure and define core types
 
-- [ ] T001 Create `src/tui/input/` module directory and `src/tui/input/mod.rs`
-- [ ] T002 [P] Define `InputMode` enum in `src/tui/app_state.rs` with variants: Normal, Expanded, AttachmentList, AttachmentView
-- [ ] T003 [P] Define `TextAttachment` struct in `src/tui/input/attachment.rs` with fields: id, content, size_chars, line_count, created_at
-- [ ] T004 [P] Define `PasteClassification` enum in `src/tui/input/paste_detector.rs` with variants: Inline, Attachment, Rejected(String)
-- [ ] T005 [P] Define `WrappedLine` struct in `src/tui/input/wrapping.rs` with fields: content, is_soft_wrap
+- [X] T001 Create `src/tui/input/` module directory and `src/tui/input/mod.rs`
+- [X] T002 [P] Define `InputMode` enum in `src/tui/app_state.rs` with variants: Normal, Expanded, AttachmentList, AttachmentView
+- [X] T003 [P] Define `TextAttachment` struct in `src/tui/input/attachment.rs` with fields: id, content, size_chars, line_count, created_at
+- [X] T004 [P] Define `PasteClassification` enum in `src/tui/input/paste_detector.rs` with variants: Inline, Attachment, Rejected(String)
+- [X] T005 [P] Define `WrappedLine` struct in `src/tui/input/wrapping.rs` with fields: content, is_soft_wrap
 
 ---
 
@@ -39,13 +39,13 @@ Repository root structure (single project):
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Add new fields to `AppState` in `src/tui/app_state.rs`: `attachments: Vec<TextAttachment>`, `next_attachment_id: usize`, `input_mode: InputMode`, `attachment_view: Option<AttachmentViewState>`
-- [ ] T007 Implement `AppState::create_attachment()` method in `src/tui/app_state.rs` with size validation (>200 chars, <=5MB)
-- [ ] T008 [P] Implement `AppState::delete_attachment()` method in `src/tui/app_state.rs` with ID-based lookup
-- [ ] T009 [P] Implement `AppState::clear_attachments()` method in `src/tui/app_state.rs` to clear vector and reset ID counter
-- [ ] T010 [P] Implement `AppState::get_attachment()` method in `src/tui/app_state.rs` for ID-based retrieval
-- [ ] T011 [P] Define `AttachmentViewState` struct in `src/tui/app_state.rs` with fields: attachment_id, editor (TextArea), is_modified
-- [ ] T012 Add `ToggleExpandedMode` and `OpenAttachmentList` actions to `src/tui/actions.rs`
+- [X] T006 Add new fields to `AppState` in `src/tui/app_state.rs`: `attachments: Vec<TextAttachment>`, `next_attachment_id: usize`, `input_mode: InputMode`, `attachment_view: Option<AttachmentViewState>`
+- [X] T007 Implement `AppState::create_attachment()` method in `src/tui/app_state.rs` with size validation (>200 chars, <=5MB)
+- [X] T008 [P] Implement `AppState::delete_attachment()` method in `src/tui/app_state.rs` with ID-based lookup
+- [X] T009 [P] Implement `AppState::clear_attachments()` method in `src/tui/app_state.rs` to clear vector and reset ID counter
+- [X] T010 [P] Implement `AppState::get_attachment()` method in `src/tui/app_state.rs` for ID-based retrieval
+- [X] T011 [P] Define `AttachmentViewState` struct in `src/tui/app_state.rs` with fields: attachment_id, editor (TextArea), is_modified
+- [X] T012 Add `ToggleExpandedMode` and `OpenAttachmentList` actions to `src/tui/actions.rs`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -61,19 +61,19 @@ Repository root structure (single project):
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T013 [P] [US1] Unit test for `PasteDetector::classify_paste()` in `tests/unit/paste_detector_tests.rs` covering: ≤200 chars (Inline), >200 chars <=5MB (Attachment), >5MB (Rejected), exactly 200 chars (Inline)
-- [ ] T014 [P] [US1] Unit test for `AppState::create_attachment()` in `tests/unit/attachment_tests.rs` covering: sequential ID generation, size validation, character count calculation, line count calculation
+- [X] T013 [P] [US1] Unit test for `PasteDetector::classify_paste()` in `tests/unit/paste_detector_tests.rs` covering: ≤200 chars (Inline), >200 chars <=5MB (Attachment), >5MB (Rejected), exactly 200 chars (Inline)
+- [X] T014 [P] [US1] Unit test for `AppState::create_attachment()` in `tests/unit/attachment_tests.rs` covering: sequential ID generation, size validation, character count calculation, line count calculation
 - [ ] T015 [P] [US1] Integration test for paste workflow in `tests/integration/input_attachment_tests.rs` covering: small paste inline insertion, large paste attachment creation with reference token, oversized paste rejection with error display, attachment expansion on submit
 
 ### Implementation for User Story 1
 
-- [ ] T016 [P] [US1] Implement `PasteDetector` struct and `new()` method in `src/tui/input/paste_detector.rs` with threshold and max_size fields
-- [ ] T017 [US1] Implement `PasteDetector::classify_paste()` method in `src/tui/input/paste_detector.rs` with byte size check first, then character count check
-- [ ] T018 [US1] Modify `paste_handler.rs` in `src/tui/handlers/paste_handler.rs` to integrate PasteDetector and route pastes to inline vs attachment
-- [ ] T019 [US1] Implement attachment reference token insertion logic in `src/tui/handlers/paste_handler.rs` with format `[pasted text-{id}]`
-- [ ] T020 [US1] Implement attachment expansion logic in `src/tui/handlers/submit_handler.rs` to replace tokens with full content before LLM submission
-- [ ] T021 [US1] Add attachment clearing call in `src/tui/handlers/submit_handler.rs` after successful submission
-- [ ] T022 [US1] Add error display for rejected pastes in `src/tui/handlers/paste_handler.rs` using existing error mechanism
+- [X] T016 [P] [US1] Implement `PasteDetector` struct and `new()` method in `src/tui/input/paste_detector.rs` with threshold and max_size fields
+- [X] T017 [US1] Implement `PasteDetector::classify_paste()` method in `src/tui/input/paste_detector.rs` with byte size check first, then character count check
+- [X] T018 [US1] Modify `paste_handler.rs` in `src/tui/handlers/paste_handler.rs` to integrate PasteDetector and route pastes to inline vs attachment
+- [X] T019 [US1] Implement attachment reference token insertion logic in `src/tui/handlers/paste_handler.rs` with format `[pasted text-{id}]`
+- [X] T020 [US1] Implement attachment expansion logic in `src/tui/handlers/submit_handler.rs` to replace tokens with full content before LLM submission
+- [X] T021 [US1] Add attachment clearing call in `src/tui/handlers/submit_handler.rs` after successful submission
+- [X] T022 [US1] Add error display for rejected pastes in `src/tui/handlers/paste_handler.rs` using existing error mechanism
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently - paste large content without UI breakage
 
