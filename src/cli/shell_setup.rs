@@ -114,13 +114,9 @@ pub fn install_shell_alias(shell_type: ShellType) -> Result<()> {
             ShellType::Bash | ShellType::Zsh => {
                 content.contains("@hoosh()") || content.contains("function @hoosh")
             }
-            ShellType::Fish => {
-                content.contains("function @hoosh")
-            }
+            ShellType::Fish => content.contains("function @hoosh"),
             #[cfg(windows)]
-            ShellType::PowerShell => {
-                content.contains("function @hoosh")
-            }
+            ShellType::PowerShell => content.contains("function @hoosh"),
         };
 
         if is_already_defined {

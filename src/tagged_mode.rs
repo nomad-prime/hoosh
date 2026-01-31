@@ -48,9 +48,7 @@ pub async fn run_tagged_mode(
             file.touch();
             file
         }
-        None => {
-            SessionFile::new(terminal_pid)
-        }
+        None => SessionFile::new(terminal_pid),
     };
 
     // Load existing messages into conversation
@@ -76,7 +74,9 @@ pub async fn run_tagged_mode(
     // Read piped input if available
     let piped_content = if stdin_is_piped {
         let mut buffer = String::new();
-        stdin.lock().read_to_string(&mut buffer)
+        stdin
+            .lock()
+            .read_to_string(&mut buffer)
             .context("Failed to read piped input")?;
         Some(buffer)
     } else {
@@ -280,7 +280,11 @@ fn prompt_permission(
     use crate::console::console;
 
     console().newline();
-    console().warning(&format!("Permission required: {} {}", descriptor.kind(), descriptor.target()));
+    console().warning(&format!(
+        "Permission required: {} {}",
+        descriptor.kind(),
+        descriptor.target()
+    ));
     console().plain("  y = yes (once), n = no, a = always for this, t = trust project");
     console().prompt("Allow? (y/n/a/t): ");
 
@@ -307,10 +311,15 @@ fn prompt_permission(
         }
         "t" | "trust" => {
             if let Ok(current_dir) = std::env::current_dir() {
-                console().success(&format!("Trusted (project-wide: {})", current_dir.display()));
+                console().success(&format!(
+                    "Trusted (project-wide: {})",
+                    current_dir.display()
+                ));
                 Ok(Some((
                     true,
-                    Some(crate::permissions::PermissionScope::ProjectWide(current_dir)),
+                    Some(crate::permissions::PermissionScope::ProjectWide(
+                        current_dir,
+                    )),
                 )))
             } else {
                 console().error("Could not determine current directory");

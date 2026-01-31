@@ -1,6 +1,6 @@
+use crate::tools::ToolRegistry;
 use anyhow::Result;
 use std::io::{self, Write};
-use crate::tools::ToolRegistry;
 
 pub fn prompt_yes_no(message: &str) -> Result<bool> {
     eprintln!("\n┌─────────────────────────────────────────┐");
@@ -62,8 +62,10 @@ pub fn handle_initial_permissions(
     eprintln!("\nHoosh needs permissions to:");
     eprintln!("  • Read and write files in the working directory");
     eprintln!("  • Execute shell commands");
-    eprintln!("  • Access tools: {}",
-        tool_registry.list_tools()
+    eprintln!(
+        "  • Access tools: {}",
+        tool_registry
+            .list_tools()
             .iter()
             .take(5)
             .map(|(name, _)| *name)

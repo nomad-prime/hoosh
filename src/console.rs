@@ -62,7 +62,7 @@ impl Console {
             println!("⚠️  {}", message);
         }
     }
-    
+
     pub fn info(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
             println!("ℹ️  {}", message);

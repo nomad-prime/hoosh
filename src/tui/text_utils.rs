@@ -7,9 +7,8 @@ use std::sync::OnceLock;
 /// that needs to be displayed in a TUI context where ANSI codes aren't interpreted.
 pub fn strip_ansi_codes(text: &str) -> String {
     static ANSI_REGEX: OnceLock<Regex> = OnceLock::new();
-    let regex = ANSI_REGEX.get_or_init(|| {
-        Regex::new(r"\x1b\[[0-9;]*m").expect("Failed to compile ANSI regex")
-    });
+    let regex = ANSI_REGEX
+        .get_or_init(|| Regex::new(r"\x1b\[[0-9;]*m").expect("Failed to compile ANSI regex"));
     regex.replace_all(text, "").to_string()
 }
 
@@ -37,7 +36,8 @@ mod tests {
 
     #[test]
     fn test_strip_ansi_codes_complex() {
-        let text = "\x1b[1;36mCreating new file: test.txt\x1b[0m\n\x1b[33mSize: 2 lines, 63 bytes\x1b[0m";
+        let text =
+            "\x1b[1;36mCreating new file: test.txt\x1b[0m\n\x1b[33mSize: 2 lines, 63 bytes\x1b[0m";
         assert_eq!(
             strip_ansi_codes(text),
             "Creating new file: test.txt\nSize: 2 lines, 63 bytes"

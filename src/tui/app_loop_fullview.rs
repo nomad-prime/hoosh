@@ -120,7 +120,9 @@ fn render_frame(
                 .saturating_sub(viewport_height);
         }
 
-        let max_scroll = app.vertical_scroll_content_length.saturating_sub(viewport_height);
+        let max_scroll = app
+            .vertical_scroll_content_length
+            .saturating_sub(viewport_height);
         app.vertical_scroll = app.vertical_scroll.min(max_scroll);
 
         app.vertical_scroll_state = app

@@ -180,7 +180,8 @@ impl TerminalMarkdownRenderer {
                     if in_code_block {
                         code_buffer.push_str(&text);
                     } else {
-                        let styled = self.style_text(&text, in_emphasis, in_strong, in_strikethrough);
+                        let styled =
+                            self.style_text(&text, in_emphasis, in_strong, in_strikethrough);
                         current_line.push_str(&styled);
                     }
                 }

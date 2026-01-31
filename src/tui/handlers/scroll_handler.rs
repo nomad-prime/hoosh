@@ -28,7 +28,8 @@ impl InputHandler for ScrollHandler {
         match event {
             Event::Key(key) => match key.code {
                 KeyCode::PageDown => {
-                    let max_scroll = app.vertical_scroll_content_length
+                    let max_scroll = app
+                        .vertical_scroll_content_length
                         .saturating_sub(app.vertical_scroll_viewport_length);
                     app.vertical_scroll = app
                         .vertical_scroll
@@ -48,9 +49,13 @@ impl InputHandler for ScrollHandler {
                 }
                 KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     let half_page = app.vertical_scroll_viewport_length / 2;
-                    let max_scroll = app.vertical_scroll_content_length
+                    let max_scroll = app
+                        .vertical_scroll_content_length
                         .saturating_sub(app.vertical_scroll_viewport_length);
-                    app.vertical_scroll = app.vertical_scroll.saturating_add(half_page).min(max_scroll);
+                    app.vertical_scroll = app
+                        .vertical_scroll
+                        .saturating_add(half_page)
+                        .min(max_scroll);
                     app.vertical_scroll_state =
                         app.vertical_scroll_state.position(app.vertical_scroll);
                     KeyHandlerResult::Handled
@@ -69,7 +74,8 @@ impl InputHandler for ScrollHandler {
                 ..
             }) => {
                 app.vertical_scroll = app.vertical_scroll.saturating_sub(3);
-                let max_scroll = app.vertical_scroll_content_length
+                let max_scroll = app
+                    .vertical_scroll_content_length
                     .saturating_sub(app.vertical_scroll_viewport_length);
                 app.vertical_scroll = app.vertical_scroll.min(max_scroll);
                 app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
@@ -79,7 +85,8 @@ impl InputHandler for ScrollHandler {
                 kind: MouseEventKind::ScrollDown,
                 ..
             }) => {
-                let max_scroll = app.vertical_scroll_content_length
+                let max_scroll = app
+                    .vertical_scroll_content_length
                     .saturating_sub(app.vertical_scroll_viewport_length);
                 app.vertical_scroll = app.vertical_scroll.saturating_add(3).min(max_scroll);
                 app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);

@@ -54,7 +54,9 @@ pub async fn handle_agent(
             TerminalMode::Tagged => {
                 // Text-based permissions for tagged mode
                 use crate::text_prompts;
-                if let Err(e) = text_prompts::handle_initial_permissions(&working_dir, &tool_registry) {
+                if let Err(e) =
+                    text_prompts::handle_initial_permissions(&working_dir, &tool_registry)
+                {
                     eprintln!("Permission setup failed: {}", e);
                     return Ok(());
                 }
@@ -74,10 +76,13 @@ pub async fn handle_agent(
                         restore_terminal(terminal)?;
                         return Ok(());
                     }
-                    (terminal, init_permission::InitialPermissionDialogResult::SkippedPermissionsExist) => {
+                    (
+                        terminal,
+                        init_permission::InitialPermissionDialogResult::SkippedPermissionsExist,
+                    ) => terminal,
+                    (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => {
                         terminal
                     }
-                    (terminal, init_permission::InitialPermissionDialogResult::Choice(_)) => terminal,
                 };
                 restore_terminal(terminal)?;
                 println!();
@@ -126,14 +131,23 @@ pub async fn handle_agent(
         TerminalMode::Fullview => crate::tui::run_with_session_fullview(session).await?,
         TerminalMode::Inline => crate::tui::run_with_session_inline(session).await?,
         TerminalMode::Tagged => {
-            let permission_response_tx = session.event_loop_context.tagged_mode_channels.permission_response_tx.clone();
-            let approval_response_tx = session.event_loop_context.tagged_mode_channels.approval_response_tx.clone();
+            let permission_response_tx = session
+                .event_loop_context
+                .tagged_mode_channels
+                .permission_response_tx
+                .clone();
+            let approval_response_tx = session
+                .event_loop_context
+                .tagged_mode_channels
+                .approval_response_tx
+                .clone();
             crate::tagged_mode::run_tagged_mode(
                 session,
                 message_text,
                 permission_response_tx,
                 approval_response_tx,
-            ).await?
+            )
+            .await?
         }
     }
 
