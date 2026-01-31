@@ -739,7 +739,7 @@ impl AppState {
 
     pub fn add_final_response(&mut self, content: &str) {
         // Add blank line before response
-        self.add_message("".to_string());
+        self.add_message("\n".to_string());
 
         let msg_line = MessageLine::Markdown(content.to_string());
         self.add_message_line(msg_line);
