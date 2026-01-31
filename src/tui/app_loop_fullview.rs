@@ -1,7 +1,7 @@
 use anyhow::Result;
-use crossterm::event::{Event, EventStream, MouseEventKind};
+use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 
@@ -30,16 +30,11 @@ pub async fn run_event_loop(
     let mut event_stream = EventStream::new();
     let mut render_interval = interval(Duration::from_millis(50));
     let mut tick_interval = interval(Duration::from_millis(100));
-    let mut last_mouse_scroll_render = Instant::now();
-    let mouse_scroll_throttle = Duration::from_millis(50);
 
     loop {
         tokio::select! {
             _ = render_interval.tick() => {
-                let should_animate = matches!(app.agent_state, super::events::AgentState::Thinking | super::events::AgentState::ExecutingTools);
-                if should_animate || app.has_pending_messages() {
-                    render_frame(app, &mut terminal, &message_renderer)?;
-                }
+                render_frame(app, &mut terminal, &message_renderer)?;
             }
             _ = tick_interval.tick() => {
                 process_agent_events(app, &mut context).await;
@@ -51,19 +46,14 @@ pub async fn run_event_loop(
                 }
             }
             Some(Ok(event)) = event_stream.next() => {
-                handle_user_input(&event, app, &mut agent_task, &mut context).await?;
-
                 let is_mouse_scroll = matches!(
                     event,
-                    Event::Mouse(ref m) if matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
+                    Event::Mouse(ref m) if matches!(m.kind, crossterm::event::MouseEventKind::ScrollUp | crossterm::event::MouseEventKind::ScrollDown)
                 );
 
-                if is_mouse_scroll {
-                    if last_mouse_scroll_render.elapsed() >= mouse_scroll_throttle {
-                        render_frame(app, &mut terminal, &message_renderer)?;
-                        last_mouse_scroll_render = Instant::now();
-                    }
-                } else {
+                handle_user_input(&event, app, &mut agent_task, &mut context).await?;
+
+                if !is_mouse_scroll {
                     render_frame(app, &mut terminal, &message_renderer)?;
                 }
             }
@@ -107,10 +97,18 @@ fn render_frame(
             height: ui_height,
         };
 
-        app.vertical_scroll_viewport_length = message_area.height as usize;
+        let viewport_height = message_area.height as usize;
+        app.vertical_scroll_viewport_length = viewport_height;
+
+        let max_scroll = app.vertical_scroll_content_length
+            .saturating_sub(viewport_height);
+        app.vertical_scroll = app.vertical_scroll.min(max_scroll);
+
         app.vertical_scroll_state = app
             .vertical_scroll_state
-            .viewport_content_length(message_area.height as usize);
+            .content_length(app.vertical_scroll_content_length)
+            .viewport_content_length(viewport_height)
+            .position(app.vertical_scroll);
 
         render_messages_fullview(app, message_area, frame.buffer_mut());
         layout.render(app, ui_area, frame.buffer_mut());
@@ -146,11 +144,9 @@ fn process_pending_messages_fullview(app: &mut AppState) {
             .saturating_sub(app.vertical_scroll_viewport_length);
 
     app.vertical_scroll_content_length = total_lines;
-    app.vertical_scroll_state = app.vertical_scroll_state.content_length(total_lines);
 
     if has_pending && was_at_bottom {
         app.vertical_scroll = total_lines.saturating_sub(app.vertical_scroll_viewport_length);
-        app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
     }
 }
 
@@ -210,7 +206,9 @@ fn render_messages_fullview(
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
+            .end_symbol(Some("↓"))
+            .track_symbol(Some("│"))
+            .thumb_symbol("█");
 
         scrollbar.render(scrollbar_area, buf, &mut app.vertical_scroll_state);
     }
