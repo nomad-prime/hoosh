@@ -1,6 +1,6 @@
 use super::clipboard::ClipboardManager;
 use super::events::AgentState;
-use super::input::{PasteDetector, TextAttachment};
+use super::input::{PasteDetector, TextArea, TextAttachment};
 use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
@@ -14,7 +14,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::ScrollbarState;
 use std::collections::VecDeque;
 use std::time::Instant;
-use tui_textarea::TextArea;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputMode {
@@ -177,12 +176,12 @@ impl CompletionState {
 
 pub struct AttachmentViewState {
     pub attachment_id: usize,
-    pub editor: TextArea<'static>,
+    pub editor: TextArea,
     pub is_modified: bool,
 }
 
 pub struct AppState {
-    pub input: TextArea<'static>,
+    pub input: TextArea,
     pub messages: VecDeque<MessageLine>,
     pub pending_messages: VecDeque<MessageLine>,
     pub agent_state: AgentState,

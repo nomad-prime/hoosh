@@ -372,25 +372,18 @@ impl SetupWizardDialog {
             .map(|b| b.as_str())
             .unwrap_or("unknown");
 
-        let model = state
-            .model_input
-            .lines()
-            .first()
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let model_lines = state.model_input.lines();
+        let model = model_lines.first().map(|s| s.as_str()).unwrap_or("");
 
-        let api_key_status = if state.api_key_input.lines()[0].is_empty() {
+        let api_key_lines = state.api_key_input.lines();
+        let api_key_status = if api_key_lines.first().map(|s| s.is_empty()).unwrap_or(true) {
             "Not set".to_string()
         } else {
             "Set".to_string()
         };
 
-        let base_url = state
-            .base_url_input
-            .lines()
-            .first()
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let base_url_lines = state.base_url_input.lines();
+        let base_url = base_url_lines.first().map(|s| s.as_str()).unwrap_or("");
         let base_url_display = if base_url.is_empty() {
             "Default"
         } else {

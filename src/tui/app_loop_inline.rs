@@ -58,14 +58,64 @@ fn render_frame(
 ) -> Result<()> {
     message_renderer.render_pending_messages(app, terminal)?;
 
-    let layout = Layout::create(app);
+    let terminal_width = terminal.get_viewport_area().width;
+    let layout = Layout::create(app, terminal_width);
     resize_terminal_inline(terminal, layout.total_height())?;
 
     terminal.draw(|frame| {
-        layout.render(app, frame.area(), frame.buffer_mut());
+        let area = frame.area();
+        layout.render(app, area, frame.buffer_mut());
+
+        // Position cursor in the input field
+        let input_component_area = calculate_input_area(&layout, area);
+
+        // Match the input component's area calculation exactly
+        use ratatui::widgets::{Block, Borders};
+        use ratatui::layout::{Constraint, Layout as RatatuiLayout};
+
+        let input_block = Block::default().borders(Borders::BOTTOM | Borders::TOP);
+        let inner_area = input_block.inner(input_component_area);
+
+        // Calculate text_area exactly like the input component does
+        let horizontal = RatatuiLayout::horizontal([
+            Constraint::Length(2), // Prompt area ("> ")
+            Constraint::Min(1),    // Text input area
+        ]);
+        let areas = horizontal.split(inner_area);
+        let text_area = areas[1]; // The second area is the text area
+
+        // Get cursor position from textarea
+        // Note: There seems to be an off-by-one issue, possibly in how the textarea
+        // calculates column width. Subtracting 1 appears to fix it.
+        if let Some((cursor_x, cursor_y)) = app.input.cursor_pos(text_area) {
+            frame.set_cursor_position(ratatui::layout::Position {
+                x: cursor_x,
+                y: cursor_y,
+            });
+        }
     })?;
 
     Ok(())
+}
+
+fn calculate_input_area(layout: &Layout<AppState>, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+    // Replicate the layout calculation to find where the input component is
+    use ratatui::layout::{Constraint, Layout as RatatuiLayout};
+
+    let constraints: Vec<Constraint> = layout
+        .visible_components()
+        .map(|comp| Constraint::Length(comp.height()))
+        .collect();
+
+    let areas = RatatuiLayout::vertical(constraints).split(area);
+
+    // Find the input component (it's typically second to last, before mode indicator)
+    let input_index = layout
+        .visible_components()
+        .count()
+        .saturating_sub(2); // -2 because mode indicator is last, input is second to last
+
+    areas.get(input_index).copied().unwrap_or(area)
 }
 
 async fn process_agent_events(app: &mut AppState, context: &mut EventLoopContext) {

@@ -4,11 +4,11 @@ use crate::tui::layout::Layout;
 use crate::tui::layout_builder::LayoutBuilder;
 
 pub trait AppLayout {
-    fn create(app: &AppState) -> Self;
+    fn create(app: &AppState, terminal_width: u16) -> Self;
 }
 
 impl AppLayout for Layout<AppState> {
-    fn create(app: &AppState) -> Self {
+    fn create(app: &AppState, terminal_width: u16) -> Self {
         let has_overlay = app.is_showing_tool_permission_dialog()
             || app.is_showing_approval_dialog()
             || app.is_completing();
@@ -66,6 +66,12 @@ impl AppLayout for Layout<AppState> {
         // No border needed, just the number of todos
         let todo_list_height = app.todos.len().min(10) as u16;
 
+        // Calculate input field height based on wrapped lines using actual terminal width
+        // The input has TOP and BOTTOM borders (no left/right), so width stays the same
+        // The text area width is terminal_width - 2 (only the prompt)
+        let input_text_width = terminal_width.saturating_sub(2); // -2 for prompt only
+        let input_height = app.input.desired_height(input_text_width).max(1).min(10); // Cap at 10 lines
+
         let mut builder = LayoutBuilder::new()
             .spacer(1)
             .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
@@ -77,7 +83,7 @@ impl AppLayout for Layout<AppState> {
             )
             .status_bar()
             .todo_list(todo_list_height, todo_list_visible)
-            .input_field()
+            .input_field(input_height)
             .mode_indicator(!has_overlay);
 
         if app.is_showing_tool_permission_dialog() {
