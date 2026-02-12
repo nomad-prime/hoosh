@@ -328,7 +328,12 @@ impl TextArea {
         }
     }
 
-    fn move_to_display_col_on_line(&mut self, line_start: usize, line_end: usize, target_col: usize) {
+    fn move_to_display_col_on_line(
+        &mut self,
+        line_start: usize,
+        line_end: usize,
+        target_col: usize,
+    ) {
         let mut width_so_far = 0usize;
         for (i, g) in self.text[line_start..line_end].grapheme_indices(true) {
             width_so_far += g.width();
@@ -494,11 +499,7 @@ impl TextArea {
     pub fn kill_to_beginning_of_line(&mut self) {
         let bol = self.beginning_of_current_line();
         let range = if self.cursor_pos == bol {
-            if bol > 0 {
-                Some(bol - 1..bol)
-            } else {
-                None
-            }
+            if bol > 0 { Some(bol - 1..bol) } else { None }
         } else {
             Some(bol..self.cursor_pos)
         };
@@ -556,7 +557,8 @@ impl TextArea {
     }
 
     fn end_of_next_word(&self) -> usize {
-        let Some(first_non_ws) = self.text[self.cursor_pos..].find(|c: char| !c.is_whitespace()) else {
+        let Some(first_non_ws) = self.text[self.cursor_pos..].find(|c: char| !c.is_whitespace())
+        else {
             return self.text.len();
         };
 
@@ -603,8 +605,7 @@ impl TextArea {
             if needs_recalc {
                 let lines = wrap_ranges(
                     &self.text,
-                    Options::new(width as usize)
-                        .wrap_algorithm(textwrap::WrapAlgorithm::FirstFit),
+                    Options::new(width as usize).wrap_algorithm(textwrap::WrapAlgorithm::FirstFit),
                 );
                 *cache = Some(WrapCache { width, lines });
             }
@@ -616,11 +617,7 @@ impl TextArea {
 
     fn wrapped_line_index_by_start(lines: &[Range<usize>], pos: usize) -> Option<usize> {
         let idx = lines.partition_point(|r| r.start <= pos);
-        if idx == 0 {
-            None
-        } else {
-            Some(idx - 1)
-        }
+        if idx == 0 { None } else { Some(idx - 1) }
     }
 
     pub fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
@@ -644,13 +641,19 @@ impl TextArea {
         Some((area.x + col, area.y + screen_row))
     }
 
-    fn effective_scroll(&self, area_height: u16, lines: &[Range<usize>], current_scroll: u16) -> u16 {
+    fn effective_scroll(
+        &self,
+        area_height: u16,
+        lines: &[Range<usize>],
+        current_scroll: u16,
+    ) -> u16 {
         let total_lines = lines.len() as u16;
         if area_height >= total_lines {
             return 0;
         }
 
-        let cursor_line_idx = Self::wrapped_line_index_by_start(lines, self.cursor_pos).unwrap_or(0) as u16;
+        let cursor_line_idx =
+            Self::wrapped_line_index_by_start(lines, self.cursor_pos).unwrap_or(0) as u16;
 
         let max_scroll = total_lines.saturating_sub(area_height);
         let mut scroll = current_scroll.min(max_scroll);
@@ -810,7 +813,8 @@ impl TextArea {
         let end = at + removed;
         let diff = inserted as isize - removed as isize;
 
-        self.elements.retain(|e| !(e.range.start >= at && e.range.end <= end));
+        self.elements
+            .retain(|e| !(e.range.start >= at && e.range.end <= end));
 
         for e in &mut self.elements {
             if e.range.end <= at {
