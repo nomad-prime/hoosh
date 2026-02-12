@@ -1324,6 +1324,7 @@ dependencies = [
  "tokio",
  "toml 0.9.5",
  "tui-textarea",
+ "unicode-segmentation",
  "unicode-width 0.1.14",
  "walkdir",
  "which",

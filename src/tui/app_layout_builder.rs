@@ -18,7 +18,7 @@ pub trait AppLayoutBuilder {
     fn subagent_results(self, height: u16, visible: bool) -> Self;
     fn bash_results(self, height: u16, visible: bool) -> Self;
     fn todo_list(self, height: u16, visible: bool) -> Self;
-    fn input_field(self) -> Self;
+    fn input_field(self, height: u16) -> Self;
     fn mode_indicator(self, visible: bool) -> Self;
     fn permission_dialog(self, content_lines: u16, visible: bool) -> Self;
     fn approval_dialog(self, visible: bool) -> Self;
@@ -58,8 +58,8 @@ impl AppLayoutBuilder for LayoutBuilder<AppState> {
         )
     }
 
-    fn input_field(self) -> Self {
-        self.component(ComponentDescriptor::new(1, Some(Box::new(Input))).with_border())
+    fn input_field(self, height: u16) -> Self {
+        self.component(ComponentDescriptor::new(height, Some(Box::new(Input))).with_border())
     }
 
     fn mode_indicator(self, visible: bool) -> Self {
