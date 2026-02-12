@@ -43,17 +43,15 @@ impl InputHandler for PasteHandler {
                     }
                 }
             }
-            PasteClassification::Attachment => {
-                match app.create_attachment(text.to_string()) {
-                    Ok(id) => {
-                        let reference = format!("[pasted text-{}]", id);
-                        app.input.insert_str(&reference);
-                    }
-                    Err(e) => {
-                        app.add_error(&format!("Failed to create attachment: {}", e));
-                    }
+            PasteClassification::Attachment => match app.create_attachment(text.to_string()) {
+                Ok(id) => {
+                    let reference = format!("[pasted text-{}]", id);
+                    app.input.insert_str(&reference);
                 }
-            }
+                Err(e) => {
+                    app.add_error(&format!("Failed to create attachment: {}", e));
+                }
+            },
             PasteClassification::Rejected(msg) => {
                 app.add_error(&msg);
             }

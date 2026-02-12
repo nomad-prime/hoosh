@@ -70,8 +70,8 @@ fn render_frame(
         let input_component_area = calculate_input_area(&layout, area);
 
         // Match the input component's area calculation exactly
-        use ratatui::widgets::{Block, Borders};
         use ratatui::layout::{Constraint, Layout as RatatuiLayout};
+        use ratatui::widgets::{Block, Borders};
 
         let input_block = Block::default().borders(Borders::BOTTOM | Borders::TOP);
         let inner_area = input_block.inner(input_component_area);
@@ -98,7 +98,10 @@ fn render_frame(
     Ok(())
 }
 
-fn calculate_input_area(layout: &Layout<AppState>, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+fn calculate_input_area(
+    layout: &Layout<AppState>,
+    area: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
     // Replicate the layout calculation to find where the input component is
     use ratatui::layout::{Constraint, Layout as RatatuiLayout};
 
@@ -110,10 +113,7 @@ fn calculate_input_area(layout: &Layout<AppState>, area: ratatui::layout::Rect) 
     let areas = RatatuiLayout::vertical(constraints).split(area);
 
     // Find the input component (it's typically second to last, before mode indicator)
-    let input_index = layout
-        .visible_components()
-        .count()
-        .saturating_sub(2); // -2 because mode indicator is last, input is second to last
+    let input_index = layout.visible_components().count().saturating_sub(2); // -2 because mode indicator is last, input is second to last
 
     areas.get(input_index).copied().unwrap_or(area)
 }

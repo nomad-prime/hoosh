@@ -901,10 +901,12 @@ mod attachment_tests {
 
         let result = state.create_attachment(small_content);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("too small for attachment"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("too small for attachment")
+        );
         assert_eq!(state.attachments.len(), 0);
     }
 
