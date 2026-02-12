@@ -953,6 +953,10 @@ impl TextArea {
     }
 }
 
+#[cfg(test)]
+#[path = "textarea_tests.rs"]
+mod tests;
+
 // Widget wrapper for rendering
 pub struct TextAreaWidget<'a> {
     textarea: &'a TextArea,

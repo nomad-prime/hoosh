@@ -70,7 +70,7 @@ impl AppLayout for Layout<AppState> {
         // The input has TOP and BOTTOM borders (no left/right), so width stays the same
         // The text area width is terminal_width - 2 (only the prompt)
         let input_text_width = terminal_width.saturating_sub(2); // -2 for prompt only
-        let input_height = app.input.desired_height(input_text_width).max(1).min(10); // Cap at 10 lines
+        let input_height = app.input.desired_height(input_text_width).clamp(1, 10);
 
         let mut builder = LayoutBuilder::new()
             .spacer(1)
