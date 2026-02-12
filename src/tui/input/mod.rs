@@ -6,4 +6,4 @@ pub mod wrapping;
 pub use attachment::TextAttachment;
 pub use paste_detector::{PasteClassification, PasteDetector};
 pub use textarea::{TextArea, TextAreaState};
-pub use wrapping::{wrap_ranges, WrappedLine, WrappingCalculator};
+pub use wrapping::wrap_ranges;
