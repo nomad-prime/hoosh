@@ -18,7 +18,6 @@ use std::time::Instant;
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputMode {
     Normal,
-    Expanded,
     AttachmentList,
     AttachmentView,
 }

@@ -15,10 +15,6 @@
 - Q: How should very long unbreakable words (URLs, paths) that exceed terminal width be handled? → A: Force-break at terminal width boundary (visual only, content intact) with visual indicator
 - Q: What is the maximum attachment size limit to prevent memory exhaustion? → A: 5MB per attachment; reject larger pastes with error message
 - Q: What character count threshold should trigger attachment creation for pasted content? → A: 200 characters
-- Q: Which hotkey should activate the expanded editor view? → A: Ctrl+E
-- Q: Should the expanded editor be an internal TUI component or launch an external editor? → A: Internal TUI component using tui-textarea widget
-- Q: How much screen space should the expanded editor occupy? → A: 50-60% of terminal height
-- Q: Which keybinding should return from expanded view to normal input mode? → A: Esc
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -56,24 +52,7 @@ A user types or pastes text that approaches the terminal width. Instead of exten
 
 ---
 
-### User Story 3 - Edit in Expanded View (Priority: P2)
-
-A user needs to compose or edit a lengthy, complex message. They activate an internal expanded editor view (built using tui-textarea widget) that provides more screen space within the hoosh interface, making it easier to review and modify their content before submitting.
-
-**Why this priority**: Enhances user experience for complex tasks but not critical for basic functionality. Users can still input text without it, but extended editing is uncomfortable in single-line mode.
-
-**Independent Test**: Can be tested by activating expanded view, entering multi-line content, editing it, and returning to normal mode. Delivers value by improving comfort for longer compositions.
-
-**Acceptance Scenarios**:
-
-1. **Given** user is in normal input mode, **When** they press Ctrl+E, **Then** interface switches to expanded editor view
-2. **Given** user is in expanded editor view with content, **When** they press Esc to return to normal mode, **Then** all content is preserved
-3. **Given** expanded editor contains 50 lines, **When** user scrolls, **Then** they can view all content smoothly
-4. **Given** user is in expanded view, **When** interface renders, **Then** editor occupies 50-60% of terminal height
-
----
-
-### User Story 4 - Manage Attached Content (Priority: P3)
+### User Story 3 - Manage Attached Content (Priority: P3)
 
 A user has pasted multiple large texts as attachments and wants to review, edit, or remove them before submitting. They can view a list of attachments, open any attachment to see its content, make edits, or delete unwanted items.
 
@@ -112,11 +91,6 @@ A user has pasted multiple large texts as attachments and wants to review, edit,
 - **FR-005**: System MUST wrap text automatically when approaching terminal width boundary
 - **FR-006**: System MUST rewrap text dynamically when terminal is resized
 - **FR-007**: System MUST display the visual indicator symbol "↩" (U+21A9 LEFTWARDS ARROW WITH HOOK) at soft-wrap points to distinguish them from hard line breaks
-- **FR-008**: Users MUST be able to activate an expanded editor view via Ctrl+E hotkey
-- **FR-009**: Expanded editor view MUST be an internal TUI component (using tui-textarea widget) that occupies 50-60% of terminal height
-- **FR-010**: Users MUST be able to return from expanded view to normal mode via Esc key while preserving content
-- **FR-011**: System MUST provide scrolling capability in expanded editor view for content exceeding visible area
-- **FR-022**: System MUST NOT launch external editors (all editing happens within the hoosh TUI interface)
 - **FR-012**: Users MUST be able to view a list of all current attachments with metadata
 - **FR-013**: Users MUST be able to view full content of any attachment
 - **FR-014**: Users MUST be able to edit attachment content
@@ -137,7 +111,7 @@ A user has pasted multiple large texts as attachments and wants to review, edit,
   - Lifecycle: Created on paste exceeding threshold; persists until submission or explicit deletion; not saved across sessions
 
 - **Input Content**: The main text being composed by the user
-  - Attributes: text content, cursor position, display mode (normal/expanded)
+  - Attributes: text content, cursor position
   - Relationships: May contain zero or more attachment references
 
 ## Success Criteria *(mandatory)*
@@ -146,8 +120,7 @@ A user has pasted multiple large texts as attachments and wants to review, edit,
 
 - **SC-001**: Users can paste content of 10,000+ characters without UI layout breaking or content loss
 - **SC-002**: Text automatically wraps at terminal boundaries for terminals ranging from 80 to 240 columns width
-- **SC-003**: Users can compose and edit messages exceeding 100 lines comfortably in expanded view
-- **SC-004**: 95% of paste operations complete without requiring user intervention or correction
-- **SC-005**: Terminal resize operations trigger rewrapping within 100 milliseconds
-- **SC-006**: Users can navigate with cursor through 50+ lines of mixed wrapped and hard-break content without confusion
-- **SC-007**: Attachment management (list, view, edit, delete) can be completed in under 30 seconds per attachment
+- **SC-003**: 95% of paste operations complete without requiring user intervention or correction
+- **SC-004**: Terminal resize operations trigger rewrapping within 100 milliseconds
+- **SC-005**: Users can navigate with cursor through 50+ lines of mixed wrapped and hard-break content without confusion
+- **SC-006**: Attachment management (list, view, edit, delete) can be completed in under 30 seconds per attachment
