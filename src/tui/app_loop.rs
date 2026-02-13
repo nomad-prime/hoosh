@@ -114,7 +114,8 @@ fn render_frame(
 ) -> Result<()> {
     message_renderer.render_pending_messages(app, terminal)?;
 
-    let layout = Layout::create(app);
+    let terminal_width = terminal.get_viewport_area().width;
+    let layout = Layout::create(app, terminal_width);
     resize_terminal(terminal, layout.total_height())?;
 
     terminal.draw(|frame| {

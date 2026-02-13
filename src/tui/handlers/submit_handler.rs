@@ -36,15 +36,18 @@ impl InputHandler for SubmitHandler {
 
         let input_text = app.get_input_text();
         if !input_text.trim().is_empty() && !agent_task_active {
-            app.add_user_input(&input_text);
+            let expanded_input = app.expand_attachments(&input_text);
 
-            app.prompt_history.add(input_text.clone());
+            app.add_user_input(&expanded_input);
+
+            app.prompt_history.add(expanded_input.clone());
             app.clear_input();
+            app.clear_attachments();
 
-            if input_text.trim().starts_with('/') {
-                KeyHandlerResult::StartCommand(input_text)
+            if expanded_input.trim().starts_with('/') {
+                KeyHandlerResult::StartCommand(expanded_input)
             } else {
-                KeyHandlerResult::StartConversation(input_text)
+                KeyHandlerResult::StartConversation(expanded_input)
             }
         } else {
             KeyHandlerResult::Handled

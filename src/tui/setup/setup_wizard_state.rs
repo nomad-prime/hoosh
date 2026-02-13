@@ -1,6 +1,6 @@
+use crate::tui::input::TextArea;
 use crate::tui::palette;
 use ratatui::style::{Modifier, Style};
-use tui_textarea::TextArea;
 
 #[derive(Debug, Clone)]
 pub enum SetupWizardStep {
@@ -77,10 +77,10 @@ pub struct SetupWizardState {
     pub current_step: SetupWizardStep,
     pub selected_backend_index: usize,
     pub selected_backend: Option<BackendType>,
-    pub api_key_input: TextArea<'static>,
-    pub base_url_input: TextArea<'static>,
-    pub pricing_endpoint_input: TextArea<'static>,
-    pub model_input: TextArea<'static>,
+    pub api_key_input: TextArea,
+    pub base_url_input: TextArea,
+    pub pricing_endpoint_input: TextArea,
+    pub model_input: TextArea,
     pub selected_confirmation_index: usize,
     pub should_quit: bool,
     pub result: Option<SetupWizardResult>,

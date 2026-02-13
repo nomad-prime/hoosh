@@ -1,6 +1,6 @@
 [package]
 name = "hoosh"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2024"
 repository = "https://github.com/nomad-prime/hoosh"
 
@@ -41,6 +41,7 @@ rand = "0.8"
 arboard = "3.4"
 textwrap = "0.16"
 unicode-width = "0.1"
+unicode-segmentation = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
 capitalize = "0.3.4"
 
