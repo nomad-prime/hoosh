@@ -17,6 +17,7 @@ mod handler_result;
 pub mod handlers;
 pub(crate) mod header;
 pub mod init_permission;
+pub mod input;
 pub(crate) mod input_handler;
 mod layout;
 mod layout_builder;
