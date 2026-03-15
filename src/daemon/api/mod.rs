@@ -11,6 +11,7 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
+use crate::console::console;
 use crate::daemon::config::DaemonConfig;
 use crate::daemon::executor::TaskExecutor;
 use crate::daemon::store::TaskStore;
@@ -123,7 +124,7 @@ impl DaemonServer {
             .await
             .with_context(|| format!("Failed to bind to {}", addr))?;
 
-        eprintln!("hoosh daemon listening on {}", addr);
+        console().plain(&format!("hoosh daemon listening on {}", addr));
 
         axum::serve(listener, router)
             .with_graceful_shutdown(async move {
@@ -146,7 +147,7 @@ impl DaemonServer {
                     let _ = ctrl_c.await;
                 }
 
-                eprintln!("hoosh daemon shutting down...");
+                console().plain("hoosh daemon shutting down...");
                 shutting_down.store(true, Ordering::Relaxed);
 
                 let mut tasks = active_tasks.write().await;

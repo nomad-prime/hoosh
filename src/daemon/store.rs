@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+use crate::console::console;
 use crate::daemon::task::{Task, TaskStatus};
 
 pub struct TaskStore {
@@ -83,11 +84,11 @@ impl TaskStore {
                 match serde_json::from_str::<Task>(&content) {
                     Ok(task) => tasks.push(task),
                     Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to parse task file {}: {}",
+                        console().warning(&format!(
+                            "Failed to parse task file {}: {}",
                             path.display(),
                             e
-                        );
+                        ));
                     }
                 }
             }

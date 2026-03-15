@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::DaemonAction;
 use crate::config::AppConfig;
+use crate::console::console;
 use crate::daemon::api::DaemonServer;
 use crate::daemon::config::DaemonConfig;
 use crate::daemon::executor::TaskExecutor;
@@ -78,7 +79,7 @@ async fn daemon_stop(force: bool, _config: &DaemonConfig) -> Result<()> {
     let pid_path = home.join(".hoosh").join("daemon.pid");
 
     if !pid_path.exists() {
-        eprintln!("daemon is not running (no PID file)");
+        console().plain("daemon is not running (no PID file)");
         return Ok(());
     }
 
@@ -110,19 +111,19 @@ async fn daemon_stop(force: bool, _config: &DaemonConfig) -> Result<()> {
                     break;
                 }
                 if start.elapsed() > timeout {
-                    eprintln!("Timed out waiting for daemon to stop. Use --force to kill.");
+                    console().warning("Timed out waiting for daemon to stop. Use --force to kill.");
                     return Ok(());
                 }
             }
         }
 
         let _ = std::fs::remove_file(&pid_path);
-        eprintln!("daemon stopped");
+        console().success("daemon stopped");
     }
 
     #[cfg(not(unix))]
     {
-        eprintln!("daemon stop is only supported on Unix systems");
+        console().warning("daemon stop is only supported on Unix systems");
     }
 
     Ok(())
@@ -213,7 +214,7 @@ async fn daemon_submit(
     } else {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        eprintln!("Error {}: {}", status, body);
+        console().error(&format!("Error {}: {}", status, body));
     }
 
     Ok(())
