@@ -1,5 +1,6 @@
 use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
+use crate::daemon::config::DaemonConfig;
 use crate::terminal_mode::TerminalMode;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
@@ -106,6 +107,8 @@ pub struct AppConfig {
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default = "default_session_context_enabled")]
     pub session_context_enabled: bool,
+    #[serde(default)]
+    pub daemon: Option<DaemonConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -163,6 +166,7 @@ impl Default for AppConfig {
             conversation_storage: None,
             terminal_mode: None,
             session_context_enabled: default_session_context_enabled(),
+            daemon: None,
         }
     }
 }
@@ -381,7 +385,7 @@ impl AppConfig {
             .to_string())
     }
 
-    fn hoosh_config_dir() -> ConfigResult<PathBuf> {
+    pub fn hoosh_config_dir() -> ConfigResult<PathBuf> {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .map_err(|_| ConfigError::NoHomeDirectory)?;
@@ -394,9 +398,11 @@ impl AppConfig {
     }
 
     pub fn config_path() -> ConfigResult<PathBuf> {
-        let mut path = Self::hoosh_config_dir()?;
-        path.push("config.toml");
-        Ok(path)
+        Ok(Self::hoosh_config_dir()?.join("config.toml"))
+    }
+
+    pub fn global_permissions_path() -> ConfigResult<PathBuf> {
+        Ok(Self::hoosh_config_dir()?.join("permissions.json"))
     }
 
     pub fn agents_dir() -> ConfigResult<PathBuf> {
