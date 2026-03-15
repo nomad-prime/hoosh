@@ -1,6 +1,6 @@
 [package]
 name = "hoosh"
-version = "0.4.6"
+version = "0.5.0"
 edition = "2024"
 repository = "https://github.com/nomad-prime/hoosh"
 
@@ -10,10 +10,10 @@ path = "src/main.rs"
 
 [features]
 default = ["openai-compatible", "together-ai", "anthropic", "ollama"]
-openai-compatible = ["dep:reqwest"]
-together-ai = ["dep:reqwest"]
-anthropic = ["dep:reqwest"]
-ollama = ["dep:reqwest"]
+openai-compatible = []
+together-ai = []
+anthropic = []
+ollama = []
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
@@ -44,9 +44,7 @@ unicode-width = "0.1"
 unicode-segmentation = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
 capitalize = "0.3.4"
-
-# Use ureq instead of reqwest for simpler HTTP client that doesn't pull in ICU deps
-reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 dirs = "6.0.0"
 jsonschema = "0.18"
 glob = "0.3.3"
@@ -58,9 +56,15 @@ syntect = "5.2"
 shlex = "1.3.0"
 fs2 = "0.4"
 gray_matter = "0.2"
+axum = "0.7"
+tower = "0.4"
+uuid = { version = "1.0", features = ["v4"] }
+git2 = "0.19"
+auth-git2 = "0.5"
+nix = { version = "0.29", features = ["signal"] }
+tempfile = "3.0"
 
 [dev-dependencies]
-tempfile = "3.0"
 httpmock = "0.7"
 
 # The profile that 'dist' will build with

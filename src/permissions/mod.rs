@@ -29,6 +29,8 @@ pub struct PermissionsInfo {
 #[derive(Clone)]
 pub struct PermissionManager {
     skip_permissions: bool,
+    deny_unknown: bool,
+    sandbox_root: Option<PathBuf>,
     event_sender: mpsc::UnboundedSender<crate::agent::AgentEvent>,
     response_receiver: Arc<Mutex<mpsc::UnboundedReceiver<crate::agent::PermissionResponse>>>,
     request_counter: Arc<AtomicU64>,
@@ -43,12 +45,42 @@ impl PermissionManager {
     ) -> Self {
         Self {
             skip_permissions: false,
+            deny_unknown: false,
+            sandbox_root: None,
             event_sender,
             response_receiver: Arc::new(Mutex::new(response_receiver)),
             request_counter: Arc::new(AtomicU64::new(0)),
             project_root: Arc::new(Mutex::new(None)),
             permissions_file: Arc::new(Mutex::new(storage::PermissionsFile::default())),
         }
+    }
+
+    /// Non-interactive constructor for headless contexts (e.g. daemon mode).
+    /// Uses a pre-resolved permissions file; unknown tools are denied rather than
+    /// prompting a user.
+    pub fn non_interactive(permissions_file: storage::PermissionsFile) -> Self {
+        let (event_tx, _) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        Self {
+            skip_permissions: false,
+            deny_unknown: true,
+            sandbox_root: None,
+            event_sender: event_tx,
+            response_receiver: Arc::new(Mutex::new(response_rx)),
+            request_counter: Arc::new(AtomicU64::new(0)),
+            project_root: Arc::new(Mutex::new(None)),
+            permissions_file: Arc::new(Mutex::new(permissions_file)),
+        }
+    }
+
+    pub fn with_sandbox_root(mut self, root: PathBuf) -> Self {
+        self.sandbox_root = Some(root);
+        self
+    }
+
+    pub fn with_deny_unknown(mut self, deny_unknown: bool) -> Self {
+        self.deny_unknown = deny_unknown;
+        self
     }
 
     pub fn with_project_root(
@@ -159,8 +191,44 @@ impl PermissionManager {
             return Ok(true);
         }
 
+        if let Some(ref root) = self.sandbox_root {
+            const FILE_KINDS: &[&str] = &[
+                "read_file",
+                "write_file",
+                "edit_file",
+                "list_directory",
+                "glob",
+                "grep",
+            ];
+            if FILE_KINDS.contains(&descriptor.kind()) {
+                let target = std::path::Path::new(descriptor.target());
+                let resolved = if target.is_absolute() {
+                    target.to_path_buf()
+                } else {
+                    root.join(target)
+                };
+                let canonical_root = std::fs::canonicalize(root).unwrap_or(root.clone());
+                let canonical_target = std::fs::canonicalize(&resolved).unwrap_or_else(|_| {
+                    resolved
+                        .parent()
+                        .and_then(|p| std::fs::canonicalize(p).ok())
+                        .map(|p| p.join(resolved.file_name().unwrap_or_default()))
+                        .unwrap_or_else(|| {
+                            canonical_root.join(resolved.file_name().unwrap_or_default())
+                        })
+                });
+                if !canonical_target.starts_with(&canonical_root) {
+                    return Ok(false);
+                }
+            }
+        }
+
         if let Some(persistent_decision) = self.check_persistent_tool_permission(descriptor) {
             return Ok(persistent_decision);
+        }
+
+        if self.deny_unknown {
+            return Ok(false);
         }
 
         let (allowed, scope) = self.ask_user_tool_permission(descriptor).await?;
@@ -531,5 +599,74 @@ mod tests {
             let info = manager.get_permissions_info();
             assert_eq!(info.allow_count, 1);
         }
+    }
+
+    #[tokio::test]
+    async fn sandbox_root_allows_file_inside() {
+        let sandbox = TempDir::new().unwrap();
+        // Create the file so canonicalize works
+        let file = sandbox.path().join("main.rs");
+        std::fs::write(&file, "").unwrap();
+
+        let tool = ReadFileTool::new();
+        let descriptor = ToolPermissionBuilder::new(&tool, file.to_str().unwrap())
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+
+        let manager = PermissionManager::non_interactive(storage::PermissionsFile {
+            version: 1,
+            allow: vec![storage::PermissionRule::ops_rule("read_file", "*")],
+            deny: vec![],
+        })
+        .with_sandbox_root(sandbox.path().to_path_buf());
+
+        assert!(manager.check_tool_permission(&descriptor).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn sandbox_root_denies_file_outside() {
+        let sandbox = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let file = outside.path().join("secret.txt");
+        std::fs::write(&file, "").unwrap();
+
+        let tool = ReadFileTool::new();
+        let descriptor = ToolPermissionBuilder::new(&tool, file.to_str().unwrap())
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+
+        let manager = PermissionManager::non_interactive(storage::PermissionsFile {
+            version: 1,
+            allow: vec![storage::PermissionRule::ops_rule("read_file", "*")],
+            deny: vec![],
+        })
+        .with_sandbox_root(sandbox.path().to_path_buf());
+
+        assert!(!manager.check_tool_permission(&descriptor).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn sandbox_root_allows_new_file_inside() {
+        let sandbox = TempDir::new().unwrap();
+        // File does not exist yet — simulates write_file for a new file
+        let file = sandbox.path().join("new_file.txt");
+
+        let tool =
+            crate::tools::WriteFileTool::with_working_directory(sandbox.path().to_path_buf());
+        let descriptor = ToolPermissionBuilder::new(&tool, file.to_str().unwrap())
+            .with_pattern_matcher(Arc::new(FilePatternMatcher))
+            .build()
+            .unwrap();
+
+        let manager = PermissionManager::non_interactive(storage::PermissionsFile {
+            version: 1,
+            allow: vec![storage::PermissionRule::ops_rule("write_file", "*")],
+            deny: vec![],
+        })
+        .with_sandbox_root(sandbox.path().to_path_buf());
+
+        assert!(manager.check_tool_permission(&descriptor).await.unwrap());
     }
 }

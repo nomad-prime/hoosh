@@ -7,6 +7,7 @@ pub mod completion;
 pub mod config;
 pub mod console;
 pub mod context_management;
+pub mod daemon;
 pub mod history;
 pub mod parser;
 pub mod permissions;

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
 use crate::agent::agent_events::AgentEvent;
@@ -33,6 +34,7 @@ pub struct Agent {
     event_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     context_manager: Option<Arc<ContextManager>>,
     system_reminder: Option<Arc<SystemReminder>>,
+    cancellation_token: Option<Arc<AtomicBool>>,
 }
 
 impl Agent {
@@ -49,6 +51,7 @@ impl Agent {
             event_sender: None,
             context_manager: None,
             system_reminder: None,
+            cancellation_token: None,
         }
     }
 
@@ -69,6 +72,11 @@ impl Agent {
 
     pub fn with_system_reminder(mut self, reminder: Arc<SystemReminder>) -> Self {
         self.system_reminder = Some(reminder);
+        self
+    }
+
+    pub fn with_cancellation_token(mut self, token: Arc<AtomicBool>) -> Self {
+        self.cancellation_token = Some(token);
         self
     }
 
@@ -130,6 +138,15 @@ impl Agent {
         }
 
         for step in 0..self.max_steps {
+            if self
+                .cancellation_token
+                .as_ref()
+                .is_some_and(|t| t.load(Ordering::Relaxed))
+            {
+                self.send_event(AgentEvent::Error("Task cancelled".to_string()));
+                return Ok(());
+            }
+
             self.send_event(AgentEvent::StepStarted { step });
 
             let reminder_result = self.apply_system_reminders(conversation, step).await?;

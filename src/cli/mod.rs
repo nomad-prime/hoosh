@@ -3,6 +3,7 @@ mod agents;
 mod alias;
 mod config;
 mod conversations;
+pub mod daemon;
 mod setup;
 pub mod shell_setup;
 
@@ -14,6 +15,7 @@ pub use agents::handle_agents;
 pub use alias::handle_alias_install;
 pub use config::handle_config;
 pub use conversations::handle_conversations;
+pub use daemon::handle_daemon;
 pub use setup::handle_setup;
 
 #[derive(Parser)]
@@ -74,6 +76,37 @@ pub enum Commands {
         action: AliasAction,
     },
     Setup,
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DaemonAction {
+    Start {
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    Stop {
+        #[arg(long)]
+        force: bool,
+    },
+    Status,
+    Submit {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        branch: String,
+        #[arg(long)]
+        instructions: String,
+        #[arg(long)]
+        pr_title: Option<String>,
+        #[arg(long = "label")]
+        labels: Vec<String>,
+        #[arg(long)]
+        token_budget: Option<usize>,
+    },
 }
 
 #[derive(Subcommand)]
