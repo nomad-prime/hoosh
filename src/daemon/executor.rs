@@ -411,7 +411,10 @@ mod tests {
         sandbox_dir: &TempDir,
         backend: Arc<dyn LlmBackend>,
     ) -> Arc<TaskExecutor> {
-        let config = DaemonConfig { sandbox_base_dir: sandbox_dir.path().to_path_buf(), ..Default::default() };
+        let config = DaemonConfig {
+            sandbox_base_dir: sandbox_dir.path().to_path_buf(),
+            ..Default::default()
+        };
 
         Arc::new(TaskExecutor::new(
             store,

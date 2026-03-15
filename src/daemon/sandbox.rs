@@ -157,9 +157,9 @@ impl Sandbox {
         let tree_oid = index.write_tree().context("Failed to write tree")?;
         let tree = repo.find_tree(tree_oid).context("Failed to find tree")?;
 
-        let sig = repo.signature().unwrap_or_else(|_| {
-            git2::Signature::now("hoosh", "hoosh@localhost").unwrap()
-        });
+        let sig = repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("hoosh", "hoosh@localhost").unwrap());
 
         let parent_commit = repo
             .head()
@@ -265,9 +265,7 @@ mod tests {
     #[tokio::test]
     async fn create_makes_sandbox_directory() {
         let base = TempDir::new().unwrap();
-        let sandbox = Sandbox::create("test-task-1", base.path())
-            .await
-            .unwrap();
+        let sandbox = Sandbox::create("test-task-1", base.path()).await.unwrap();
 
         assert!(sandbox.repo_dir.exists());
         assert!(sandbox.sandbox_dir.exists());
@@ -280,9 +278,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-2", base.path())
-            .await
-            .unwrap();
+        let mut sandbox = Sandbox::create("test-task-2", base.path()).await.unwrap();
 
         sandbox.clone(&url, "main", None).await.unwrap();
 
@@ -296,9 +292,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-3", base.path())
-            .await
-            .unwrap();
+        let mut sandbox = Sandbox::create("test-task-3", base.path()).await.unwrap();
 
         sandbox.clone(&url, "main", None).await.unwrap();
         sandbox.create_branch("feature/test").unwrap();
@@ -316,9 +310,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-4", base.path())
-            .await
-            .unwrap();
+        let mut sandbox = Sandbox::create("test-task-4", base.path()).await.unwrap();
 
         sandbox.clone(&url, "main", None).await.unwrap();
 
@@ -332,9 +324,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-5", base.path())
-            .await
-            .unwrap();
+        let mut sandbox = Sandbox::create("test-task-5", base.path()).await.unwrap();
 
         sandbox.clone(&url, "main", None).await.unwrap();
 
@@ -350,9 +340,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-6", base.path())
-            .await
-            .unwrap();
+        let mut sandbox = Sandbox::create("test-task-6", base.path()).await.unwrap();
 
         sandbox.clone(&url, "main", None).await.unwrap();
         std::fs::write(sandbox.repo_dir.join("change.txt"), "content").unwrap();
@@ -371,9 +359,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-7", base.path())
-            .await
-            .unwrap();
+        let mut sandbox = Sandbox::create("test-task-7", base.path()).await.unwrap();
 
         sandbox.clone(&url, "main", None).await.unwrap();
         sandbox.create_branch("feature/push-test").unwrap();
@@ -393,9 +379,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_removes_directory() {
         let base = TempDir::new().unwrap();
-        let sandbox = Sandbox::create("test-task-8", base.path())
-            .await
-            .unwrap();
+        let sandbox = Sandbox::create("test-task-8", base.path()).await.unwrap();
 
         let sandbox_dir = sandbox.sandbox_dir.clone();
         assert!(sandbox_dir.exists());
