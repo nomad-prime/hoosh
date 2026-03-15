@@ -37,8 +37,7 @@ impl TerminalCapabilities {
         has_vscode_ipc: bool,
         has_vscode_injection: bool,
     ) -> Self {
-        let is_vscode =
-            term_program == Some("vscode") || has_vscode_ipc || has_vscode_injection;
+        let is_vscode = term_program == Some("vscode") || has_vscode_ipc || has_vscode_injection;
 
         let is_iterm = term_program == Some("iTerm.app");
 
