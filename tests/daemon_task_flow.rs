@@ -91,10 +91,11 @@ async fn start_test_server() -> TestServer {
 
     let sandbox_dir = TempDir::new().unwrap();
 
-    let mut config = DaemonConfig::default();
-    config.sandbox_base_dir = sandbox_dir.path().to_path_buf();
-    // Bind to a random available port
-    config.bind_address = "127.0.0.1:0".parse().unwrap();
+    let config = DaemonConfig {
+        sandbox_base_dir: sandbox_dir.path().to_path_buf(),
+        bind_address: "127.0.0.1:0".parse().unwrap(),
+        ..Default::default()
+    };
     let config = Arc::new(config);
 
     let executor = Arc::new(TaskExecutor::new(

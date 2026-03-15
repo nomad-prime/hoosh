@@ -157,9 +157,9 @@ impl Sandbox {
         let tree_oid = index.write_tree().context("Failed to write tree")?;
         let tree = repo.find_tree(tree_oid).context("Failed to find tree")?;
 
-        let sig = repo
-            .signature()
-            .context("Failed to get repository signature")?;
+        let sig = repo.signature().unwrap_or_else(|_| {
+            git2::Signature::now("hoosh", "hoosh@localhost").unwrap()
+        });
 
         let parent_commit = repo
             .head()
@@ -265,7 +265,7 @@ mod tests {
     #[tokio::test]
     async fn create_makes_sandbox_directory() {
         let base = TempDir::new().unwrap();
-        let sandbox = Sandbox::create("test-task-1", &base.path().to_path_buf())
+        let sandbox = Sandbox::create("test-task-1", base.path())
             .await
             .unwrap();
 
@@ -280,7 +280,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-2", &base.path().to_path_buf())
+        let mut sandbox = Sandbox::create("test-task-2", base.path())
             .await
             .unwrap();
 
@@ -296,7 +296,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-3", &base.path().to_path_buf())
+        let mut sandbox = Sandbox::create("test-task-3", base.path())
             .await
             .unwrap();
 
@@ -316,7 +316,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-4", &base.path().to_path_buf())
+        let mut sandbox = Sandbox::create("test-task-4", base.path())
             .await
             .unwrap();
 
@@ -332,7 +332,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-5", &base.path().to_path_buf())
+        let mut sandbox = Sandbox::create("test-task-5", base.path())
             .await
             .unwrap();
 
@@ -350,7 +350,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-6", &base.path().to_path_buf())
+        let mut sandbox = Sandbox::create("test-task-6", base.path())
             .await
             .unwrap();
 
@@ -371,7 +371,7 @@ mod tests {
         let url = format!("file://{}", remote_dir.path().display());
 
         let base = TempDir::new().unwrap();
-        let mut sandbox = Sandbox::create("test-task-7", &base.path().to_path_buf())
+        let mut sandbox = Sandbox::create("test-task-7", base.path())
             .await
             .unwrap();
 
@@ -393,7 +393,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_removes_directory() {
         let base = TempDir::new().unwrap();
-        let sandbox = Sandbox::create("test-task-8", &base.path().to_path_buf())
+        let sandbox = Sandbox::create("test-task-8", base.path())
             .await
             .unwrap();
 
