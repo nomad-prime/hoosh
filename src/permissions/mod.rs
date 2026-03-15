@@ -192,8 +192,14 @@ impl PermissionManager {
         }
 
         if let Some(ref root) = self.sandbox_root {
-            const FILE_KINDS: &[&str] =
-                &["read_file", "write_file", "edit_file", "list_directory", "glob", "grep"];
+            const FILE_KINDS: &[&str] = &[
+                "read_file",
+                "write_file",
+                "edit_file",
+                "list_directory",
+                "glob",
+                "grep",
+            ];
             if FILE_KINDS.contains(&descriptor.kind()) {
                 let target = std::path::Path::new(descriptor.target());
                 let resolved = if target.is_absolute() {
@@ -203,10 +209,13 @@ impl PermissionManager {
                 };
                 let canonical_root = std::fs::canonicalize(root).unwrap_or(root.clone());
                 let canonical_target = std::fs::canonicalize(&resolved).unwrap_or_else(|_| {
-                    resolved.parent()
+                    resolved
+                        .parent()
                         .and_then(|p| std::fs::canonicalize(p).ok())
                         .map(|p| p.join(resolved.file_name().unwrap_or_default()))
-                        .unwrap_or_else(|| canonical_root.join(resolved.file_name().unwrap_or_default()))
+                        .unwrap_or_else(|| {
+                            canonical_root.join(resolved.file_name().unwrap_or_default())
+                        })
                 });
                 if !canonical_target.starts_with(&canonical_root) {
                     return Ok(false);
@@ -282,7 +291,6 @@ impl Default for PermissionManager {
         Self::new(event_tx, response_rx)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -645,7 +653,8 @@ mod tests {
         // File does not exist yet — simulates write_file for a new file
         let file = sandbox.path().join("new_file.txt");
 
-        let tool = crate::tools::WriteFileTool::with_working_directory(sandbox.path().to_path_buf());
+        let tool =
+            crate::tools::WriteFileTool::with_working_directory(sandbox.path().to_path_buf());
         let descriptor = ToolPermissionBuilder::new(&tool, file.to_str().unwrap())
             .with_pattern_matcher(Arc::new(FilePatternMatcher))
             .build()

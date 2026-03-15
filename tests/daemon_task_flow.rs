@@ -23,8 +23,10 @@ impl LlmBackend for MockBackend {
         _conversation: &hoosh::agent::Conversation,
         _tools: &hoosh::tools::ToolRegistry,
     ) -> Result<LlmResponse, LlmError> {
-        Ok(LlmResponse::content_only("Task complete, no changes needed.".to_string())
-            .with_tokens(10, 10))
+        Ok(
+            LlmResponse::content_only("Task complete, no changes needed.".to_string())
+                .with_tokens(10, 10),
+        )
     }
 
     fn backend_name(&self) -> &str {
@@ -153,7 +155,14 @@ async fn submit_task_no_changes_completes_without_pr() {
     let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
     for _ in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        let task: serde_json::Value = client.get(&poll_url).send().await.unwrap().json().await.unwrap();
+        let task: serde_json::Value = client
+            .get(&poll_url)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         let status = task["status"].as_str().unwrap();
         if status == "Completed" || status == "Failed" || status == "Cancelled" {
             assert_eq!(status, "Completed");
@@ -218,8 +227,17 @@ async fn cancel_completed_task_returns_409() {
     let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
     for _ in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        let task: serde_json::Value = client.get(&poll_url).send().await.unwrap().json().await.unwrap();
-        if task["status"].as_str().unwrap() != "Pending" && task["status"].as_str().unwrap() != "Running" {
+        let task: serde_json::Value = client
+            .get(&poll_url)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if task["status"].as_str().unwrap() != "Pending"
+            && task["status"].as_str().unwrap() != "Running"
+        {
             break;
         }
     }
@@ -249,7 +267,14 @@ async fn list_tasks_returns_all_tasks() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let list_url = format!("http://{}/tasks", srv.addr);
-    let tasks: Vec<serde_json::Value> = client.get(&list_url).send().await.unwrap().json().await.unwrap();
+    let tasks: Vec<serde_json::Value> = client
+        .get(&list_url)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert!(!tasks.is_empty());
 }
 

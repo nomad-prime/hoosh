@@ -238,13 +238,8 @@ impl TaskExecutor {
                     AgentEvent::ToolCalls(calls) => {
                         if let Some(ref mut f) = log {
                             for (name, input) in calls {
-                                let _ = writeln!(
-                                    f,
-                                    "[{}] tool_call: {} {}",
-                                    Utc::now(),
-                                    name,
-                                    input
-                                );
+                                let _ =
+                                    writeln!(f, "[{}] tool_call: {} {}", Utc::now(), name, input);
                             }
                         }
                     }
