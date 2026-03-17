@@ -156,12 +156,25 @@ impl TaskStore {
         let cache = self.cache.read().unwrap();
         Ok(cache.values().cloned().collect())
     }
+
+    pub fn query_active_by_trigger_ref(&self, trigger_ref: &str) -> Option<String> {
+        let cache = self.cache.read().unwrap();
+        cache.values().find_map(|task| {
+            if matches!(task.status, TaskStatus::Queued | TaskStatus::Running)
+                && let Some(ref trigger) = task.trigger
+                && trigger.trigger_ref == trigger_ref
+            {
+                return Some(task.id.clone());
+            }
+            None
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::task::{Task, TaskStatus};
+    use crate::daemon::task::{GithubEventType, GithubTrigger, Task, TaskStatus};
     use tempfile::TempDir;
 
     fn make_store(dir: &TempDir) -> TaskStore {
@@ -176,6 +189,21 @@ mod tests {
             None,
             100_000,
         )
+    }
+
+    fn make_trigger(trigger_ref: &str) -> GithubTrigger {
+        GithubTrigger {
+            event_type: GithubEventType::IssueComment,
+            delivery_id: "delivery-1".to_string(),
+            trigger_ref: trigger_ref.to_string(),
+            repo_full_name: "owner/repo".to_string(),
+            repo_url: "https://github.com/owner/repo.git".to_string(),
+            default_branch: "main".to_string(),
+            actor_login: "alice".to_string(),
+            issue_or_pr_number: 47,
+            comment_url: None,
+            raw_payload: serde_json::Value::Null,
+        }
     }
 
     #[test]
@@ -224,6 +252,66 @@ mod tests {
 
         let all = store.load_all().unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn queued_task_with_trigger_ref_returns_id() {
+        let dir = TempDir::new().unwrap();
+        let store = make_store(&dir);
+        let mut task = make_task();
+        task.trigger = Some(make_trigger("issue:47"));
+        let task_id = task.id.clone();
+        store.create(&task).unwrap();
+
+        let found = store.query_active_by_trigger_ref("issue:47");
+        assert_eq!(found, Some(task_id));
+    }
+
+    #[test]
+    fn running_task_with_trigger_ref_returns_id() {
+        let dir = TempDir::new().unwrap();
+        let store = make_store(&dir);
+        let mut task = make_task();
+        task.status = TaskStatus::Running;
+        task.trigger = Some(make_trigger("pr:82"));
+        let task_id = task.id.clone();
+        store.create(&task).unwrap();
+
+        let found = store.query_active_by_trigger_ref("pr:82");
+        assert_eq!(found, Some(task_id));
+    }
+
+    #[test]
+    fn completed_task_with_trigger_ref_returns_none() {
+        let dir = TempDir::new().unwrap();
+        let store = make_store(&dir);
+        let mut task = make_task();
+        task.status = TaskStatus::Completed;
+        task.trigger = Some(make_trigger("issue:10"));
+        store.create(&task).unwrap();
+
+        let found = store.query_active_by_trigger_ref("issue:10");
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn failed_task_with_trigger_ref_returns_none() {
+        let dir = TempDir::new().unwrap();
+        let store = make_store(&dir);
+        let mut task = make_task();
+        task.status = TaskStatus::Failed;
+        task.trigger = Some(make_trigger("issue:10"));
+        store.create(&task).unwrap();
+
+        let found = store.query_active_by_trigger_ref("issue:10");
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn empty_store_returns_none() {
+        let dir = TempDir::new().unwrap();
+        let store = make_store(&dir);
+        assert_eq!(store.query_active_by_trigger_ref("issue:99"), None);
     }
 
     #[test]

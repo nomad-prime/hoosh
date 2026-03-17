@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
@@ -47,6 +48,10 @@ pub async fn handle_daemon(action: DaemonAction, config: AppConfig) -> Result<()
 
 async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Result<()> {
     use crate::backends::backend_factory::create_backend;
+
+    for warning in daemon_config.github.startup_warnings() {
+        console().warning(warning);
+    }
 
     let backend = create_backend(&app_config.default_backend, app_config)
         .context("Failed to create LLM backend")?;

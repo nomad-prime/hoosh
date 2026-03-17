@@ -9,12 +9,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::daemon::api::AppState;
 use crate::daemon::api::types::{
-    ErrorResponse, HealthResponse, SubmitTaskRequest, SubmitTaskResponse, TaskResponse,
+    ErrorResponse, GithubTriggerResponse, HealthResponse, SubmitTaskRequest, SubmitTaskResponse,
+    TaskResponse,
 };
 use crate::daemon::task::{Task, TaskStatus};
 
 impl From<Task> for TaskResponse {
     fn from(t: Task) -> Self {
+        let trigger = t.trigger.as_ref().map(GithubTriggerResponse::from);
         Self {
             id: t.id,
             repo_url: t.repo_url,
@@ -33,6 +35,7 @@ impl From<Task> for TaskResponse {
             error_message: t.error_message,
             sandbox_path: t.sandbox_path,
             log_path: t.log_path,
+            trigger,
         }
     }
 }

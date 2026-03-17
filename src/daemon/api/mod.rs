@@ -74,6 +74,10 @@ impl DaemonServer {
             .route("/tasks/:id", get(get_task).delete(cancel_task))
             .route("/tasks/:id/logs", get(get_task_logs))
             .route("/health", get(health))
+            .route(
+                "/github/webhook",
+                post(crate::daemon::webhook::handle_github_webhook),
+            )
             .with_state(self.app_state())
     }
 

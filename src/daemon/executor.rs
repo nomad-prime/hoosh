@@ -10,6 +10,7 @@ use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::daemon::config::DaemonConfig;
 use crate::daemon::permissions::PermissionResolver;
+#[allow(deprecated)]
 use crate::daemon::pr_provider::{CreatePrParams, PrProvider};
 use crate::daemon::sandbox::Sandbox;
 use crate::daemon::store::TaskStore;
@@ -19,6 +20,7 @@ use crate::permissions::storage::PermissionsFile;
 use crate::tool_executor::ToolExecutor;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
+#[allow(deprecated)]
 pub struct TaskExecutor {
     pub store: Arc<TaskStore>,
     pub config: Arc<DaemonConfig>,
@@ -26,6 +28,7 @@ pub struct TaskExecutor {
     pub backend: Arc<dyn LlmBackend>,
 }
 
+#[allow(deprecated)]
 impl TaskExecutor {
     pub fn new(
         store: Arc<TaskStore>,
@@ -95,6 +98,30 @@ impl TaskExecutor {
 
         let _ = writeln!(sandbox, "[{}] Clone completed", Utc::now());
 
+        // Webhook-triggered tasks: check gh auth before starting the agent
+        if task.trigger.is_some() {
+            let gh_check = std::process::Command::new("gh")
+                .args(["auth", "status"])
+                .output();
+            match gh_check {
+                Ok(output) if output.status.success() => {}
+                _ => {
+                    let _ = writeln!(sandbox, "[{}] gh auth check failed", Utc::now());
+                    task.status = TaskStatus::Failed;
+                    task.error_message = Some(
+                        "gh CLI not authenticated — run 'gh auth login' on the daemon machine"
+                            .to_string(),
+                    );
+                    task.completed_at = Some(Utc::now());
+                    self.store.update(&task)?;
+                    if !self.config.retain_sandboxes {
+                        let _ = sandbox.cleanup();
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
         let branch_name = format!("hoosh/{}", task.id);
         sandbox
             .create_branch(&branch_name)
@@ -121,7 +148,22 @@ impl TaskExecutor {
 
         task.tokens_consumed = tokens;
 
-        if cancel.load(Ordering::Relaxed) {
+        if task.trigger.is_some() {
+            // For webhook tasks, the agent owns all git/GitHub operations
+            if cancel.load(Ordering::Relaxed) {
+                let incomplete_msg = if task.tokens_consumed >= task.token_budget {
+                    "[incomplete] token budget exceeded".to_string()
+                } else {
+                    "[incomplete] task cancelled".to_string()
+                };
+                task.status = TaskStatus::Failed;
+                task.error_message = Some(incomplete_msg);
+            } else {
+                task.status = TaskStatus::Completed;
+            }
+            task.completed_at = Some(Utc::now());
+            self.store.update(&task)?;
+        } else if cancel.load(Ordering::Relaxed) {
             let _ = writeln!(
                 sandbox,
                 "[{}] Task cancelled or token budget exceeded",

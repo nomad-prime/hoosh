@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use serde::Deserialize;
 
+#[allow(deprecated)]
 use super::{CreatePrParams, PrProvider, PrResult};
 
 pub struct GitHubPrProvider {
@@ -65,6 +66,7 @@ struct GitHubErrorResponse {
     message: String,
 }
 
+#[allow(deprecated)]
 #[async_trait]
 impl PrProvider for GitHubPrProvider {
     async fn create_pull_request(&self, params: CreatePrParams) -> Result<PrResult> {

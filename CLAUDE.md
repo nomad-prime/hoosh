@@ -12,6 +12,7 @@ Auto-generated from all feature plans. Last updated: 2025-12-09
 - In-memory only (attachments are ephemeral, cleared after submission) (003-input-field-refinement)
 - Rust 2024 edition (matches `Cargo.toml:4`) + okio 1.0 (async runtime), axum 0.7 (HTTP server, new), reqwest 0.12 (GitHub PR API, existing), serde_json (task persistence, existing), uuid 1.0 (task IDs, new), clap 4.0 (CLI, existing) (004-daemon-mode)
 - JSON files per task in `~/.hoosh/daemon/tasks/<task-id>.json`; execution logs as plain text files in sandboxes (004-daemon-mode)
+- Extends existing `~/.hoosh/daemon/tasks/<task-id>.json` with `trigger` field (005-github-workflows)
 
 - Rust 2024 edition (matches project `Cargo.toml:4`) (001-custom-commands)
 
@@ -31,9 +32,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 2024 edition (matches project `Cargo.toml:4`): Follow standard conventions
 
 ## Recent Changes
+- 005-github-workflows: Added Rust 2024 edition (matches `Cargo.toml:4`)
 - 004-daemon-mode: Added Rust 2024 edition (matches `Cargo.toml:4`) + okio 1.0 (async runtime), axum 0.7 (HTTP server, new), reqwest 0.12 (GitHub PR API, existing), serde_json (task persistence, existing), uuid 1.0 (task IDs, new), clap 4.0 (CLI, existing)
 - 003-input-field-refinement: Added Rust 2024 edition (matches Cargo.toml:4)
-- 002-terminal-modes: Added Rust 2024 edition (matches project `Cargo.toml:4`) + ratatui 0.29 (TUI), crossterm 0.27 (terminal control), tokio 1.0 (async runtime), clap 4.0 (CLI), serde/serde_json (serialization)
 
 
 <!-- MANUAL ADDITIONS START -->

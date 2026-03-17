@@ -18,6 +18,7 @@ pub struct PrResult {
     pub pr_number: u64,
 }
 
+#[deprecated(note = "Use gh CLI via agent for PR creation")]
 #[async_trait]
 pub trait PrProvider: Send + Sync {
     async fn create_pull_request(&self, params: CreatePrParams) -> Result<PrResult>;
