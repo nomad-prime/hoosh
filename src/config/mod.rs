@@ -3,7 +3,14 @@ use crate::context_management::ContextManagerConfig;
 use crate::daemon::config::DaemonConfig;
 use crate::terminal_mode::TerminalMode;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use std::{collections::HashMap, fs, path::PathBuf};
+
+static CONFIG_PATH_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_config_path_override(path: PathBuf) {
+    let _ = CONFIG_PATH_OVERRIDE.set(path);
+}
 
 pub mod error;
 pub use error::{ConfigError, ConfigResult};
@@ -386,6 +393,13 @@ impl AppConfig {
     }
 
     pub fn hoosh_config_dir() -> ConfigResult<PathBuf> {
+        if let Some(override_path) = CONFIG_PATH_OVERRIDE.get() {
+            return Ok(override_path
+                .parent()
+                .unwrap_or(override_path.as_path())
+                .to_path_buf());
+        }
+
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .map_err(|_| ConfigError::NoHomeDirectory)?;
@@ -398,6 +412,9 @@ impl AppConfig {
     }
 
     pub fn config_path() -> ConfigResult<PathBuf> {
+        if let Some(override_path) = CONFIG_PATH_OVERRIDE.get() {
+            return Ok(override_path.clone());
+        }
         Ok(Self::hoosh_config_dir()?.join("config.toml"))
     }
 

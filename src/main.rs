@@ -7,7 +7,7 @@ use hoosh::cli::{
 use hoosh::session_files::cleanup_stale_sessions;
 use hoosh::{
     cli::{Cli, Commands},
-    config::{AppConfig, ConfigError},
+    config::{set_config_path_override, AppConfig, ConfigError},
     console::{VerbosityLevel, init_console},
 };
 
@@ -18,6 +18,10 @@ async fn main() -> Result<()> {
     let _ = cleanup_stale_sessions();
 
     let cli = Cli::parse();
+
+    if let Some(config_path) = &cli.config {
+        set_config_path_override(config_path.clone());
+    }
 
     if matches!(
         cli.command,

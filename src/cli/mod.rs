@@ -9,6 +9,7 @@ pub mod shell_setup;
 
 use crate::console::VerbosityLevel;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 pub use agent::handle_agent;
 pub use agents::handle_agents;
@@ -21,6 +22,10 @@ pub use setup::handle_setup;
 #[derive(Parser)]
 #[command(author, version, about)]
 pub struct Cli {
+    /// Path to config file (overrides default ~/.config/hoosh/config.toml)
+    #[arg(long, global = true, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+
     /// Increase verbosity (-v verbose, -vv debug)
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
     pub verbose: u8,
