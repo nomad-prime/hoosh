@@ -127,5 +127,4 @@ mod tests {
             "raw_payload must not appear in API response"
         );
     }
-
 }

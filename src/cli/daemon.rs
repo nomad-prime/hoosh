@@ -214,4 +214,3 @@ async fn daemon_submit(
 
     Ok(())
 }
-

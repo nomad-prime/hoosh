@@ -1,3 +1,6 @@
+use crate::daemon::api::AppState;
+use crate::daemon::github_event::parse_github_event;
+use crate::daemon::task::Task;
 use axum::{
     Json,
     body::Bytes,
@@ -7,9 +10,6 @@ use axum::{
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use crate::daemon::api::AppState;
-use crate::daemon::github_event::parse_github_event;
-use crate::daemon::task::Task;
 
 pub fn verify_signature(secret: &str, body: &[u8], signature_header: &str) -> bool {
     let hex_sig = match signature_header.strip_prefix("sha256=") {
@@ -84,7 +84,10 @@ pub async fn handle_github_webhook(
             .into_response();
     }
 
-    if state.shutting_down.load(std::sync::atomic::Ordering::Relaxed) {
+    if state
+        .shutting_down
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({"error": "daemon is shutting down"})),

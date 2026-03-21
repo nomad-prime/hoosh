@@ -248,12 +248,12 @@ impl TaskExecutor {
                     .with_event_sender(event_tx.clone()),
             );
 
-            let system_reminder = Arc::new(
-                SystemReminder::new().add_strategy(Box::new(PeriodicCoreReminderStrategy::new(
+            let system_reminder = Arc::new(SystemReminder::new().add_strategy(Box::new(
+                PeriodicCoreReminderStrategy::new(
                     10_000,
                     HOOSH_DAEMON_CODER_CORE_INSTRUCTIONS.to_string(),
-                ))),
-            );
+                ),
+            )));
 
             let agent = Agent::new(Arc::clone(&self.backend), tool_registry, tool_executor)
                 .with_event_sender(event_tx.clone())
@@ -371,7 +371,10 @@ mod tests {
         Arc::new(TaskExecutor::new(store, Arc::new(config), backend))
     }
 
-    fn make_github_trigger(trigger_ref: &str, repo_url: &str) -> crate::daemon::task::GithubTrigger {
+    fn make_github_trigger(
+        trigger_ref: &str,
+        repo_url: &str,
+    ) -> crate::daemon::task::GithubTrigger {
         use crate::daemon::task::{GithubEventType, GithubTrigger};
         GithubTrigger {
             event_type: GithubEventType::IssueComment,
@@ -515,7 +518,11 @@ mod tests {
         let final_task = store.get(&task_id).unwrap().unwrap();
         assert_eq!(final_task.status, TaskStatus::Failed);
         assert!(
-            final_task.error_message.as_deref().unwrap_or("").contains("Clone failed"),
+            final_task
+                .error_message
+                .as_deref()
+                .unwrap_or("")
+                .contains("Clone failed"),
             "Error message should indicate clone failure"
         );
     }
