@@ -43,7 +43,9 @@ pub use backends::{TogetherAiBackend, TogetherAiConfig};
 pub use commands::{
     Command, CommandContext, CommandRegistry, CommandResult, register_default_commands,
 };
-pub use config::{AgentConfig, AppConfig, BackendConfig, set_config_path_override};
+pub use config::{
+    AgentConfig, AppConfig, BackendConfig, set_config_path_override, set_data_dir_override,
+};
 pub use console::{Console, VerbosityLevel, console, init_console};
 pub use parser::MessageParser;
 pub use permissions::PermissionManager;

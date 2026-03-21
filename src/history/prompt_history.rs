@@ -1,3 +1,4 @@
+use crate::config::AppConfig;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -48,7 +49,7 @@ impl PromptHistory {
 
     /// Gets the default history file path (~/.hoosh/history)
     pub fn default_history_path() -> Option<PathBuf> {
-        dirs::home_dir().map(|home| home.join(".hoosh").join("history"))
+        AppConfig::hoosh_data_dir().ok().map(|d| d.join("history"))
     }
 
     /// Loads history from the file

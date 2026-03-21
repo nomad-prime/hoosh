@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+use crate::config::AppConfig;
 use crate::console::console;
 use crate::daemon::task::{Task, TaskStatus};
 
@@ -14,8 +15,10 @@ pub struct TaskStore {
 
 impl TaskStore {
     pub fn new() -> Result<Self> {
-        let home = dirs::home_dir().context("Could not determine home directory")?;
-        let tasks_dir = home.join(".hoosh").join("daemon").join("tasks");
+        let tasks_dir = AppConfig::hoosh_data_dir()
+            .context("Could not determine data directory")?
+            .join("daemon")
+            .join("tasks");
         std::fs::create_dir_all(&tasks_dir).with_context(|| {
             format!("Failed to create tasks directory: {}", tasks_dir.display())
         })?;

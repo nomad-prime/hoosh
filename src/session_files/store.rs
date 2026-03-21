@@ -1,5 +1,6 @@
 // Session file storage and management for tagged mode
 
+use crate::config::AppConfig;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use fs2::FileExt;
@@ -132,10 +133,10 @@ pub fn get_terminal_pid() -> Result<u32> {
 
 /// Get the directory where session files are stored
 pub fn get_sessions_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Failed to get home directory")?;
-    let sessions_dir = home.join(".hoosh").join("sessions");
+    let sessions_dir = AppConfig::hoosh_data_dir()
+        .context("Failed to get data directory")?
+        .join("sessions");
 
-    // Create directory if it doesn't exist
     if !sessions_dir.exists() {
         std::fs::create_dir_all(&sessions_dir).context("Failed to create sessions directory")?;
     }

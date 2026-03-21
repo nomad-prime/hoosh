@@ -353,51 +353,63 @@ application including:
 > ⚠️ **Security Warning**: This configuration file contains sensitive API keys. Ensure the file permissions are set to
 > 0600 (owner read/write only) to prevent unauthorized access. Never commit this file to version control.
 
-### Custom Config Path
+### Directory Layout
 
-Use `--config` to point Hoosh at a different config file:
+Hoosh separates user-authored configuration from generated runtime data:
+
+| Purpose | Default path |
+|---------|-------------|
+| Config, agents, permissions | `~/.config/hoosh/` |
+| Daemon tasks, sessions, history | `~/.local/share/hoosh/` |
+
+### Custom Paths
+
+Both directories can be overridden independently via global flags that work with all subcommands:
 
 ```bash
-hoosh --config /path/to/my/config.toml
+# Override the config file
+hoosh --config /path/to/config.toml
+
+# Override the data directory
+hoosh --data-dir /path/to/data
+
+# Use both together for full isolation
+hoosh --config /path/to/config.toml --data-dir /path/to/data daemon start
 ```
 
-**All companion files are resolved relative to the specified config file's directory.** Given `--config /path/to/my/config.toml`, Hoosh will look for:
+**Config companion files** (agents, permissions.json) are always resolved relative to the config file's directory:
 
 ```
-/path/to/my/
-├── config.toml          # the config file you specified
-├── permissions.json     # global permissions
-└── agents/              # agent prompt files
+/path/to/
+├── config.toml
+├── permissions.json
+└── agents/
     ├── hoosh_coder.txt
     └── ...
 ```
 
-This means you can maintain completely isolated Hoosh environments by placing a `config.toml` and its companion files in any directory.
+#### Daemon Mode and Custom Paths
 
-The `--config` flag is global and works with all subcommands:
-
-```bash
-hoosh --config ~/work/hoosh/config.toml setup
-hoosh --config ~/work/hoosh/config.toml config show
-hoosh --config ~/work/hoosh/config.toml daemon start
-```
-
-#### Daemon Mode and Custom Configs
-
-The `--config` flag is especially useful when running the daemon, since it lets you run multiple isolated daemon instances or deploy Hoosh in environments without a home directory (CI, containers, sandboxed environments):
+For running multiple isolated daemon instances or deploying in environments without a home directory (CI, containers, sandboxed environments), use both flags together:
 
 ```bash
-# Start a daemon using a project-specific config
-hoosh --config /opt/myproject/hoosh/config.toml daemon start --port 7070
+# Start an isolated daemon instance
+hoosh --config /opt/myproject/hoosh/config.toml \
+      --data-dir /opt/myproject/hoosh/data \
+      daemon start --port 7070
 
-# Submit tasks to that daemon
-hoosh --config /opt/myproject/hoosh/config.toml daemon submit \
-  --repo owner/repo \
-  --branch feature/xyz \
-  --instructions "Fix the failing tests"
+# Submit tasks to it
+hoosh --config /opt/myproject/hoosh/config.toml \
+      --data-dir /opt/myproject/hoosh/data \
+      daemon submit \
+      --repo owner/repo \
+      --branch feature/xyz \
+      --instructions "Fix the failing tests"
 
-# Check daemon status
-hoosh --config /opt/myproject/hoosh/config.toml daemon status
+# Check status
+hoosh --config /opt/myproject/hoosh/config.toml \
+      --data-dir /opt/myproject/hoosh/data \
+      daemon status
 ```
 
 A minimal config for a CI/daemon environment:

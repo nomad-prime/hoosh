@@ -11,6 +11,7 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
+use crate::config::AppConfig;
 use crate::console::console;
 use crate::daemon::config::DaemonConfig;
 use crate::daemon::executor::TaskExecutor;
@@ -128,10 +129,9 @@ impl DaemonServer {
         }
 
         // Write PID file
-        if let Some(home) = dirs::home_dir() {
-            let hoosh_dir = home.join(".hoosh");
-            let _ = std::fs::create_dir_all(&hoosh_dir);
-            let pid_path = hoosh_dir.join("daemon.pid");
+        if let Ok(data_dir) = AppConfig::hoosh_data_dir() {
+            let _ = std::fs::create_dir_all(&data_dir);
+            let pid_path = data_dir.join("daemon.pid");
             let pid = std::process::id();
             let _ = std::fs::write(&pid_path, pid.to_string());
         }
@@ -177,8 +177,8 @@ impl DaemonServer {
                     let _ = handle.await;
                 }
 
-                if let Some(home) = dirs::home_dir() {
-                    let _ = std::fs::remove_file(home.join(".hoosh").join("daemon.pid"));
+                if let Ok(data_dir) = AppConfig::hoosh_data_dir() {
+                    let _ = std::fs::remove_file(data_dir.join("daemon.pid"));
                 }
             })
             .await
