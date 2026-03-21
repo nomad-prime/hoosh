@@ -45,6 +45,10 @@ fn default_bind_address() -> SocketAddr {
     "127.0.0.1:7979".parse().unwrap()
 }
 
+fn default_daemon_agent() -> String {
+    "hoosh_daemon_coder".to_string()
+}
+
 fn default_token_budget() -> usize {
     100_000
 }
@@ -67,6 +71,8 @@ pub struct DaemonConfig {
     pub retain_sandboxes: bool,
     #[serde(default)]
     pub github: GithubConfig,
+    #[serde(default = "default_daemon_agent")]
+    pub daemon_agent: String,
 }
 
 impl Default for DaemonConfig {
@@ -78,6 +84,7 @@ impl Default for DaemonConfig {
             sandbox_base_dir: default_sandbox_base_dir(),
             retain_sandboxes: false,
             github: GithubConfig::default(),
+            daemon_agent: default_daemon_agent(),
         }
     }
 }

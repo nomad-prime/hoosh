@@ -98,3 +98,22 @@ tags = ["planning", "architecture", "strategy"]
 file = "hoosh_assistant.txt"
 description = "General purpose assistant for answering questions"
 tags = ["general", "q&a", "help"]
+
+# Daemon mode configuration
+# Used when running hoosh as a background service triggered by GitHub events
+[daemon]
+bind_address = "127.0.0.1:7979"       # Address and port for the daemon HTTP API
+default_token_budget = 100000          # Default token budget per task
+retain_sandboxes = false               # Set to true to keep sandbox dirs after task completion (useful for debugging)
+daemon_agent = "hoosh_daemon_coder"    # Agent used to execute tasks (defaults to "hoosh_daemon_coder")
+
+[daemon.github]
+webhook_secret = "your-webhook-secret" # Secret for validating GitHub webhook payloads
+mention_handle = "@hoosh"              # The mention that triggers the daemon (e.g. "@hoosh fix this bug")
+bot_login = "hoosh-bot"               # GitHub login of the bot account; prevents self-triggering loops
+
+# To use a custom agent for daemon tasks, define it here and reference it above:
+# [agents.my_daemon_agent]
+# file = "my_daemon_agent.txt"
+# core_instructions_file = "my_daemon_agent_core_instructions.txt"
+# description = "Custom agent for daemon tasks"

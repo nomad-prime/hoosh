@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use super::DaemonAction;
+use crate::agent_definition::AgentDefinitionManager;
 use crate::config::AppConfig;
 use crate::console::console;
 use crate::daemon::api::DaemonServer;
@@ -58,11 +59,19 @@ async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Re
 
     let store = Arc::new(TaskStore::new().context("Failed to create task store")?);
 
+    let agent_manager =
+        AgentDefinitionManager::new().context("Failed to load agent definitions")?;
+    let agent = agent_manager
+        .get_agent(&daemon_config.daemon_agent)
+        .with_context(|| format!("Daemon agent '{}' not found", daemon_config.daemon_agent))?;
+
     let config = Arc::new(daemon_config);
     let executor = Arc::new(TaskExecutor::new(
         Arc::clone(&store),
         Arc::clone(&config),
         backend,
+        agent.content,
+        agent.core_instructions,
     ));
 
     let server = DaemonServer::new(config, store, executor);

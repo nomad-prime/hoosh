@@ -41,6 +41,10 @@ pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
         "hoosh_assistant.txt",
         include_str!("../prompts/hoosh_assistant.txt"),
     ),
+    (
+        "hoosh_daemon_coder.txt",
+        include_str!("../prompts/hoosh_daemon_coder.txt"),
+    ),
 ];
 
 pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
@@ -67,6 +71,10 @@ pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
     (
         "hoosh_assistant_core_instructions.txt",
         include_str!("../prompts/hoosh_assistant_core_instructions.txt"),
+    ),
+    (
+        "hoosh_daemon_coder_core_instructions.txt",
+        include_str!("../prompts/hoosh_daemon_coder_core_instructions.txt"),
     ),
 ];
 
