@@ -7,9 +7,14 @@ use std::sync::OnceLock;
 use std::{collections::HashMap, fs, path::PathBuf};
 
 static CONFIG_PATH_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+static DATA_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 
 pub fn set_config_path_override(path: PathBuf) {
     let _ = CONFIG_PATH_OVERRIDE.set(path);
+}
+
+pub fn set_data_dir_override(path: PathBuf) {
+    let _ = DATA_DIR_OVERRIDE.set(path);
 }
 
 pub mod error;
@@ -409,6 +414,21 @@ impl AppConfig {
         path.push("hoosh");
 
         Ok(path)
+    }
+
+    pub fn hoosh_data_dir() -> ConfigResult<PathBuf> {
+        if let Some(override_path) = DATA_DIR_OVERRIDE.get() {
+            return Ok(override_path.clone());
+        }
+
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| ConfigError::NoHomeDirectory)?;
+
+        Ok(PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("hoosh"))
     }
 
     pub fn config_path() -> ConfigResult<PathBuf> {

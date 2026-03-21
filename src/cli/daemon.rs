@@ -70,8 +70,9 @@ async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Re
 }
 
 async fn daemon_stop(force: bool, _config: &DaemonConfig) -> Result<()> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    let pid_path = home.join(".hoosh").join("daemon.pid");
+    let pid_path = AppConfig::hoosh_data_dir()
+        .context("Could not determine data directory")?
+        .join("daemon.pid");
 
     if !pid_path.exists() {
         console().plain("daemon is not running (no PID file)");
@@ -125,8 +126,9 @@ async fn daemon_stop(force: bool, _config: &DaemonConfig) -> Result<()> {
 }
 
 async fn daemon_status(config: &DaemonConfig) -> Result<()> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    let pid_path = home.join(".hoosh").join("daemon.pid");
+    let pid_path = AppConfig::hoosh_data_dir()
+        .context("Could not determine data directory")?
+        .join("daemon.pid");
 
     if !pid_path.exists() {
         println!("daemon is not running");
