@@ -353,6 +353,64 @@ application including:
 > ⚠️ **Security Warning**: This configuration file contains sensitive API keys. Ensure the file permissions are set to
 > 0600 (owner read/write only) to prevent unauthorized access. Never commit this file to version control.
 
+### Custom Config Path
+
+Use `--config` to point Hoosh at a different config file:
+
+```bash
+hoosh --config /path/to/my/config.toml
+```
+
+**All companion files are resolved relative to the specified config file's directory.** Given `--config /path/to/my/config.toml`, Hoosh will look for:
+
+```
+/path/to/my/
+├── config.toml          # the config file you specified
+├── permissions.json     # global permissions
+└── agents/              # agent prompt files
+    ├── hoosh_coder.txt
+    └── ...
+```
+
+This means you can maintain completely isolated Hoosh environments by placing a `config.toml` and its companion files in any directory.
+
+The `--config` flag is global and works with all subcommands:
+
+```bash
+hoosh --config ~/work/hoosh/config.toml setup
+hoosh --config ~/work/hoosh/config.toml config show
+hoosh --config ~/work/hoosh/config.toml daemon start
+```
+
+#### Daemon Mode and Custom Configs
+
+The `--config` flag is especially useful when running the daemon, since it lets you run multiple isolated daemon instances or deploy Hoosh in environments without a home directory (CI, containers, sandboxed environments):
+
+```bash
+# Start a daemon using a project-specific config
+hoosh --config /opt/myproject/hoosh/config.toml daemon start --port 7070
+
+# Submit tasks to that daemon
+hoosh --config /opt/myproject/hoosh/config.toml daemon submit \
+  --repo owner/repo \
+  --branch feature/xyz \
+  --instructions "Fix the failing tests"
+
+# Check daemon status
+hoosh --config /opt/myproject/hoosh/config.toml daemon status
+```
+
+A minimal config for a CI/daemon environment:
+
+```toml
+# /opt/myproject/hoosh/config.toml
+default_backend = "anthropic"
+
+[backends.anthropic]
+api_key = "sk-ant-..."
+model = "claude-sonnet-4.5"
+```
+
 ## Development
 
 This project follows specific coding conventions outlined in `CLAUDE.md`, including:
