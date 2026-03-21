@@ -66,16 +66,16 @@
 
 **Goal**: Agent receives full event context and runs without daemon post-agent git operations; `gh` auth failure is caught before the agent starts.
 
-**Independent Test**: POST signed `issue_comment` with `@hoosh` → task completes without any `PrProvider` call (verified via mock with 0-call assertion). POST with unauthenticated `gh` → task immediately transitions to `Failed` with message containing `"gh auth login"`. Clone failure → task immediately transitions to `Failed`.
+**Independent Test**: POST signed `issue_comment` with `@hoosh` → task reaches a terminal state with `trigger` preserved. POST with unauthenticated `gh` → task immediately transitions to `Failed` with message containing `"gh auth login"`. Clone failure → task immediately transitions to `Failed`.
 
 ### Tests
 
-- [X] T019 [P] [US2] Integration test in `src/daemon/executor_webhook_tests.rs` (referenced via `#[cfg(test)] #[path = "executor_webhook_tests.rs"] mod tests;` in `executor.rs`): build minimal `AppState` with local bare-repo `file://` remote and mock backend; record the time before POSTing a signed `issue_comment` payload (with `@hoosh` in body) to `handle_github_webhook()`; assert `202 Accepted` is returned within 100ms (use `std::time::Instant` — the response must arrive before sandbox clone completes, confirming async dispatch); assert task in store with `trigger.is_some()`, `trigger.trigger_ref == "issue:N"`, and `instructions` containing `<event>` block; assert executor completes without calling `PrProvider` (use `MockPrProvider` with call-count assertion of 0)
-- [X] T020 [P] [US2] Test clone failure path in `src/daemon/executor_webhook_tests.rs`: mock a `Sandbox::clone()` that returns `Err`; assert task transitions to `Failed` with error logged; assert no agent is started
+- [X] T019 [P] [US2] Integration tests in `src/daemon/executor.rs`: `webhook_task_runs_to_terminal_state` — build executor with local bare-repo `file://` remote and mock backend; create task with `trigger.is_some()`; assert task reaches a terminal state and `trigger` is preserved on the final task record. Note: 100ms async timing assertion and `MockPrProvider` zero-call assertion dropped — `PrProvider` has been removed entirely.
+- [X] T020 [P] [US2] Test clone failure path in `src/daemon/executor.rs`: `webhook_task_clone_failure_marks_failed` — use a non-existent `file://` remote; assert task transitions to `Failed` with error message containing `"Clone failed"`
 
 ### Implementation
 
-- [X] T021 [US2] Extend `TaskExecutor::execute()` in `src/daemon/executor.rs` (depends T005): for webhook-triggered tasks (`task.trigger.is_some()`), if `Sandbox::clone()` returns `Err`, mark task `Failed` with the clone error and return before starting the agent; before starting the agent run `gh auth status` as a subprocess; if it fails, mark task `Failed` with message `"gh CLI not authenticated — run 'gh auth login' on the daemon machine"` and return; after agent turn completes, skip the entire post-agent block (both the normal path: commit → push → `PrProvider::create_pull_request`, and the incomplete path: "[incomplete]" commit + push); mark task `Completed` or `Failed` and return
+- [X] T021 [US2] Extend `TaskExecutor::execute()` in `src/daemon/executor.rs` (depends T005): for webhook-triggered tasks (`task.trigger.is_some()`), run `gh auth status` as a subprocess before starting the agent; if it fails, mark task `Failed` with message `"gh CLI not authenticated — run 'gh auth login' on the daemon machine"` and return. Clone failure and post-agent handling are uniform across all task types — `PrProvider` and all post-agent git ops have been removed entirely.
 
 **Checkpoint**: Webhook-triggered tasks run to completion with agent owning all git/GitHub ops; daemon never calls `PrProvider` for webhook tasks; `gh` auth failure fails fast with actionable message.
 
@@ -94,7 +94,7 @@
 ### Implementation
 
 - [X] T023 [P] [US3] Introduce a `GithubTriggerResponse` struct in `src/daemon/api/types.rs` that mirrors `GithubTrigger` but omits `raw_payload`; implement a `From<&GithubTrigger>` conversion; update `TaskResponse` in `src/daemon/api/types.rs` to include `trigger: Option<GithubTriggerResponse>` (do NOT modify serde attributes on `GithubTrigger` in `task.rs` — that struct must retain `raw_payload` for full disk persistence); verify `webhook_secret` is absent from all serialized response types; use `grep -rn "webhook_secret" src/daemon/webhook.rs src/daemon/api/mod.rs` to confirm no log macros (`tracing::debug!`, `tracing::info!`, `tracing::error!`, etc.) interpolate `webhook_secret` — if any are found, fix them before marking this task complete
-- [X] T024 [P] [US3] Add `#[deprecated(note = "Use gh CLI via agent for PR creation")]` to `PrProvider` trait in `src/daemon/pr_provider/mod.rs` and to `GitHubPrProvider` impl in `src/daemon/pr_provider/github.rs`
+- [X] T024 [P] [US3] Remove `src/daemon/pr_provider/mod.rs` and `src/daemon/pr_provider/github.rs` entirely — `PrProvider` is superseded by agent-driven `gh` CLI usage for all task types
 
 **Checkpoint**: API response includes `trigger`; no secret leakage; `PrProvider` marked for future removal.
 

@@ -202,16 +202,11 @@ pub enum GithubEventType {
 
 ---
 
-## PrProvider Deprecation
+## PrProvider Removal
 
-The current `PrProvider` trait and `GitHubPrProvider` implementation made direct GitHub API calls to create PRs. With this feature, the agent uses `gh pr create` instead.
+The `PrProvider` trait and `GitHubPrProvider` implementation have been removed as part of this feature. All PR creation is now handled by the agent via `gh pr create`.
 
-**Migration plan**:
-- Keep `PrProvider` code in place initially (no immediate removal)
-- For webhook-triggered tasks, skip `PrProvider` entirely (agent handles it via `gh` CLI)
-- For manually-submitted API tasks (`POST /tasks`), keep `PrProvider` as fallback if configured
-- Mark `PrProvider` as `#[deprecated]` after this feature ships
-- Remove in a future cleanup feature
+The post-agent git operations (commit, push, PR creation) have also been removed from the executor for all task types. The agent is responsible for all git and GitHub work via bash/git/`gh` CLI, regardless of how the task was submitted.
 
 ---
 
