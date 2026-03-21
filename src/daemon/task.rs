@@ -3,6 +3,28 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GithubEventType {
+    IssueComment,
+    PullRequestReview,
+    PullRequestReviewComment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubTrigger {
+    pub event_type: GithubEventType,
+    pub delivery_id: String,
+    pub trigger_ref: String,
+    pub repo_full_name: String,
+    pub repo_url: String,
+    pub default_branch: String,
+    pub actor_login: String,
+    pub issue_or_pr_number: u64,
+    pub comment_url: Option<String>,
+    pub raw_payload: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
     Queued,
@@ -37,6 +59,8 @@ pub struct Task {
     pub error_message: Option<String>,
     pub sandbox_path: Option<PathBuf>,
     pub log_path: Option<PathBuf>,
+    #[serde(default)]
+    pub trigger: Option<GithubTrigger>,
 }
 
 impl Task {
@@ -66,6 +90,7 @@ impl Task {
             error_message: None,
             sandbox_path: None,
             log_path: None,
+            trigger: None,
         }
     }
 }

@@ -4,7 +4,6 @@ use hoosh::backends::{LlmBackend, LlmError, LlmResponse};
 use hoosh::daemon::api::DaemonServer;
 use hoosh::daemon::config::DaemonConfig;
 use hoosh::daemon::executor::TaskExecutor;
-use hoosh::daemon::pr_provider::{CreatePrParams, PrProvider, PrResult};
 use hoosh::daemon::store::TaskStore;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -35,22 +34,6 @@ impl LlmBackend for MockBackend {
 
     fn model_name(&self) -> &str {
         "mock-model"
-    }
-}
-
-struct MockPrProvider;
-
-#[async_trait]
-impl PrProvider for MockPrProvider {
-    async fn create_pull_request(&self, _params: CreatePrParams) -> Result<PrResult> {
-        Ok(PrResult {
-            pr_url: "https://github.com/owner/repo/pull/42".to_string(),
-            pr_number: 42,
-        })
-    }
-
-    fn provider_name(&self) -> &'static str {
-        "mock"
     }
 }
 
@@ -101,7 +84,6 @@ async fn start_test_server() -> TestServer {
     let executor = Arc::new(TaskExecutor::new(
         Arc::clone(&store),
         Arc::clone(&config),
-        Arc::new(MockPrProvider),
         Arc::new(MockBackend),
     ));
 
@@ -115,7 +97,6 @@ async fn start_test_server() -> TestServer {
         axum::serve(listener, router).await.unwrap();
     });
 
-    // Store repo_url for use in tests (it's passed via the request body)
     let _ = repo_url;
 
     TestServer {
@@ -152,7 +133,6 @@ async fn submit_task_no_changes_completes_without_pr() {
     let body: serde_json::Value = resp.json().await.unwrap();
     let task_id = body["task_id"].as_str().unwrap().to_string();
 
-    // Poll until terminal
     let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
     for _ in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -209,7 +189,6 @@ async fn cancel_completed_task_returns_409() {
     let srv = start_test_server().await;
     let client = reqwest::Client::new();
 
-    // Submit and wait for completion
     let submit_url = format!("http://{}/tasks", srv.addr);
     let resp = client
         .post(&submit_url)

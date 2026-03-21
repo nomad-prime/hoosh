@@ -7,7 +7,6 @@ use crate::console::console;
 use crate::daemon::api::DaemonServer;
 use crate::daemon::config::DaemonConfig;
 use crate::daemon::executor::TaskExecutor;
-use crate::daemon::pr_provider::github::GitHubPrProvider;
 use crate::daemon::store::TaskStore;
 
 pub async fn handle_daemon(action: DaemonAction, config: AppConfig) -> Result<()> {
@@ -48,6 +47,10 @@ pub async fn handle_daemon(action: DaemonAction, config: AppConfig) -> Result<()
 async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Result<()> {
     use crate::backends::backend_factory::create_backend;
 
+    for warning in daemon_config.github.startup_warnings() {
+        console().warning(warning);
+    }
+
     let backend = create_backend(&app_config.default_backend, app_config)
         .context("Failed to create LLM backend")?;
     backend.initialize().await?;
@@ -55,18 +58,10 @@ async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Re
 
     let store = Arc::new(TaskStore::new().context("Failed to create task store")?);
 
-    let pr_provider: Arc<dyn crate::daemon::pr_provider::PrProvider> =
-        if let Some(pat) = &daemon_config.github_pat {
-            Arc::new(GitHubPrProvider::new(pat.clone()))
-        } else {
-            Arc::new(NoopPrProvider)
-        };
-
     let config = Arc::new(daemon_config);
     let executor = Arc::new(TaskExecutor::new(
         Arc::clone(&store),
         Arc::clone(&config),
-        pr_provider,
         backend,
     ));
 
@@ -218,20 +213,4 @@ async fn daemon_submit(
     }
 
     Ok(())
-}
-
-struct NoopPrProvider;
-
-#[async_trait::async_trait]
-impl crate::daemon::pr_provider::PrProvider for NoopPrProvider {
-    async fn create_pull_request(
-        &self,
-        _params: crate::daemon::pr_provider::CreatePrParams,
-    ) -> Result<crate::daemon::pr_provider::PrResult> {
-        anyhow::bail!("No GitHub PAT configured. Set github_pat in [daemon] config section.")
-    }
-
-    fn provider_name(&self) -> &'static str {
-        "noop"
-    }
 }

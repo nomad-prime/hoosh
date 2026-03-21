@@ -10,19 +10,22 @@ use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::daemon::config::DaemonConfig;
 use crate::daemon::permissions::PermissionResolver;
-use crate::daemon::pr_provider::{CreatePrParams, PrProvider};
 use crate::daemon::sandbox::Sandbox;
 use crate::daemon::store::TaskStore;
 use crate::daemon::task::{Task, TaskStatus};
 use crate::permissions::PermissionManager;
 use crate::permissions::storage::PermissionsFile;
+use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
+
+const HOOSH_DAEMON_CODER_PROMPT: &str = include_str!("../prompts/hoosh_daemon_coder.txt");
+const HOOSH_DAEMON_CODER_CORE_INSTRUCTIONS: &str =
+    include_str!("../prompts/hoosh_daemon_coder_core_instructions.txt");
 
 pub struct TaskExecutor {
     pub store: Arc<TaskStore>,
     pub config: Arc<DaemonConfig>,
-    pub pr_provider: Arc<dyn PrProvider>,
     pub backend: Arc<dyn LlmBackend>,
 }
 
@@ -30,13 +33,11 @@ impl TaskExecutor {
     pub fn new(
         store: Arc<TaskStore>,
         config: Arc<DaemonConfig>,
-        pr_provider: Arc<dyn PrProvider>,
         backend: Arc<dyn LlmBackend>,
     ) -> Self {
         Self {
             store,
             config,
-            pr_provider,
             backend,
         }
     }
@@ -95,12 +96,29 @@ impl TaskExecutor {
 
         let _ = writeln!(sandbox, "[{}] Clone completed", Utc::now());
 
-        let branch_name = format!("hoosh/{}", task.id);
-        sandbox
-            .create_branch(&branch_name)
-            .context("Failed to create task branch")?;
-        task.branch = Some(branch_name.clone());
-        self.store.update(&task)?;
+        if task.trigger.is_some() {
+            let gh_ok = tokio::process::Command::new("gh")
+                .arg("auth")
+                .arg("status")
+                .output()
+                .await
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !gh_ok {
+                let _ = writeln!(sandbox, "[{}] gh CLI not authenticated", Utc::now());
+                task.status = TaskStatus::Failed;
+                task.error_message = Some(
+                    "gh CLI not authenticated — run 'gh auth login' on the daemon machine"
+                        .to_string(),
+                );
+                task.completed_at = Some(Utc::now());
+                self.store.update(&task)?;
+                if !self.config.retain_sandboxes {
+                    let _ = sandbox.cleanup();
+                }
+                return Ok(());
+            }
+        }
 
         let global_perms = PermissionResolver::load_global().unwrap_or_default();
         let repo_perms = PermissionResolver::load_repo(&sandbox.repo_dir);
@@ -122,73 +140,18 @@ impl TaskExecutor {
         task.tokens_consumed = tokens;
 
         if cancel.load(Ordering::Relaxed) {
-            let _ = writeln!(
-                sandbox,
-                "[{}] Task cancelled or token budget exceeded",
-                Utc::now()
-            );
-
             let incomplete_msg = if task.tokens_consumed >= task.token_budget {
                 "[incomplete] token budget exceeded".to_string()
             } else {
                 "[incomplete] task cancelled".to_string()
             };
-
-            if sandbox.has_changes().unwrap_or(false) {
-                let _ = sandbox.commit_all(&incomplete_msg);
-                let _ = sandbox
-                    .push(&branch_name, self.config.ssh_key_path.as_ref())
-                    .await;
-            }
-
             task.status = TaskStatus::Failed;
             task.error_message = Some(incomplete_msg);
-            task.completed_at = Some(Utc::now());
-            self.store.update(&task)?;
-        } else if sandbox.has_changes()? {
-            let _ = writeln!(sandbox, "[{}] Committing changes", Utc::now());
-
-            let instructions_short = &task.instructions[..task.instructions.len().min(72)];
-            let commit_msg = format!("hoosh: {}", instructions_short);
-            sandbox.commit_all(&commit_msg)?;
-
-            let _ = writeln!(sandbox, "[{}] Pushing branch: {}", Utc::now(), branch_name);
-            sandbox
-                .push(&branch_name, self.config.ssh_key_path.as_ref())
-                .await?;
-
-            let pr_title = task
-                .pr_title
-                .clone()
-                .unwrap_or_else(|| format!("hoosh: {}", instructions_short));
-
-            let _ = writeln!(sandbox, "[{}] Creating pull request", Utc::now());
-            let pr_result = self
-                .pr_provider
-                .create_pull_request(CreatePrParams {
-                    repo_url: task.repo_url.clone(),
-                    head_branch: branch_name,
-                    base_branch: task.base_branch.clone(),
-                    title: pr_title,
-                    body: format!(
-                        "Automated PR created by hoosh daemon.\n\nInstructions: {}",
-                        task.instructions
-                    ),
-                    labels: task.pr_labels.clone(),
-                })
-                .await?;
-
-            let _ = writeln!(sandbox, "[{}] PR created: {}", Utc::now(), pr_result.pr_url);
-            task.pr_url = Some(pr_result.pr_url);
-            task.status = TaskStatus::Completed;
-            task.completed_at = Some(Utc::now());
-            self.store.update(&task)?;
         } else {
-            let _ = writeln!(sandbox, "[{}] No changes, task completed", Utc::now());
             task.status = TaskStatus::Completed;
-            task.completed_at = Some(Utc::now());
-            self.store.update(&task)?;
         }
+        task.completed_at = Some(Utc::now());
+        self.store.update(&task)?;
 
         if !self.config.retain_sandboxes {
             let _ = sandbox.cleanup();
@@ -285,11 +248,20 @@ impl TaskExecutor {
                     .with_event_sender(event_tx.clone()),
             );
 
+            let system_reminder = Arc::new(SystemReminder::new().add_strategy(Box::new(
+                PeriodicCoreReminderStrategy::new(
+                    10_000,
+                    HOOSH_DAEMON_CODER_CORE_INSTRUCTIONS.to_string(),
+                ),
+            )));
+
             let agent = Agent::new(Arc::clone(&self.backend), tool_registry, tool_executor)
                 .with_event_sender(event_tx.clone())
-                .with_cancellation_token(Arc::clone(&cancel));
+                .with_cancellation_token(Arc::clone(&cancel))
+                .with_system_reminder(system_reminder);
 
             let mut conversation = Conversation::new();
+            conversation.add_system_message(HOOSH_DAEMON_CODER_PROMPT.to_string());
             conversation.add_user_message(task.instructions.clone());
 
             let _ = agent.handle_turn(&mut conversation).await;
@@ -315,7 +287,6 @@ mod tests {
     use super::*;
     use crate::backends::{LlmBackend, LlmResponse};
     use crate::daemon::config::DaemonConfig;
-    use crate::daemon::pr_provider::{CreatePrParams, PrProvider, PrResult};
     use crate::daemon::store::TaskStore;
     use crate::daemon::task::Task;
     use anyhow::Result;
@@ -371,24 +342,6 @@ mod tests {
         }
     }
 
-    struct MockPrProvider {
-        pr_url: String,
-    }
-
-    #[async_trait]
-    impl PrProvider for MockPrProvider {
-        async fn create_pull_request(&self, _params: CreatePrParams) -> Result<PrResult> {
-            Ok(PrResult {
-                pr_url: self.pr_url.clone(),
-                pr_number: 1,
-            })
-        }
-
-        fn provider_name(&self) -> &'static str {
-            "mock"
-        }
-    }
-
     fn init_bare_with_commit(path: &std::path::Path) {
         let repo = git2::Repository::init_bare(path).unwrap();
         let sig = git2::Signature::now("Test", "test@example.com").unwrap();
@@ -415,15 +368,26 @@ mod tests {
             sandbox_base_dir: sandbox_dir.path().to_path_buf(),
             ..Default::default()
         };
+        Arc::new(TaskExecutor::new(store, Arc::new(config), backend))
+    }
 
-        Arc::new(TaskExecutor::new(
-            store,
-            Arc::new(config),
-            Arc::new(MockPrProvider {
-                pr_url: "https://github.com/owner/repo/pull/1".to_string(),
-            }),
-            backend,
-        ))
+    fn make_github_trigger(
+        trigger_ref: &str,
+        repo_url: &str,
+    ) -> crate::daemon::task::GithubTrigger {
+        use crate::daemon::task::{GithubEventType, GithubTrigger};
+        GithubTrigger {
+            event_type: GithubEventType::IssueComment,
+            delivery_id: "test-delivery-1".to_string(),
+            trigger_ref: trigger_ref.to_string(),
+            repo_full_name: "owner/repo".to_string(),
+            repo_url: repo_url.to_string(),
+            default_branch: "main".to_string(),
+            actor_login: "alice".to_string(),
+            issue_or_pr_number: 47,
+            comment_url: None,
+            raw_payload: serde_json::json!({"action": "created"}),
+        }
     }
 
     #[tokio::test]
@@ -492,6 +456,74 @@ mod tests {
                 .unwrap_or("")
                 .contains("[incomplete]"),
             "Error message should contain [incomplete]"
+        );
+    }
+
+    #[tokio::test]
+    async fn webhook_task_runs_to_terminal_state() {
+        let remote_dir = TempDir::new().unwrap();
+        init_bare_with_commit(remote_dir.path());
+        let repo_url = format!("file://{}", remote_dir.path().display());
+
+        let store_dir = TempDir::new().unwrap();
+        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+
+        let sandbox_dir = TempDir::new().unwrap();
+        let backend = Arc::new(MockBackend::simple("Done."));
+        let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
+
+        let mut task = Task::new(
+            repo_url.clone(),
+            "main".to_string(),
+            "@hoosh fix the bug".to_string(),
+            None,
+            100_000,
+        );
+        task.trigger = Some(make_github_trigger("issue:47", &repo_url));
+        let task_id = task.id.clone();
+        store.create(&task).unwrap();
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        executor.run(task_id.clone(), cancel).await;
+
+        let final_task = store.get(&task_id).unwrap().unwrap();
+        assert!(final_task.status.is_terminal());
+        assert!(final_task.trigger.is_some());
+    }
+
+    #[tokio::test]
+    async fn webhook_task_clone_failure_marks_failed() {
+        let store_dir = TempDir::new().unwrap();
+        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+
+        let sandbox_dir = TempDir::new().unwrap();
+        let backend = Arc::new(MockBackend::simple("Done."));
+        let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
+
+        let bad_url = "file:///nonexistent/path/repo";
+        let mut task = Task::new(
+            bad_url.to_string(),
+            "main".to_string(),
+            "@hoosh fix this".to_string(),
+            None,
+            100_000,
+        );
+        task.trigger = Some(make_github_trigger("issue:99", bad_url));
+        let task_id = task.id.clone();
+        store.create(&task).unwrap();
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        executor.run(task_id.clone(), cancel).await;
+
+        let final_task = store.get(&task_id).unwrap().unwrap();
+        assert_eq!(final_task.status, TaskStatus::Failed);
+        assert!(
+            final_task
+                .error_message
+                .as_deref()
+                .unwrap_or("")
+                .contains("Clone failed"),
+            "Error message should indicate clone failure"
         );
     }
 
