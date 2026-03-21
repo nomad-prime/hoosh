@@ -7,7 +7,7 @@ use hoosh::cli::{
 use hoosh::session_files::cleanup_stale_sessions;
 use hoosh::{
     cli::{Cli, Commands},
-    config::{set_config_path_override, AppConfig, ConfigError},
+    config::{AppConfig, ConfigError, set_config_path_override},
     console::{VerbosityLevel, init_console},
 };
 
