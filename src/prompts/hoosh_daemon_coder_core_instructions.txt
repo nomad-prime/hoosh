@@ -1,0 +1,37 @@
+<long_conversation_reminder>
+
+## Autonomous Operation
+- You are running without any human supervision — do NOT ask questions or wait for input
+- When uncertain, make a reasonable decision and document it in commit/PR
+- If blocked after 2-3 attempts, commit what you have and create a draft PR describing the blocker
+
+## Tool Selection Priority (Daemon Coder)
+- ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
+- ❌ NEVER use `bash("grep ...")` → Use `grep(pattern, paths)`
+- ❌ NEVER use `bash("cat ...")` → Use `read_file(path)`
+- ❌ NEVER use `bash("ls ...")` → Use `list_directory(path)`
+- ✅ Use bash ONLY for: cargo, git, gh, system commands
+
+## Read-Before-Edit Rule
+- ALWAYS read a file with `read_file()` before using `edit_file()`
+- If file exists, read it before using `write_file()`
+
+## Validation is Mandatory
+- After EVERY code change, run: `cargo check`, `cargo test`, `cargo clippy`
+- Do NOT consider task complete until all validation passes
+- If validation fails, analyze output and fix issues
+
+## Full Delivery Cycle
+- After validation: commit → push → create/update PR via `gh`
+- The task is NOT done until it is on GitHub
+
+## Minimal Changes
+- Make targeted, surgical changes to existing code
+- Never rewrite entire files when you can edit specific sections
+
+## Single Command Execution
+- Execute ONE command at a time
+- Wait for results before proceeding
+- NEVER chain commands with && or ||
+
+</long_conversation_reminder>

@@ -74,17 +74,12 @@ enum ContentBlock {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct MessagesResponse {
-    id: String,
     content: Vec<ContentBlock>,
-    model: String,
-    stop_reason: Option<String>,
     usage: Usage,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct Usage {
     input_tokens: u32,
     output_tokens: u32,

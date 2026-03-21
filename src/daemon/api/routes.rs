@@ -4,17 +4,18 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use crate::daemon::api::AppState;
 use crate::daemon::api::types::{
-    ErrorResponse, HealthResponse, SubmitTaskRequest, SubmitTaskResponse, TaskResponse,
+    ErrorResponse, GithubTriggerResponse, HealthResponse, SubmitTaskRequest, SubmitTaskResponse,
+    TaskResponse,
 };
 use crate::daemon::task::{Task, TaskStatus};
 
 impl From<Task> for TaskResponse {
     fn from(t: Task) -> Self {
+        let trigger = t.trigger.as_ref().map(GithubTriggerResponse::from);
         Self {
             id: t.id,
             repo_url: t.repo_url,
@@ -33,6 +34,7 @@ impl From<Task> for TaskResponse {
             error_message: t.error_message,
             sandbox_path: t.sandbox_path,
             log_path: t.log_path,
+            trigger,
         }
     }
 }
@@ -82,20 +84,7 @@ pub async fn submit_task(
             .into_response();
     }
 
-    let cancel = Arc::new(AtomicBool::new(false));
-    let cancel_clone = Arc::clone(&cancel);
-    let executor = Arc::clone(&state.executor);
-    let id_for_spawn = task_id.clone();
-
-    let handle = tokio::spawn(async move {
-        executor.run(id_for_spawn, cancel_clone).await;
-    });
-
-    state
-        .active_tasks
-        .write()
-        .await
-        .insert(task_id.clone(), (handle, cancel));
+    state.spawn_task(task_id.clone()).await;
 
     (
         StatusCode::ACCEPTED,

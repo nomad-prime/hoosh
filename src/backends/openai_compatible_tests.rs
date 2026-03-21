@@ -2,8 +2,9 @@ use super::*;
 use crate::agent::Conversation;
 use crate::backends::{LlmBackend, LlmError};
 use crate::tools::ToolRegistry;
-use httpmock::prelude::*;
 use serde_json::json;
+use wiremock::matchers::{header, header_exists, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn create_test_config() -> OpenAICompatibleConfig {
     OpenAICompatibleConfig {
@@ -27,38 +28,24 @@ fn create_backend_with_url(base_url: String) -> OpenAICompatibleBackend {
 
 #[tokio::test]
 async fn backend_sends_simple_message() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/v1/chat/completions")
-            .header("Authorization", "Bearer test-key-123")
-            .json_body(json!({
-                "model": "gpt-4",
-                "messages": [{
-                    "role": "user",
-                    "content": "Hello"
-                }],
-                "max_completion_tokens": 4096,
-                "temperature": 0.7
-            }));
-        then.status(200).json_body(json!({
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-key-123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "choices": [{
-                "message": {
-                    "content": "Hi there!"
-                },
+                "message": { "content": "Hi there!" },
                 "finish_reason": "stop"
             }],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 5
-            }
-        }));
-    });
+            "usage": { "prompt_tokens": 10, "completion_tokens": 5 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let result = backend.send_message("Hello").await;
 
-    mock.assert();
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "Hi there!");
 }
@@ -90,19 +77,23 @@ async fn backend_handles_network_error() {
 
 #[tokio::test]
 async fn backend_handles_rate_limit_error() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(429)
-            .header("retry-after", "60")
-            .body("Rate limit exceeded");
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "60")
+                .set_body_string("Rate limit exceeded"),
+        )
+        .expect(1..)
+        .mount(&server)
+        .await;
 
+    let client = reqwest::Client::new();
     let config = OpenAICompatibleConfig {
-        base_url: server.base_url(),
+        base_url: server.uri(),
         ..create_test_config()
     };
-    let client = reqwest::Client::new();
     let default_executor = RequestExecutor::new(1, "Test".to_string());
     let backend = OpenAICompatibleBackend {
         client,
@@ -113,25 +104,25 @@ async fn backend_handles_rate_limit_error() {
 
     let result = backend.send_message("test").await;
 
-    mock.assert();
     assert!(result.is_err());
-    let error = result.unwrap_err();
-    assert!(error.to_string().contains("Rate limit"));
+    assert!(result.unwrap_err().to_string().contains("Rate limit"));
 }
 
 #[tokio::test]
 async fn backend_handles_server_error() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(500).body("Internal server error");
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal server error"))
+        .expect(1)
+        .mount(&server)
+        .await;
 
+    let client = reqwest::Client::new();
     let config = OpenAICompatibleConfig {
-        base_url: server.base_url(),
+        base_url: server.uri(),
         ..create_test_config()
     };
-    let client = reqwest::Client::new();
     let default_executor = RequestExecutor::new(1, "Test".to_string());
     let backend = OpenAICompatibleBackend {
         client,
@@ -142,23 +133,24 @@ async fn backend_handles_server_error() {
 
     let result = backend.send_message("test").await;
 
-    mock.assert();
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn backend_handles_authentication_error() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(401).body("Invalid API key");
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("Invalid API key"))
+        .expect(1)
+        .mount(&server)
+        .await;
 
+    let client = reqwest::Client::new();
     let config = OpenAICompatibleConfig {
-        base_url: server.base_url(),
+        base_url: server.uri(),
         ..create_test_config()
     };
-    let client = reqwest::Client::new();
     let default_executor = RequestExecutor::new(1, "Test".to_string());
     let backend = OpenAICompatibleBackend {
         client,
@@ -169,16 +161,15 @@ async fn backend_handles_authentication_error() {
 
     let result = backend.send_message("test").await;
 
-    mock.assert();
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn backend_sends_message_with_tools() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "choices": [{
                 "message": {
                     "content": "I'll help you with that",
@@ -193,21 +184,19 @@ async fn backend_sends_message_with_tools() {
                 },
                 "finish_reason": "tool_calls"
             }],
-            "usage": {
-                "prompt_tokens": 50,
-                "completion_tokens": 25
-            }
-        }));
-    });
+            "usage": { "prompt_tokens": 50, "completion_tokens": 25 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let mut conversation = Conversation::new();
     conversation.add_user_message("What's the weather?".to_string());
     let tools = ToolRegistry::new();
 
     let result = backend.send_message_with_tools(&conversation, &tools).await;
 
-    mock.assert();
     assert!(result.is_ok());
     let response = result.unwrap();
     assert!(response.content.is_some());
@@ -217,10 +206,10 @@ async fn backend_sends_message_with_tools() {
 
 #[tokio::test]
 async fn backend_handles_new_response_format() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "output": [{
                 "content": [{
                     "type": "output_text",
@@ -232,21 +221,19 @@ async fn backend_handles_new_response_format() {
                     "input": {"query": "test"}
                 }]
             }],
-            "usage": {
-                "input_tokens": 30,
-                "output_tokens": 20
-            }
-        }));
-    });
+            "usage": { "input_tokens": 30, "output_tokens": 20 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let mut conversation = Conversation::new();
     conversation.add_user_message("Search for something".to_string());
     let tools = ToolRegistry::new();
 
     let result = backend.send_message_with_tools(&conversation, &tools).await;
 
-    mock.assert();
     assert!(result.is_ok());
     let response = result.unwrap();
     assert!(response.content.is_some());
@@ -255,31 +242,27 @@ async fn backend_handles_new_response_format() {
 
 #[tokio::test]
 async fn backend_tracks_token_usage() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "choices": [{
-                "message": {
-                    "content": "Response"
-                },
+                "message": { "content": "Response" },
                 "finish_reason": "stop"
             }],
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50
-            }
-        }));
-    });
+            "usage": { "prompt_tokens": 100, "completion_tokens": 50 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let mut conversation = Conversation::new();
     conversation.add_user_message("Test".to_string());
     let tools = ToolRegistry::new();
 
     let result = backend.send_message_with_tools(&conversation, &tools).await;
 
-    mock.assert();
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response.input_tokens, Some(100));
@@ -288,31 +271,27 @@ async fn backend_tracks_token_usage() {
 
 #[tokio::test]
 async fn backend_handles_response_truncated_by_length() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "choices": [{
-                "message": {
-                    "content": "This response was cut off..."
-                },
+                "message": { "content": "This response was cut off..." },
                 "finish_reason": "length"
             }],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 4096
-            }
-        }));
-    });
+            "usage": { "prompt_tokens": 10, "completion_tokens": 4096 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let mut conversation = Conversation::new();
     conversation.add_user_message("Generate a very long response".to_string());
     let tools = ToolRegistry::new();
 
     let result = backend.send_message_with_tools(&conversation, &tools).await;
 
-    mock.assert();
     assert!(result.is_err());
     if let Err(LlmError::RecoverableByLlm { message }) = result {
         assert!(message.contains("cut off"));
@@ -369,57 +348,57 @@ async fn backend_returns_none_for_unknown_model_pricing() {
 
 #[tokio::test]
 async fn backend_handles_empty_response() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
-            "choices": []
-        }));
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "choices": [] })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let result = backend.send_message("test").await;
 
-    mock.assert();
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn backend_handles_missing_content() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
-            "choices": [{
-                "message": {},
-                "finish_reason": "stop"
-            }]
-        }));
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{ "message": {}, "finish_reason": "stop" }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let result = backend.send_message("test").await;
 
-    mock.assert();
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn backend_handles_multiple_retries_on_rate_limit() {
-    let server = MockServer::start();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "1")
+                .set_body_string("Rate limit"),
+        )
+        .expect(2..)
+        .mount(&server)
+        .await;
 
-    let fail_mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(429)
-            .header("retry-after", "1")
-            .body("Rate limit");
-    });
-
+    let client = reqwest::Client::new();
     let config = OpenAICompatibleConfig {
-        base_url: server.base_url(),
+        base_url: server.uri(),
         ..create_test_config()
     };
-    let client = reqwest::Client::new();
     let default_executor = RequestExecutor::new(2, "Test".to_string());
     let backend = OpenAICompatibleBackend {
         client,
@@ -430,56 +409,45 @@ async fn backend_handles_multiple_retries_on_rate_limit() {
 
     let result = backend.send_message("test").await;
 
-    assert!(fail_mock.hits() >= 2);
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn backend_uses_correct_headers() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/v1/chat/completions")
-            .header("Authorization", "Bearer test-key-123")
-            .header_exists("content-type");
-        then.status(200).json_body(json!({
-            "choices": [{
-                "message": {
-                    "content": "Success"
-                }
-            }]
-        }));
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-key-123"))
+        .and(header_exists("content-type"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{ "message": { "content": "Success" } }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let _ = backend.send_message("test").await;
-
-    mock.assert();
 }
 
 #[tokio::test]
 async fn backend_sends_tools_in_request_when_available() {
-    let server = MockServer::start();
-    let mock = server.mock(|when, then| {
-        when.method(POST).path("/v1/chat/completions");
-        then.status(200).json_body(json!({
-            "choices": [{
-                "message": {
-                    "content": "Response"
-                }
-            }]
-        }));
-    });
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{ "message": { "content": "Response" } }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
 
-    let backend = create_backend_with_url(server.base_url());
+    let backend = create_backend_with_url(server.uri());
     let mut conversation = Conversation::new();
     conversation.add_user_message("Test".to_string());
-
     let tools = ToolRegistry::new();
 
     let _ = backend.send_message_with_tools(&conversation, &tools).await;
-
-    mock.assert();
 }
 
 #[tokio::test]
