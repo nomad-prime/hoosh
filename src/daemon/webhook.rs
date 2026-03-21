@@ -7,9 +7,6 @@ use axum::{
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-
 use crate::daemon::api::AppState;
 use crate::daemon::github_event::parse_github_event;
 use crate::daemon::task::Task;
@@ -87,14 +84,21 @@ pub async fn handle_github_webhook(
             .into_response();
     }
 
+    if state.shutting_down.load(std::sync::atomic::Ordering::Relaxed) {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "daemon is shutting down"})),
+        )
+            .into_response();
+    }
+
     let mention_handle = state.config.github.mention_handle.clone();
-    let bot_login = state.config.github.bot_login.as_deref().map(str::to_string);
 
     let trigger = match parse_github_event(
         &event_type,
         &body,
         &mention_handle,
-        bot_login.as_deref(),
+        state.config.github.bot_login.as_deref(),
         &delivery_id,
     ) {
         Ok(Some(t)) => t,
@@ -157,20 +161,7 @@ pub async fn handle_github_webhook(
             .into_response();
     }
 
-    let cancel = Arc::new(AtomicBool::new(false));
-    let cancel_clone = Arc::clone(&cancel);
-    let executor = Arc::clone(&state.executor);
-    let id_for_spawn = task_id.clone();
-
-    let handle = tokio::spawn(async move {
-        executor.run(id_for_spawn, cancel_clone).await;
-    });
-
-    state
-        .active_tasks
-        .write()
-        .await
-        .insert(task_id.clone(), (handle, cancel));
+    state.spawn_task(task_id.clone()).await;
 
     (
         StatusCode::ACCEPTED,

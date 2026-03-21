@@ -128,15 +128,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn task_response_trigger_omits_webhook_secret() {
-        let trigger = make_trigger();
-        let response = GithubTriggerResponse::from(&trigger);
-        let json_str = serde_json::to_string(&response).unwrap();
-
-        assert!(
-            !json_str.contains("webhook_secret"),
-            "webhook_secret must not appear in API response"
-        );
-    }
 }

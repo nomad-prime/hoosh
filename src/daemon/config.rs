@@ -60,8 +60,6 @@ pub struct DaemonConfig {
     #[serde(default = "default_token_budget")]
     pub default_token_budget: usize,
     #[serde(default)]
-    pub github_pat: Option<String>,
-    #[serde(default)]
     pub ssh_key_path: Option<PathBuf>,
     #[serde(default = "default_sandbox_base_dir")]
     pub sandbox_base_dir: PathBuf,
@@ -76,7 +74,6 @@ impl Default for DaemonConfig {
         Self {
             bind_address: default_bind_address(),
             default_token_budget: default_token_budget(),
-            github_pat: None,
             ssh_key_path: None,
             sandbox_base_dir: default_sandbox_base_dir(),
             retain_sandboxes: false,

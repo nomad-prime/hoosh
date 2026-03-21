@@ -29,6 +29,24 @@ pub struct AppState {
     pub shutting_down: Arc<AtomicBool>,
 }
 
+impl AppState {
+    pub async fn spawn_task(&self, task_id: String) {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_clone = Arc::clone(&cancel);
+        let executor = Arc::clone(&self.executor);
+        let id_for_spawn = task_id.clone();
+
+        let handle = tokio::spawn(async move {
+            executor.run(id_for_spawn, cancel_clone).await;
+        });
+
+        self.active_tasks
+            .write()
+            .await
+            .insert(task_id, (handle, cancel));
+    }
+}
+
 pub struct DaemonServer {
     pub store: Arc<TaskStore>,
     pub executor: Arc<TaskExecutor>,

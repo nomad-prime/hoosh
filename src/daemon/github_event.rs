@@ -97,10 +97,10 @@ pub fn parse_github_event(
 
     match event_type {
         "issue_comment" => {
-            let p: IssueCommentPayload = serde_json::from_slice(payload)?;
-            if p.action != "created" {
+            if raw_payload["action"].as_str() != Some("created") {
                 return Ok(None);
             }
+            let p: IssueCommentPayload = serde_json::from_value(raw_payload.clone())?;
             if is_bot_sender(&p.sender.login, bot_login) {
                 return Ok(None);
             }
@@ -126,10 +126,10 @@ pub fn parse_github_event(
             }))
         }
         "pull_request_review" => {
-            let p: PullRequestReviewPayload = serde_json::from_slice(payload)?;
-            if p.action != "submitted" {
+            if raw_payload["action"].as_str() != Some("submitted") {
                 return Ok(None);
             }
+            let p: PullRequestReviewPayload = serde_json::from_value(raw_payload.clone())?;
             if is_bot_sender(&p.sender.login, bot_login) {
                 return Ok(None);
             }
@@ -151,10 +151,10 @@ pub fn parse_github_event(
             }))
         }
         "pull_request_review_comment" => {
-            let p: PullRequestReviewCommentPayload = serde_json::from_slice(payload)?;
-            if p.action != "created" {
+            if raw_payload["action"].as_str() != Some("created") {
                 return Ok(None);
             }
+            let p: PullRequestReviewCommentPayload = serde_json::from_value(raw_payload.clone())?;
             if is_bot_sender(&p.sender.login, bot_login) {
                 return Ok(None);
             }

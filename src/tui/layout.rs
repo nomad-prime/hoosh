@@ -22,7 +22,6 @@ impl BoxModel {
         }
     }
 
-    #[allow(dead_code)]
     pub const fn with_padding(mut self, top: u16, bottom: u16) -> Self {
         self.padding_top = top;
         self.padding_bottom = bottom;
@@ -57,12 +56,6 @@ impl<S> ComponentDescriptor<S> {
 
     pub fn with_border(mut self) -> Self {
         self.box_model = self.box_model.with_border(1, 1);
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn with_padding(mut self, top: u16, bottom: u16) -> Self {
-        self.box_model = self.box_model.with_padding(top, bottom);
         self
     }
 

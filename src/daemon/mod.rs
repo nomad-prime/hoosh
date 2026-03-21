@@ -3,7 +3,6 @@ pub mod config;
 pub mod executor;
 pub mod github_event;
 pub mod permissions;
-pub mod pr_provider;
 pub mod sandbox;
 pub mod store;
 pub mod task;
