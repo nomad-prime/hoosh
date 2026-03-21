@@ -7,7 +7,6 @@ use crate::daemon::task::{GithubEventType, GithubTrigger};
 
 #[derive(Deserialize)]
 pub(crate) struct IssueCommentPayload {
-    pub action: String,
     pub comment: CommentBody,
     pub issue: IssueRef,
     pub repository: RepoRef,
@@ -40,7 +39,6 @@ pub(crate) struct ActorRef {
 
 #[derive(Deserialize)]
 pub(crate) struct PullRequestReviewPayload {
-    pub action: String,
     pub review: ReviewBody,
     pub pull_request: PrRef,
     pub repository: RepoRef,
@@ -60,7 +58,6 @@ pub(crate) struct PrRef {
 
 #[derive(Deserialize)]
 pub(crate) struct PullRequestReviewCommentPayload {
-    pub action: String,
     pub comment: ReviewCommentBody,
     pub pull_request: PrRef,
     pub repository: RepoRef,

@@ -22,12 +22,6 @@ impl BoxModel {
         }
     }
 
-    pub const fn with_padding(mut self, top: u16, bottom: u16) -> Self {
-        self.padding_top = top;
-        self.padding_bottom = bottom;
-        self
-    }
-
     pub const fn with_border(mut self, top: u16, bottom: u16) -> Self {
         self.border_top = top;
         self.border_bottom = bottom;
@@ -112,8 +106,8 @@ mod tests {
 
     #[test]
     fn test_box_model_calculation() {
-        let box_model = BoxModel::new(5).with_padding(1, 1).with_border(1, 1);
+        let box_model = BoxModel::new(5).with_border(1, 1);
 
-        assert_eq!(box_model.total_height(), 9); // 5 + 1 + 1 + 1 + 1
+        assert_eq!(box_model.total_height(), 7); // 5 + 1 + 1
     }
 }
