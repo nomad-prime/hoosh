@@ -19,14 +19,12 @@ use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
-const HOOSH_DAEMON_CODER_PROMPT: &str = include_str!("../prompts/hoosh_daemon_coder.txt");
-const HOOSH_DAEMON_CODER_CORE_INSTRUCTIONS: &str =
-    include_str!("../prompts/hoosh_daemon_coder_core_instructions.txt");
-
 pub struct TaskExecutor {
     pub store: Arc<TaskStore>,
     pub config: Arc<DaemonConfig>,
     pub backend: Arc<dyn LlmBackend>,
+    pub agent_prompt: String,
+    pub core_instructions: String,
 }
 
 impl TaskExecutor {
@@ -34,11 +32,15 @@ impl TaskExecutor {
         store: Arc<TaskStore>,
         config: Arc<DaemonConfig>,
         backend: Arc<dyn LlmBackend>,
+        agent_prompt: String,
+        core_instructions: String,
     ) -> Self {
         Self {
             store,
             config,
             backend,
+            agent_prompt,
+            core_instructions,
         }
     }
 
@@ -249,10 +251,7 @@ impl TaskExecutor {
             );
 
             let system_reminder = Arc::new(SystemReminder::new().add_strategy(Box::new(
-                PeriodicCoreReminderStrategy::new(
-                    10_000,
-                    HOOSH_DAEMON_CODER_CORE_INSTRUCTIONS.to_string(),
-                ),
+                PeriodicCoreReminderStrategy::new(10_000, self.core_instructions.clone()),
             )));
 
             let agent = Agent::new(Arc::clone(&self.backend), tool_registry, tool_executor)
@@ -261,7 +260,7 @@ impl TaskExecutor {
                 .with_system_reminder(system_reminder);
 
             let mut conversation = Conversation::new();
-            conversation.add_system_message(HOOSH_DAEMON_CODER_PROMPT.to_string());
+            conversation.add_system_message(self.agent_prompt.clone());
             conversation.add_user_message(task.instructions.clone());
 
             let _ = agent.handle_turn(&mut conversation).await;
@@ -368,7 +367,13 @@ mod tests {
             sandbox_base_dir: sandbox_dir.path().to_path_buf(),
             ..Default::default()
         };
-        Arc::new(TaskExecutor::new(store, Arc::new(config), backend))
+        Arc::new(TaskExecutor::new(
+            store,
+            Arc::new(config),
+            backend,
+            include_str!("../prompts/hoosh_daemon_coder.txt").to_string(),
+            include_str!("../prompts/hoosh_daemon_coder_core_instructions.txt").to_string(),
+        ))
     }
 
     fn make_github_trigger(
