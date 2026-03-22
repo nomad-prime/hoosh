@@ -4,9 +4,11 @@ set -euo pipefail
 # Hoosh server setup / update script
 # Safe to run multiple times — idempotent for all steps.
 
-BINARY_SRC="${HOME}/.cargo/bin/hoosh"
+INVOKING_USER="${SUDO_USER:-$USER}"
+INVOKING_HOME=$(getent passwd "$INVOKING_USER" | cut -d: -f6)
+BINARY_SRC="${INVOKING_HOME}/.cargo/bin/hoosh"
 BINARY_DST="/usr/local/bin/hoosh"
-CONFIG_SRC="${HOME}/.config/hoosh"
+CONFIG_SRC="${INVOKING_HOME}/.config/hoosh"
 CONFIG_DST="/etc/hoosh"
 SSH_DIR="/etc/hoosh/ssh"
 SSH_KEY="${SSH_DIR}/id_ed25519"
