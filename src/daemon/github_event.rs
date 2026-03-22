@@ -72,6 +72,14 @@ pub(crate) struct ReviewCommentBody {
 
 // ---- Public API ----
 
+fn to_ssh_url(https_url: &str) -> String {
+    if let Some(rest) = https_url.strip_prefix("https://github.com/") {
+        format!("git@github.com:{}", rest)
+    } else {
+        https_url.to_string()
+    }
+}
+
 pub fn mentions_handle(body: &str, handle: &str) -> bool {
     body.contains(handle)
 }
@@ -114,7 +122,7 @@ pub fn parse_github_event(
                 delivery_id: delivery_id.to_string(),
                 trigger_ref,
                 repo_full_name: p.repository.full_name,
-                repo_url: p.repository.clone_url,
+                repo_url: to_ssh_url(&p.repository.clone_url),
                 default_branch: p.repository.default_branch,
                 actor_login: p.sender.login,
                 issue_or_pr_number: p.issue.number,
@@ -139,7 +147,7 @@ pub fn parse_github_event(
                 delivery_id: delivery_id.to_string(),
                 trigger_ref: format!("pr:{}", p.pull_request.number),
                 repo_full_name: p.repository.full_name,
-                repo_url: p.repository.clone_url,
+                repo_url: to_ssh_url(&p.repository.clone_url),
                 default_branch: p.repository.default_branch,
                 actor_login: p.sender.login,
                 issue_or_pr_number: p.pull_request.number,
@@ -163,7 +171,7 @@ pub fn parse_github_event(
                 delivery_id: delivery_id.to_string(),
                 trigger_ref: format!("pr:{}", p.pull_request.number),
                 repo_full_name: p.repository.full_name,
-                repo_url: p.repository.clone_url,
+                repo_url: to_ssh_url(&p.repository.clone_url),
                 default_branch: p.repository.default_branch,
                 actor_login: p.sender.login,
                 issue_or_pr_number: p.pull_request.number,
@@ -297,7 +305,7 @@ mod tests {
         assert_eq!(trigger.trigger_ref, "issue:47");
         assert_eq!(trigger.actor_login, "alice");
         assert_eq!(trigger.default_branch, "main");
-        assert_eq!(trigger.repo_url, "https://github.com/owner/repo.git");
+        assert_eq!(trigger.repo_url, "git@github.com:owner/repo.git");
         assert!(trigger.raw_payload.is_object());
     }
 

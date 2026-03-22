@@ -118,7 +118,7 @@ fn repo_url(srv: &TestServer) -> String {
 async fn submit_task_no_changes_completes_without_pr() {
     let srv = start_test_server().await;
     let client = reqwest::Client::new();
-    let url = format!("http://{}/tasks", srv.addr);
+    let url = format!("http://{}/jobs", srv.addr);
 
     let resp = client
         .post(&url)
@@ -135,7 +135,7 @@ async fn submit_task_no_changes_completes_without_pr() {
     let body: serde_json::Value = resp.json().await.unwrap();
     let task_id = body["job_id"].as_str().unwrap().to_string();
 
-    let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
+    let poll_url = format!("http://{}/jobs/{}", srv.addr, task_id);
     for _ in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let task: serde_json::Value = client
@@ -160,7 +160,7 @@ async fn submit_task_no_changes_completes_without_pr() {
 async fn submit_with_missing_field_returns_400() {
     let srv = start_test_server().await;
     let client = reqwest::Client::new();
-    let url = format!("http://{}/tasks", srv.addr);
+    let url = format!("http://{}/jobs", srv.addr);
 
     let resp = client
         .post(&url)
@@ -180,7 +180,7 @@ async fn submit_with_missing_field_returns_400() {
 async fn get_unknown_task_returns_404() {
     let srv = start_test_server().await;
     let client = reqwest::Client::new();
-    let url = format!("http://{}/tasks/nonexistent-task-id", srv.addr);
+    let url = format!("http://{}/jobs/nonexistent-task-id", srv.addr);
 
     let resp = client.get(&url).send().await.unwrap();
     assert_eq!(resp.status(), 404);
@@ -191,7 +191,7 @@ async fn cancel_completed_task_returns_409() {
     let srv = start_test_server().await;
     let client = reqwest::Client::new();
 
-    let submit_url = format!("http://{}/tasks", srv.addr);
+    let submit_url = format!("http://{}/jobs", srv.addr);
     let resp = client
         .post(&submit_url)
         .json(&serde_json::json!({
@@ -206,7 +206,7 @@ async fn cancel_completed_task_returns_409() {
     let body: serde_json::Value = resp.json().await.unwrap();
     let task_id = body["job_id"].as_str().unwrap().to_string();
 
-    let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
+    let poll_url = format!("http://{}/jobs/{}", srv.addr, task_id);
     for _ in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let task: serde_json::Value = client
@@ -224,7 +224,7 @@ async fn cancel_completed_task_returns_409() {
         }
     }
 
-    let cancel_url = format!("http://{}/tasks/{}", srv.addr, task_id);
+    let cancel_url = format!("http://{}/jobs/{}", srv.addr, task_id);
     let resp = client.delete(&cancel_url).send().await.unwrap();
     assert_eq!(resp.status(), 409);
 }
@@ -233,7 +233,7 @@ async fn cancel_completed_task_returns_409() {
 async fn list_tasks_returns_all_tasks() {
     let srv = start_test_server().await;
     let client = reqwest::Client::new();
-    let submit_url = format!("http://{}/tasks", srv.addr);
+    let submit_url = format!("http://{}/jobs", srv.addr);
 
     client
         .post(&submit_url)
@@ -248,7 +248,7 @@ async fn list_tasks_returns_all_tasks() {
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let list_url = format!("http://{}/tasks", srv.addr);
+    let list_url = format!("http://{}/jobs", srv.addr);
     let tasks: Vec<serde_json::Value> = client
         .get(&list_url)
         .send()
