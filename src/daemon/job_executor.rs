@@ -85,9 +85,9 @@ impl JobExecutor {
             .await;
 
         if let Err(e) = clone_result {
-            let _ = writeln!(sandbox, "[{}] Clone failed: {}", Utc::now(), e);
+            let _ = writeln!(sandbox, "[{}] Clone failed: {:#}", Utc::now(), e);
             job.status = JobStatus::Failed;
-            job.error_message = Some(format!("Clone failed: {}", e));
+            job.error_message = Some(format!("Clone failed: {:#}", e));
             job.completed_at = Some(Utc::now());
             self.store.update(&job)?;
             if !self.config.retain_sandboxes {
