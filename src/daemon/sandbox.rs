@@ -2,27 +2,6 @@ use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use tokio::time::Duration;
-
-fn make_credential_callback(
-    ssh_key: Option<PathBuf>,
-) -> impl FnMut(&str, Option<&str>, git2::CredentialType) -> Result<git2::Cred, git2::Error> {
-    move |_url, username_from_url, allowed| {
-        let username = username_from_url.unwrap_or("git");
-        if allowed.intersects(git2::CredentialType::SSH_KEY) {
-            if let Some(ref key_path) = ssh_key {
-                return git2::Cred::ssh_key(username, None, key_path, None);
-            }
-            if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
-                return Ok(cred);
-            }
-        }
-        if allowed.intersects(git2::CredentialType::DEFAULT) {
-            return git2::Cred::default();
-        }
-        Err(git2::Error::from_str("No supported credential type"))
-    }
-}
 
 pub struct Sandbox {
     pub task_id: String,
@@ -62,39 +41,37 @@ impl Sandbox {
         base_branch: &str,
         ssh_key_path: Option<&PathBuf>,
     ) -> Result<()> {
-        let url = repo_url.to_string();
-        let branch = base_branch.to_string();
-        let repo_dir = self.repo_dir.clone();
-        let ssh_key = ssh_key_path.cloned();
+        let mut cmd = tokio::process::Command::new("git");
+        cmd.args([
+            "clone",
+            "--branch",
+            base_branch,
+            "--single-branch",
+            repo_url,
+            self.repo_dir.to_str().context("Invalid repo dir path")?,
+        ]);
 
-        let result = tokio::time::timeout(
-            Duration::from_secs(300),
-            tokio::task::spawn_blocking(move || -> Result<git2::Repository> {
-                let mut fetch_opts = git2::FetchOptions::new();
-                let mut callbacks = git2::RemoteCallbacks::new();
-                callbacks.credentials(make_credential_callback(ssh_key));
+        if let Some(key) = ssh_key_path {
+            cmd.env(
+                "GIT_SSH_COMMAND",
+                format!(
+                    "ssh -i {} -o StrictHostKeyChecking=yes -o BatchMode=yes",
+                    key.display()
+                ),
+            );
+        }
 
-                fetch_opts.remote_callbacks(callbacks);
+        let output = tokio::time::timeout(std::time::Duration::from_secs(300), cmd.output())
+            .await
+            .context("Repository clone timed out after 300 seconds")?
+            .context("Failed to spawn git clone")?;
 
-                let mut builder = git2::build::RepoBuilder::new();
-                builder.fetch_options(fetch_opts);
-                builder.branch(&branch);
-
-                builder
-                    .clone(&url, &repo_dir)
-                    .context("Failed to clone repository")
-            }),
-        )
-        .await;
-
-        match result {
-            Ok(Ok(Ok(_repo))) => {
-                self.cloned = true;
-                Ok(())
-            }
-            Ok(Ok(Err(e))) => Err(e),
-            Ok(Err(e)) => Err(anyhow::anyhow!("Clone task panicked: {}", e)),
-            Err(_) => bail!("Repository clone timed out after 300 seconds"),
+        if output.status.success() {
+            self.cloned = true;
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git clone failed: {}", stderr.trim());
         }
     }
 
@@ -130,25 +107,21 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn init_bare_with_commit(path: &std::path::Path) {
-        let repo = git2::Repository::init_bare(path).unwrap();
-
-        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
-        let tree_oid = {
-            let tree_builder = repo.treebuilder(None).unwrap();
-            tree_builder.write().unwrap()
+    fn init_repo_with_commit(path: &std::path::Path) {
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(path)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "Test")
+                .env("GIT_AUTHOR_EMAIL", "test@example.com")
+                .env("GIT_COMMITTER_NAME", "Test")
+                .env("GIT_COMMITTER_EMAIL", "test@example.com")
+                .output()
+                .unwrap();
         };
-        let tree = repo.find_tree(tree_oid).unwrap();
-
-        repo.commit(
-            Some("refs/heads/main"),
-            &sig,
-            &sig,
-            "Initial commit",
-            &tree,
-            &[],
-        )
-        .unwrap();
+        run(&["init", "-b", "main"]);
+        run(&["commit", "--allow-empty", "-m", "Initial commit"]);
     }
 
     #[tokio::test]
@@ -163,13 +136,15 @@ mod tests {
     #[tokio::test]
     async fn clone_creates_repo_at_sandbox_path() {
         let remote_dir = TempDir::new().unwrap();
-        init_bare_with_commit(remote_dir.path());
-        let url = format!("file://{}", remote_dir.path().display());
+        init_repo_with_commit(remote_dir.path());
 
         let base = TempDir::new().unwrap();
         let mut sandbox = Sandbox::create("test-task-2", base.path()).await.unwrap();
 
-        sandbox.clone(&url, "main", None).await.unwrap();
+        sandbox
+            .clone(remote_dir.path().to_str().unwrap(), "main", None)
+            .await
+            .unwrap();
 
         assert!(sandbox.repo_dir.join(".git").exists());
     }
