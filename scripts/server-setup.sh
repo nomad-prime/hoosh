@@ -109,16 +109,24 @@ setup_ssh_key() {
 setup_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
     info "Env file $ENV_FILE already exists — skipping"
+    return
+  fi
+
+  echo -e "\n${BOLD}GitHub token${RESET} (repo scope) is needed for PR creation."
+  echo -e "Generate one at: https://github.com/settings/tokens"
+  read -r -p "  Enter GH_TOKEN (leave blank to skip): " gh_token
+
+  if [[ -n "$gh_token" ]]; then
+    printf 'GH_TOKEN=%s\n' "$gh_token" > "$ENV_FILE"
+    chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    info "GH_TOKEN saved to $ENV_FILE"
   else
-    info "Creating env file at $ENV_FILE"
-    cat > "$ENV_FILE" << 'EOF'
-# GitHub token for PR creation (repo scope required)
-# Generate at: https://github.com/settings/tokens
-GH_TOKEN=your-github-token-here
-EOF
+    touch "$ENV_FILE"
     chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     GH_TOKEN_NEEDED=true
+    warning "GH_TOKEN not set — PR creation will not work until you add it to $ENV_FILE"
   fi
 }
 
