@@ -9,6 +9,12 @@ The setup assumes you are using **Cloudflare** for DNS and tunneling — the dae
 exposed directly to the internet. All traffic reaches it through a Cloudflare Tunnel,
 which handles TLS termination and access control.
 
+> **TL;DR:** For initial setup or updates, run the setup script (steps 1–4 automated):
+> ```bash
+> sudo bash scripts/server-setup.sh
+> ```
+> Then follow steps 5+ for Cloudflare tunnel setup.
+
 ---
 
 ## Prerequisites
