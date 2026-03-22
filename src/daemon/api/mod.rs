@@ -89,9 +89,9 @@ impl DaemonServer {
         use routes::*;
 
         Router::new()
-            .route("/tasks", post(submit_job).get(list_jobs))
-            .route("/tasks/:id", get(get_job).delete(cancel_job))
-            .route("/tasks/:id/logs", get(get_job_logs))
+            .route("/jobs", post(submit_job).get(list_jobs))
+            .route("/jobs/:id", get(get_job).delete(cancel_job))
+            .route("/jobs/:id/logs", get(get_job_logs))
             .route("/health", get(health))
             .route(
                 "/github/webhook",

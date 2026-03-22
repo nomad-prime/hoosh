@@ -193,7 +193,7 @@ async fn daemon_submit(
     config: &DaemonConfig,
 ) -> Result<()> {
     let port = config.bind_address.port();
-    let url = format!("http://127.0.0.1:{}/tasks", port);
+    let url = format!("http://127.0.0.1:{}/jobs", port);
 
     let body = serde_json::json!({
         "repo_url": repo,
