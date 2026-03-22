@@ -8,6 +8,9 @@ BINARY_SRC="${HOME}/.cargo/bin/hoosh"
 BINARY_DST="/usr/local/bin/hoosh"
 CONFIG_SRC="${HOME}/.config/hoosh"
 CONFIG_DST="/etc/hoosh"
+SSH_DIR="/etc/hoosh/ssh"
+SSH_KEY="${SSH_DIR}/id_ed25519"
+ENV_FILE="/etc/hoosh/env"
 DATA_DIR="/var/lib/hoosh"
 SERVICE_FILE="/etc/systemd/system/hoosh-daemon.service"
 SERVICE_NAME="hoosh-daemon"
@@ -76,6 +79,43 @@ create_data_dir() {
   chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 }
 
+setup_ssh_key() {
+  mkdir -p "$SSH_DIR"
+  chmod 700 "$SSH_DIR"
+
+  if [[ -f "$SSH_KEY" ]]; then
+    info "SSH deploy key already exists at $SSH_KEY — skipping generation"
+  else
+    info "Generating SSH deploy key at $SSH_KEY"
+    ssh-keygen -t ed25519 -C "hoosh-daemon" -N "" -f "$SSH_KEY"
+    info "Deploy key generated. Add the following public key to your GitHub repository"
+    info "under Settings → Deploy keys → Add deploy key (enable 'Allow write access'):"
+    echo ""
+    cat "${SSH_KEY}.pub"
+    echo ""
+  fi
+
+  chown -R "$SERVICE_USER:$SERVICE_USER" "$SSH_DIR"
+  chmod 600 "$SSH_KEY"
+}
+
+setup_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    info "Env file $ENV_FILE already exists — skipping"
+    info "Ensure GH_TOKEN is set in $ENV_FILE for GitHub PR creation"
+  else
+    info "Creating env file at $ENV_FILE"
+    cat > "$ENV_FILE" << 'EOF'
+# GitHub token for PR creation (repo scope required)
+# Generate at: https://github.com/settings/tokens
+GH_TOKEN=your-github-token-here
+EOF
+    chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    warning "Action required: set GH_TOKEN in $ENV_FILE then restart the daemon"
+  fi
+}
+
 install_service() {
   info "Writing systemd service $SERVICE_FILE"
   cat > "$SERVICE_FILE" << 'EOF'
@@ -87,6 +127,7 @@ After=network.target
 Type=simple
 User=hoosh
 Group=hoosh
+EnvironmentFile=/etc/hoosh/env
 ExecStart=/usr/local/bin/hoosh --config /etc/hoosh/config.toml --data-dir /var/lib/hoosh daemon start --port 7979
 Restart=on-failure
 RestartSec=5
@@ -122,6 +163,8 @@ install_binary
 create_service_user
 sync_config
 create_data_dir
+setup_ssh_key
+setup_env_file
 install_service
 restart_service
 
