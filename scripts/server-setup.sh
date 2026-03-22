@@ -51,6 +51,10 @@ install_binary() {
       return
     fi
     info "Updating binary: $dst_ver → $src_ver"
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+      info "Stopping $SERVICE_NAME before binary update"
+      systemctl stop "$SERVICE_NAME"
+    fi
   else
     info "Installing binary ($src_ver)"
   fi
