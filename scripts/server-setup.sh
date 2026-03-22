@@ -10,7 +10,7 @@ BINARY_SRC="${INVOKING_HOME}/.cargo/bin/hoosh"
 BINARY_DST="/usr/local/bin/hoosh"
 CONFIG_SRC="${INVOKING_HOME}/.config/hoosh"
 CONFIG_DST="/etc/hoosh"
-SSH_DIR="/home/hoosh/.ssh"
+SSH_DIR="/var/lib/hoosh/.ssh"
 SSH_KEY="${SSH_DIR}/id_ed25519"
 ENV_FILE="/etc/hoosh/env"
 DATA_DIR="/var/lib/hoosh"
@@ -66,10 +66,11 @@ install_binary() {
 
 create_service_user() {
   if id "$SERVICE_USER" &>/dev/null; then
-    info "User '$SERVICE_USER' already exists — skipping"
+    info "User '$SERVICE_USER' already exists — ensuring home dir is $DATA_DIR"
+    usermod -d "$DATA_DIR" "$SERVICE_USER"
   else
     info "Creating system user '$SERVICE_USER'"
-    useradd --system -m --shell /usr/sbin/nologin "$SERVICE_USER"
+    useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
   fi
 }
 
@@ -162,7 +163,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 PrivateTmp=true
-ReadWritePaths=/var/lib/hoosh /home/hoosh
+ReadWritePaths=/var/lib/hoosh
 
 [Install]
 WantedBy=multi-user.target
