@@ -161,7 +161,6 @@ Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/lib/hoosh /home/hoosh
 
