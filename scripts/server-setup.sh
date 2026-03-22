@@ -51,10 +51,6 @@ install_binary() {
       return
     fi
     info "Updating binary: $dst_ver → $src_ver"
-    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-      info "Stopping $SERVICE_NAME before binary update"
-      systemctl stop "$SERVICE_NAME"
-    fi
   else
     info "Installing binary ($src_ver)"
   fi
@@ -190,6 +186,10 @@ SSH_KEY_GENERATED=false
 GH_TOKEN_NEEDED=false
 
 require_root
+if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+  info "Stopping $SERVICE_NAME"
+  systemctl stop "$SERVICE_NAME"
+fi
 install_binary
 create_service_user
 sync_config
