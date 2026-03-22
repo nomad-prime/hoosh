@@ -20,9 +20,17 @@ SERVICE_USER="hoosh"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-info()    { echo "[+] $*"; }
-warning() { echo "[!] $*"; }
-die()     { echo "[✗] $*" >&2; exit 1; }
+BOLD="\033[1m"
+CYAN="\033[36m"
+YELLOW="\033[33m"
+GREEN="\033[32m"
+RED="\033[31m"
+RESET="\033[0m"
+
+info()    { echo -e "${GREEN}[+]${RESET} $*"; }
+warning() { echo -e "${YELLOW}[!]${RESET} $*"; }
+die()     { echo -e "${RED}[✗]${RESET} $*" >&2; exit 1; }
+action()  { echo -e "\n${BOLD}${CYAN}╔══ ACTION REQUIRED ══╗${RESET}"; echo -e "${CYAN}$*${RESET}"; echo -e "${BOLD}${CYAN}╚═════════════════════╝${RESET}\n"; }
 
 require_root() {
   [[ $EUID -eq 0 ]] || die "Run this script with sudo: sudo $0"
@@ -90,11 +98,8 @@ setup_ssh_key() {
   else
     info "Generating SSH deploy key at $SSH_KEY"
     ssh-keygen -t ed25519 -C "hoosh-daemon" -N "" -f "$SSH_KEY"
-    info "Deploy key generated. Add the following public key to your GitHub repository"
-    info "under Settings → Deploy keys → Add deploy key (enable 'Allow write access'):"
-    echo ""
-    cat "${SSH_KEY}.pub"
-    echo ""
+    SSH_KEY_GENERATED=true
+    action "Add this deploy key to your GitHub repo:\n\n  $(cat "${SSH_KEY}.pub")\n\n  Go to: GitHub repo → Settings → Deploy keys → Add deploy key\n  Enable 'Allow write access'."
   fi
 
   chown -R "$SERVICE_USER:$SERVICE_USER" "$SSH_DIR"
@@ -104,7 +109,6 @@ setup_ssh_key() {
 setup_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
     info "Env file $ENV_FILE already exists — skipping"
-    info "Ensure GH_TOKEN is set in $ENV_FILE for GitHub PR creation"
   else
     info "Creating env file at $ENV_FILE"
     cat > "$ENV_FILE" << 'EOF'
@@ -114,7 +118,7 @@ GH_TOKEN=your-github-token-here
 EOF
     chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
-    warning "Action required: set GH_TOKEN in $ENV_FILE then restart the daemon"
+    GH_TOKEN_NEEDED=true
   fi
 }
 
@@ -160,6 +164,9 @@ restart_service() {
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
+SSH_KEY_GENERATED=false
+GH_TOKEN_NEEDED=false
+
 require_root
 install_binary
 create_service_user
@@ -170,4 +177,13 @@ setup_env_file
 install_service
 restart_service
 
+echo ""
 info "Done."
+
+if [[ "$SSH_KEY_GENERATED" == true || "$GH_TOKEN_NEEDED" == true ]]; then
+  echo ""
+  echo -e "${BOLD}${YELLOW}══ Pending manual steps ══${RESET}"
+  [[ "$SSH_KEY_GENERATED" == true ]] && echo -e "  ${CYAN}→${RESET} Add deploy key to GitHub repo (printed above) with write access"
+  [[ "$GH_TOKEN_NEEDED" == true ]]   && echo -e "  ${CYAN}→${RESET} Set ${BOLD}GH_TOKEN${RESET} in ${BOLD}$ENV_FILE${RESET}, then: ${BOLD}sudo systemctl restart $SERVICE_NAME${RESET}"
+  echo ""
+fi
