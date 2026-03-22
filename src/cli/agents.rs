@@ -82,7 +82,7 @@ fn reinstall_builtins() -> Result<()> {
         }
     }
 
-    console().info("Built-in agent files have been reinstalled.");
+    console().success("Built-in agent files have been reinstalled.");
 
     Ok(())
 }

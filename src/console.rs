@@ -1,3 +1,4 @@
+use colored::Colorize;
 use std::sync::{Arc, OnceLock};
 
 use crate::terminal_markdown::TerminalMarkdownRenderer;
@@ -53,25 +54,25 @@ impl Console {
 
     pub fn error(&self, message: &str) {
         if self.verbosity > VerbosityLevel::Quiet {
-            eprintln!("❌ {}", message);
+            eprintln!("{} {}", "⡱⢎".red().bold(), message);
         }
     }
 
     pub fn warning(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
-            println!("⚠️  {}", message);
+            println!("{} {}", "⣴⣦".yellow(), message);
         }
     }
 
     pub fn info(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
-            println!("ℹ️  {}", message);
+            println!("{} {}", "⢨".cyan(), message);
         }
     }
 
     pub fn success(&self, message: &str) {
         if self.should_show(VerbosityLevel::Normal) {
-            println!("✅ {}", message);
+            println!("{} {}", "⠢⠊".green(), message);
         }
     }
 
@@ -83,7 +84,7 @@ impl Console {
 
     pub fn debug(&self, message: &str) {
         if self.should_show(VerbosityLevel::Debug) {
-            println!("🐛 DEBUG: {}", message);
+            println!("{} {}", "⠪⢕".dimmed(), message);
         }
     }
 
