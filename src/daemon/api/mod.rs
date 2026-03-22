@@ -37,8 +37,12 @@ impl AppState {
         let executor = Arc::clone(&self.executor);
         let id_for_spawn = job_id.clone();
 
+        let active_jobs = Arc::clone(&self.active_jobs);
+        let id_for_cleanup = job_id.clone();
+
         let handle = tokio::spawn(async move {
             executor.run(id_for_spawn, cancel_clone).await;
+            active_jobs.write().await.remove(&id_for_cleanup);
         });
 
         self.active_jobs
