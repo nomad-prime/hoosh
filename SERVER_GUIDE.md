@@ -3,7 +3,11 @@
 ## Overview
 
 This guide documents how to deploy the Hoosh daemon on a Linux server (Debian 13+),
-running as a locked-down system user behind a Cloudflare Tunnel, managed by systemd.
+running as a locked-down system user behind a **Cloudflare Tunnel**, managed by systemd.
+
+The setup assumes you are using **Cloudflare** for DNS and tunneling — the daemon is not
+exposed directly to the internet. All traffic reaches it through a Cloudflare Tunnel,
+which handles TLS termination and access control.
 
 ---
 
@@ -18,8 +22,7 @@ running as a locked-down system user behind a Cloudflare Tunnel, managed by syst
 
 ## 1. Install the Binary
 
-The Hoosh installer puts the binary in `~/.cargo/bin/hoosh`. For a system service,
-copy it to a system-wide location:
+The Hoosh installer puts the binary in `~/.cargo/bin/hoosh`. Copy it to a system-wide location:
 
 ```bash
 sudo cp ~/.cargo/bin/hoosh /usr/local/bin/hoosh
@@ -27,36 +30,28 @@ sudo chown root:root /usr/local/bin/hoosh
 sudo chmod 755 /usr/local/bin/hoosh
 ```
 
-> **Note:** Rust compiles to a fully static binary — no runtime dependencies,
-> no need to reinstall from source.
+> **Note:** Rust compiles to a fully static binary — no runtime dependencies, no need to reinstall from source.
 
 ---
 
 ## 2. Create a Dedicated Service User
 
-Run Hoosh as a locked-down system user with no shell and no home directory access:
-
 ```bash
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin hoosh
 ```
 
-This user:
-- Cannot log in interactively
-- Cannot sudo
-- Cannot crash or escalate beyond its assigned permissions
+This user cannot log in interactively, cannot sudo, and cannot escalate beyond its assigned permissions.
 
 ---
 
 ## 3. Create Config and Data Directories
 
 ```bash
-# Config
 sudo mkdir -p /etc/hoosh
-sudo cp /home/youruser/.config/hoosh/config.toml /etc/hoosh/config.toml
+sudo cp -r ~/.config/hoosh/. /etc/hoosh/
 sudo chown -R hoosh:hoosh /etc/hoosh
-sudo chmod 600 /etc/hoosh/config.toml   # Hoosh enforces 600, will warn on 640
+sudo chmod 600 /etc/hoosh/config.toml
 
-# Data (task store, session state)
 sudo mkdir -p /var/lib/hoosh
 sudo chown -R hoosh:hoosh /var/lib/hoosh
 ```
@@ -73,10 +68,7 @@ sudo chown -R hoosh:hoosh /var/lib/hoosh
 ## 4. Create the systemd Service
 
 ```bash
-sudo nano /etc/systemd/system/hoosh-daemon.service
-```
-
-```ini
+sudo tee /etc/systemd/system/hoosh-daemon.service > /dev/null << 'EOF'
 [Unit]
 Description=Hoosh Daemon
 After=network.target
@@ -96,11 +88,8 @@ ReadWritePaths=/var/lib/hoosh
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
-
-> **Gotcha:** `ProtectSystem=strict` makes the filesystem read-only for the process.
-> You must explicitly add `ReadWritePaths=/var/lib/hoosh` or the daemon will crash
-> with `Read-only file system (os error 30)` when trying to create the tasks directory.
 
 Enable and start:
 
@@ -110,6 +99,10 @@ sudo systemctl enable hoosh-daemon
 sudo systemctl start hoosh-daemon
 sudo systemctl status hoosh-daemon
 ```
+
+> **Gotcha:** `ProtectSystem=strict` makes the filesystem read-only for the process.
+> You must explicitly add `ReadWritePaths=/var/lib/hoosh` or the daemon will crash
+> with `Read-only file system (os error 30)` when trying to create the tasks directory.
 
 ---
 
@@ -131,27 +124,34 @@ cloudflared tunnel create hoosh
 cloudflared tunnel route dns hoosh hoosh.manije.io
 ```
 
-Create config:
+Look up your tunnel ID (you'll need it in the next step):
 
 ```bash
-sudo mkdir -p /etc/cloudflared
-sudo nano /etc/cloudflared/config.yml
+cloudflared tunnel list
 ```
 
-```yaml
-tunnel: YOUR_TUNNEL_ID
-credentials-file: /home/youruser/.cloudflared/YOUR_TUNNEL_ID.json
+Create the tunnel config (replace `YOUR_TUNNEL_ID` with the ID from above):
+
+```bash
+TUNNEL_ID=YOUR_TUNNEL_ID
+CREDS_FILE=$(echo ~/.cloudflared/${TUNNEL_ID}.json)
+
+sudo mkdir -p /etc/cloudflared
+sudo tee /etc/cloudflared/config.yml > /dev/null << EOF
+tunnel: ${TUNNEL_ID}
+credentials-file: ${CREDS_FILE}
 
 ingress:
   - hostname: hoosh.manije.io
     service: http://localhost:7979
   - service: http_status:404
+EOF
 ```
 
 Install and start as systemd service:
 
 ```bash
-sudo cloudflared --config /home/youruser/.cloudflared/config.yml service install
+sudo cloudflared --config /etc/cloudflared/config.yml service install
 sudo systemctl enable cloudflared
 sudo systemctl start cloudflared
 ```
@@ -167,7 +167,7 @@ sudo systemctl start cloudflared
 
 ## 6. GitHub Webhook (Planned)
 
-Add a second ingress route for the webhook endpoint:
+Add a second ingress route in `/etc/cloudflared/config.yml`:
 
 ```yaml
 ingress:
@@ -223,7 +223,7 @@ curl http://localhost:7979
 | `/var/lib/hoosh/` | Daemon runtime data (task store, sessions) |
 | `/etc/systemd/system/hoosh-daemon.service` | systemd unit |
 | `/etc/cloudflared/config.yml` | Cloudflare tunnel config |
-| `/home/armin/.cloudflared/*.json` | Tunnel credentials |
+| `~/.cloudflared/*.json` | Tunnel credentials |
 
 ---
 
