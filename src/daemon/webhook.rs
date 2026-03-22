@@ -1,6 +1,6 @@
 use crate::daemon::api::AppState;
 use crate::daemon::github_event::parse_github_event;
-use crate::daemon::task::Task;
+use crate::daemon::job::Job;
 use axum::{
     Json,
     body::Bytes,
@@ -133,7 +133,7 @@ pub async fn handle_github_webhook(
             Json(serde_json::json!({
                 "status": "no_action",
                 "reason": "duplicate",
-                "existing_task_id": existing_id
+                "existing_job_id": existing_id
             })),
         )
             .into_response();
@@ -145,30 +145,30 @@ pub async fn handle_github_webhook(
         "You have been mentioned in a GitHub {event_type} event. The repository is already cloned at your working directory.\n\n<event>\n{pretty_json}\n</event>\n\nUse `gh` CLI and git for all GitHub operations. Determine the appropriate branch strategy from the event context, make your changes, and push. Do not wait for further input."
     );
 
-    let mut task = Task::new(
+    let mut job = Job::new(
         trigger.repo_url.clone(),
         trigger.default_branch.clone(),
         agent_message,
         None,
         state.config.default_token_budget,
     );
-    task.trigger = Some(trigger);
+    job.trigger = Some(trigger);
 
-    let task_id = task.id.clone();
+    let job_id = job.id.clone();
 
-    if let Err(e) = state.store.create(&task) {
+    if let Err(e) = state.store.create(&job) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("Failed to create task: {}", e)})),
+            Json(serde_json::json!({"error": format!("Failed to create job: {}", e)})),
         )
             .into_response();
     }
 
-    state.spawn_task(task_id.clone()).await;
+    state.spawn_job(job_id.clone()).await;
 
     (
         StatusCode::ACCEPTED,
-        Json(serde_json::json!({"status": "accepted", "task_id": task_id})),
+        Json(serde_json::json!({"status": "accepted", "job_id": job_id})),
     )
         .into_response()
 }

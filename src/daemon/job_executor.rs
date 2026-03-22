@@ -9,27 +9,27 @@ use tokio::sync::mpsc;
 use crate::agent::{Agent, AgentEvent, Conversation};
 use crate::backends::LlmBackend;
 use crate::daemon::config::DaemonConfig;
+use crate::daemon::job::{Job, JobStatus};
+use crate::daemon::job_store::JobStore;
 use crate::daemon::permissions::PermissionResolver;
 use crate::daemon::sandbox::Sandbox;
-use crate::daemon::store::TaskStore;
-use crate::daemon::task::{Task, TaskStatus};
 use crate::permissions::PermissionManager;
 use crate::permissions::storage::PermissionsFile;
 use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
-pub struct TaskExecutor {
-    pub store: Arc<TaskStore>,
+pub struct JobExecutor {
+    pub store: Arc<JobStore>,
     pub config: Arc<DaemonConfig>,
     pub backend: Arc<dyn LlmBackend>,
     pub agent_prompt: String,
     pub core_instructions: String,
 }
 
-impl TaskExecutor {
+impl JobExecutor {
     pub fn new(
-        store: Arc<TaskStore>,
+        store: Arc<JobStore>,
         config: Arc<DaemonConfig>,
         backend: Arc<dyn LlmBackend>,
         agent_prompt: String,
@@ -44,52 +44,52 @@ impl TaskExecutor {
         }
     }
 
-    pub async fn run(self: Arc<Self>, task_id: String, cancel: Arc<AtomicBool>) {
-        if let Err(e) = self.execute(&task_id, Arc::clone(&cancel)).await
-            && let Ok(Some(mut task)) = self.store.get(&task_id)
-            && !task.status.is_terminal()
+    pub async fn run(self: Arc<Self>, job_id: String, cancel: Arc<AtomicBool>) {
+        if let Err(e) = self.execute(&job_id, Arc::clone(&cancel)).await
+            && let Ok(Some(mut job)) = self.store.get(&job_id)
+            && !job.status.is_terminal()
         {
-            task.status = TaskStatus::Failed;
-            task.error_message = Some(e.to_string());
-            task.completed_at = Some(Utc::now());
-            let _ = self.store.update(&task);
+            job.status = JobStatus::Failed;
+            job.error_message = Some(e.to_string());
+            job.completed_at = Some(Utc::now());
+            let _ = self.store.update(&job);
         }
     }
 
-    async fn execute(&self, task_id: &str, cancel: Arc<AtomicBool>) -> Result<()> {
-        let mut task = self
+    async fn execute(&self, job_id: &str, cancel: Arc<AtomicBool>) -> Result<()> {
+        let mut job = self
             .store
-            .get(task_id)?
-            .ok_or_else(|| anyhow::anyhow!("Task not found: {}", task_id))?;
+            .get(job_id)?
+            .ok_or_else(|| anyhow::anyhow!("Job not found: {}", job_id))?;
 
-        task.status = TaskStatus::Running;
-        task.started_at = Some(Utc::now());
-        self.store.update(&task)?;
+        job.status = JobStatus::Running;
+        job.started_at = Some(Utc::now());
+        self.store.update(&job)?;
 
-        let mut sandbox = Sandbox::create(&task.id, &self.config.sandbox_base_dir)
+        let mut sandbox = Sandbox::create(&job.id, &self.config.sandbox_base_dir)
             .await
             .context("Failed to create sandbox")?;
 
-        task.log_path = Some(sandbox.log_path());
-        task.sandbox_path = Some(sandbox.sandbox_dir.clone());
-        self.store.update(&task)?;
+        job.log_path = Some(sandbox.log_path());
+        job.sandbox_path = Some(sandbox.sandbox_dir.clone());
+        self.store.update(&job)?;
 
-        let _ = writeln!(sandbox, "[{}] Clone started: {}", Utc::now(), task.repo_url);
+        let _ = writeln!(sandbox, "[{}] Clone started: {}", Utc::now(), job.repo_url);
 
         let clone_result = sandbox
             .clone(
-                &task.repo_url,
-                &task.base_branch,
+                &job.repo_url,
+                &job.base_branch,
                 self.config.ssh_key_path.as_ref(),
             )
             .await;
 
         if let Err(e) = clone_result {
             let _ = writeln!(sandbox, "[{}] Clone failed: {}", Utc::now(), e);
-            task.status = TaskStatus::Failed;
-            task.error_message = Some(format!("Clone failed: {}", e));
-            task.completed_at = Some(Utc::now());
-            self.store.update(&task)?;
+            job.status = JobStatus::Failed;
+            job.error_message = Some(format!("Clone failed: {}", e));
+            job.completed_at = Some(Utc::now());
+            self.store.update(&job)?;
             if !self.config.retain_sandboxes {
                 let _ = sandbox.cleanup();
             }
@@ -98,7 +98,7 @@ impl TaskExecutor {
 
         let _ = writeln!(sandbox, "[{}] Clone completed", Utc::now());
 
-        if task.trigger.is_some() {
+        if job.trigger.is_some() {
             let gh_ok = tokio::process::Command::new("gh")
                 .arg("auth")
                 .arg("status")
@@ -108,13 +108,13 @@ impl TaskExecutor {
                 .unwrap_or(false);
             if !gh_ok {
                 let _ = writeln!(sandbox, "[{}] gh CLI not authenticated", Utc::now());
-                task.status = TaskStatus::Failed;
-                task.error_message = Some(
+                job.status = JobStatus::Failed;
+                job.error_message = Some(
                     "gh CLI not authenticated — run 'gh auth login' on the daemon machine"
                         .to_string(),
                 );
-                task.completed_at = Some(Utc::now());
-                self.store.update(&task)?;
+                job.completed_at = Some(Utc::now());
+                self.store.update(&job)?;
                 if !self.config.retain_sandboxes {
                     let _ = sandbox.cleanup();
                 }
@@ -131,7 +131,7 @@ impl TaskExecutor {
         let repo_dir = sandbox.repo_dir.clone();
         let tokens = self
             .run_agent_turn(
-                &task,
+                &job,
                 &repo_dir,
                 merged_perms,
                 Arc::clone(&cancel),
@@ -139,21 +139,21 @@ impl TaskExecutor {
             )
             .await?;
 
-        task.tokens_consumed = tokens;
+        job.tokens_consumed = tokens;
 
         if cancel.load(Ordering::Relaxed) {
-            let incomplete_msg = if task.tokens_consumed >= task.token_budget {
+            let incomplete_msg = if job.tokens_consumed >= job.token_budget {
                 "[incomplete] token budget exceeded".to_string()
             } else {
-                "[incomplete] task cancelled".to_string()
+                "[incomplete] job cancelled".to_string()
             };
-            task.status = TaskStatus::Failed;
-            task.error_message = Some(incomplete_msg);
+            job.status = JobStatus::Failed;
+            job.error_message = Some(incomplete_msg);
         } else {
-            task.status = TaskStatus::Completed;
+            job.status = JobStatus::Completed;
         }
-        task.completed_at = Some(Utc::now());
-        self.store.update(&task)?;
+        job.completed_at = Some(Utc::now());
+        self.store.update(&job)?;
 
         if !self.config.retain_sandboxes {
             let _ = sandbox.cleanup();
@@ -164,7 +164,7 @@ impl TaskExecutor {
 
     async fn run_agent_turn(
         &self,
-        task: &Task,
+        job: &Job,
         repo_dir: &Path,
         merged_perms: PermissionsFile,
         cancel: Arc<AtomicBool>,
@@ -172,7 +172,7 @@ impl TaskExecutor {
     ) -> Result<usize> {
         let (event_tx, event_rx) = mpsc::unbounded_channel::<AgentEvent>();
 
-        let budget = task.token_budget;
+        let budget = job.token_budget;
         let cancel_monitor = Arc::clone(&cancel);
         let token_count = Arc::new(AtomicUsize::new(0));
         let token_count_monitor = Arc::clone(&token_count);
@@ -261,7 +261,7 @@ impl TaskExecutor {
 
             let mut conversation = Conversation::new();
             conversation.add_system_message(self.agent_prompt.clone());
-            conversation.add_user_message(task.instructions.clone());
+            conversation.add_user_message(job.instructions.clone());
 
             let _ = agent.handle_turn(&mut conversation).await;
         }
@@ -286,8 +286,8 @@ mod tests {
     use super::*;
     use crate::backends::{LlmBackend, LlmResponse};
     use crate::daemon::config::DaemonConfig;
-    use crate::daemon::store::TaskStore;
-    use crate::daemon::task::Task;
+    use crate::daemon::job::Job;
+    use crate::daemon::job_store::JobStore;
     use anyhow::Result;
     use async_trait::async_trait;
     use std::sync::atomic::AtomicBool;
@@ -359,15 +359,15 @@ mod tests {
     }
 
     fn make_executor(
-        store: Arc<TaskStore>,
+        store: Arc<JobStore>,
         sandbox_dir: &TempDir,
         backend: Arc<dyn LlmBackend>,
-    ) -> Arc<TaskExecutor> {
+    ) -> Arc<JobExecutor> {
         let config = DaemonConfig {
             sandbox_base_dir: sandbox_dir.path().to_path_buf(),
             ..Default::default()
         };
-        Arc::new(TaskExecutor::new(
+        Arc::new(JobExecutor::new(
             store,
             Arc::new(config),
             backend,
@@ -376,11 +376,8 @@ mod tests {
         ))
     }
 
-    fn make_github_trigger(
-        trigger_ref: &str,
-        repo_url: &str,
-    ) -> crate::daemon::task::GithubTrigger {
-        use crate::daemon::task::{GithubEventType, GithubTrigger};
+    fn make_github_trigger(trigger_ref: &str, repo_url: &str) -> crate::daemon::job::GithubTrigger {
+        use crate::daemon::job::{GithubEventType, GithubTrigger};
         GithubTrigger {
             event_type: GithubEventType::IssueComment,
             delivery_id: "test-delivery-1".to_string(),
@@ -402,28 +399,28 @@ mod tests {
         let repo_url = format!("file://{}", remote_dir.path().display());
 
         let store_dir = TempDir::new().unwrap();
-        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+        let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
 
         let sandbox_dir = TempDir::new().unwrap();
-        let backend = Arc::new(MockBackend::simple("Task complete, no changes needed."));
+        let backend = Arc::new(MockBackend::simple("Job complete, no changes needed."));
         let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
 
-        let task = Task::new(
+        let job = Job::new(
             repo_url,
             "main".to_string(),
             "Do nothing".to_string(),
             None,
             100_000,
         );
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        executor.run(task_id.clone(), cancel).await;
+        executor.run(job_id.clone(), cancel).await;
 
-        let final_task = store.get(&task_id).unwrap().unwrap();
-        assert_eq!(final_task.status, TaskStatus::Completed);
-        assert!(final_task.pr_url.is_none());
+        let final_job = store.get(&job_id).unwrap().unwrap();
+        assert_eq!(final_job.status, JobStatus::Completed);
+        assert!(final_job.pr_url.is_none());
     }
 
     #[tokio::test]
@@ -433,29 +430,29 @@ mod tests {
         let repo_url = format!("file://{}", remote_dir.path().display());
 
         let store_dir = TempDir::new().unwrap();
-        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+        let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
 
         let sandbox_dir = TempDir::new().unwrap();
-        let backend = Arc::new(MockBackend::simple("Task complete."));
+        let backend = Arc::new(MockBackend::simple("Job complete."));
         let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
 
-        let task = Task::new(
+        let job = Job::new(
             repo_url,
             "main".to_string(),
             "Do something".to_string(),
             None,
             100_000,
         );
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let cancel = Arc::new(AtomicBool::new(true));
-        executor.run(task_id.clone(), cancel).await;
+        executor.run(job_id.clone(), cancel).await;
 
-        let final_task = store.get(&task_id).unwrap().unwrap();
-        assert_eq!(final_task.status, TaskStatus::Failed);
+        let final_job = store.get(&job_id).unwrap().unwrap();
+        assert_eq!(final_job.status, JobStatus::Failed);
         assert!(
-            final_task
+            final_job
                 .error_message
                 .as_deref()
                 .unwrap_or("")
@@ -465,65 +462,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn webhook_task_runs_to_terminal_state() {
+    async fn webhook_job_runs_to_terminal_state() {
         let remote_dir = TempDir::new().unwrap();
         init_bare_with_commit(remote_dir.path());
         let repo_url = format!("file://{}", remote_dir.path().display());
 
         let store_dir = TempDir::new().unwrap();
-        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+        let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
 
         let sandbox_dir = TempDir::new().unwrap();
         let backend = Arc::new(MockBackend::simple("Done."));
         let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
 
-        let mut task = Task::new(
+        let mut job = Job::new(
             repo_url.clone(),
             "main".to_string(),
             "@hoosh fix the bug".to_string(),
             None,
             100_000,
         );
-        task.trigger = Some(make_github_trigger("issue:47", &repo_url));
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        job.trigger = Some(make_github_trigger("issue:47", &repo_url));
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        executor.run(task_id.clone(), cancel).await;
+        executor.run(job_id.clone(), cancel).await;
 
-        let final_task = store.get(&task_id).unwrap().unwrap();
-        assert!(final_task.status.is_terminal());
-        assert!(final_task.trigger.is_some());
+        let final_job = store.get(&job_id).unwrap().unwrap();
+        assert!(final_job.status.is_terminal());
+        assert!(final_job.trigger.is_some());
     }
 
     #[tokio::test]
-    async fn webhook_task_clone_failure_marks_failed() {
+    async fn webhook_job_clone_failure_marks_failed() {
         let store_dir = TempDir::new().unwrap();
-        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+        let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
 
         let sandbox_dir = TempDir::new().unwrap();
         let backend = Arc::new(MockBackend::simple("Done."));
         let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
 
         let bad_url = "file:///nonexistent/path/repo";
-        let mut task = Task::new(
+        let mut job = Job::new(
             bad_url.to_string(),
             "main".to_string(),
             "@hoosh fix this".to_string(),
             None,
             100_000,
         );
-        task.trigger = Some(make_github_trigger("issue:99", bad_url));
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        job.trigger = Some(make_github_trigger("issue:99", bad_url));
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        executor.run(task_id.clone(), cancel).await;
+        executor.run(job_id.clone(), cancel).await;
 
-        let final_task = store.get(&task_id).unwrap().unwrap();
-        assert_eq!(final_task.status, TaskStatus::Failed);
+        let final_job = store.get(&job_id).unwrap().unwrap();
+        assert_eq!(final_job.status, JobStatus::Failed);
         assert!(
-            final_task
+            final_job
                 .error_message
                 .as_deref()
                 .unwrap_or("")
@@ -539,28 +536,28 @@ mod tests {
         let repo_url = format!("file://{}", remote_dir.path().display());
 
         let store_dir = TempDir::new().unwrap();
-        let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+        let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
 
         let sandbox_dir = TempDir::new().unwrap();
         // Backend reports 200 tokens per call, budget is 100 — should trigger cancellation
         let backend = Arc::new(MockBackend::with_token_count("Done.", 150, 150));
         let executor = make_executor(Arc::clone(&store), &sandbox_dir, backend);
 
-        let task = Task::new(
+        let job = Job::new(
             repo_url,
             "main".to_string(),
             "Do something".to_string(),
             Some(100),
             100,
         );
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        executor.run(task_id.clone(), cancel.clone()).await;
+        executor.run(job_id.clone(), cancel.clone()).await;
 
-        let final_task = store.get(&task_id).unwrap().unwrap();
-        assert!(final_task.status.is_terminal());
+        let final_job = store.get(&job_id).unwrap().unwrap();
+        assert!(final_job.status.is_terminal());
         assert!(cancel.load(Ordering::Relaxed), "Cancel flag should be set");
     }
 }

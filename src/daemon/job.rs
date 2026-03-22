@@ -26,7 +26,7 @@ pub struct GithubTrigger {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TaskStatus {
+pub enum JobStatus {
     Queued,
     Running,
     Completed,
@@ -34,14 +34,14 @@ pub enum TaskStatus {
     Cancelled,
 }
 
-impl TaskStatus {
+impl JobStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Task {
+pub struct Job {
     pub id: String,
     pub repo_url: String,
     pub base_branch: String,
@@ -49,7 +49,7 @@ pub struct Task {
     pub pr_title: Option<String>,
     pub pr_labels: Vec<String>,
     pub token_budget: usize,
-    pub status: TaskStatus,
+    pub status: JobStatus,
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -63,7 +63,7 @@ pub struct Task {
     pub trigger: Option<GithubTrigger>,
 }
 
-impl Task {
+impl Job {
     pub fn new(
         repo_url: String,
         base_branch: String,
@@ -80,7 +80,7 @@ impl Task {
             pr_title: None,
             pr_labels: vec![],
             token_budget: token_budget.unwrap_or(default_budget),
-            status: TaskStatus::Queued,
+            status: JobStatus::Queued,
             created_at: Utc::now(),
             started_at: None,
             completed_at: None,

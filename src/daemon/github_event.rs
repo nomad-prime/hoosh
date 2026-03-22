@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::Deserialize;
 
-use crate::daemon::task::{GithubEventType, GithubTrigger};
+use crate::daemon::job::{GithubEventType, GithubTrigger};
 
 // ---- Internal deserialization structs ----
 

@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::daemon::task::{GithubEventType, GithubTrigger, TaskStatus};
+use crate::daemon::job::{GithubEventType, GithubTrigger, JobStatus};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GithubTriggerResponse {
@@ -34,7 +34,7 @@ impl From<&GithubTrigger> for GithubTriggerResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SubmitTaskRequest {
+pub struct SubmitJobRequest {
     pub repo_url: String,
     pub base_branch: String,
     pub instructions: String,
@@ -45,12 +45,12 @@ pub struct SubmitTaskRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SubmitTaskResponse {
-    pub task_id: String,
+pub struct SubmitJobResponse {
+    pub job_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TaskResponse {
+pub struct JobResponse {
     pub id: String,
     pub repo_url: String,
     pub base_branch: String,
@@ -58,7 +58,7 @@ pub struct TaskResponse {
     pub pr_title: Option<String>,
     pub pr_labels: Vec<String>,
     pub token_budget: usize,
-    pub status: TaskStatus,
+    pub status: JobStatus,
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -76,7 +76,7 @@ pub struct HealthResponse {
     pub status: String,
     pub version: String,
     pub uptime_seconds: u64,
-    pub active_tasks: usize,
+    pub active_jobs: usize,
     pub shutting_down: bool,
 }
 
@@ -88,7 +88,7 @@ pub struct ErrorResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::task::GithubEventType;
+    use crate::daemon::job::GithubEventType;
 
     fn make_trigger() -> GithubTrigger {
         GithubTrigger {

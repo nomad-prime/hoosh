@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use hoosh::backends::{LlmBackend, LlmError, LlmResponse};
 use hoosh::daemon::api::DaemonServer;
 use hoosh::daemon::config::DaemonConfig;
-use hoosh::daemon::executor::TaskExecutor;
-use hoosh::daemon::store::TaskStore;
+use hoosh::daemon::job_executor::JobExecutor;
+use hoosh::daemon::job_store::JobStore;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -61,7 +61,7 @@ struct TestServer {
     _store_dir: TempDir,
     _sandbox_dir: TempDir,
     _remote_dir: TempDir,
-    _store: Arc<TaskStore>,
+    _store: Arc<JobStore>,
 }
 
 async fn start_test_server() -> TestServer {
@@ -70,7 +70,7 @@ async fn start_test_server() -> TestServer {
     let repo_url = format!("file://{}", remote_dir.path().display());
 
     let store_dir = TempDir::new().unwrap();
-    let store = Arc::new(TaskStore::new_with_dir(store_dir.path().join("tasks")).unwrap());
+    let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("jobs")).unwrap());
 
     let sandbox_dir = TempDir::new().unwrap();
 
@@ -81,10 +81,12 @@ async fn start_test_server() -> TestServer {
     };
     let config = Arc::new(config);
 
-    let executor = Arc::new(TaskExecutor::new(
+    let executor = Arc::new(JobExecutor::new(
         Arc::clone(&store),
         Arc::clone(&config),
         Arc::new(MockBackend),
+        include_str!("../src/prompts/hoosh_daemon_coder.txt").to_string(),
+        include_str!("../src/prompts/hoosh_daemon_coder_core_instructions.txt").to_string(),
     ));
 
     let server = DaemonServer::new(Arc::clone(&config), Arc::clone(&store), executor);
@@ -131,7 +133,7 @@ async fn submit_task_no_changes_completes_without_pr() {
 
     assert_eq!(resp.status(), 202);
     let body: serde_json::Value = resp.json().await.unwrap();
-    let task_id = body["task_id"].as_str().unwrap().to_string();
+    let task_id = body["job_id"].as_str().unwrap().to_string();
 
     let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
     for _ in 0..50 {
@@ -202,7 +204,7 @@ async fn cancel_completed_task_returns_409() {
         .unwrap();
 
     let body: serde_json::Value = resp.json().await.unwrap();
-    let task_id = body["task_id"].as_str().unwrap().to_string();
+    let task_id = body["job_id"].as_str().unwrap().to_string();
 
     let poll_url = format!("http://{}/tasks/{}", srv.addr, task_id);
     for _ in 0..50 {
