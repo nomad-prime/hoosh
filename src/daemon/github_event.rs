@@ -81,7 +81,11 @@ fn to_ssh_url(https_url: &str) -> String {
 }
 
 pub fn mentions_handle(body: &str, handle: &str) -> bool {
-    body.contains(handle)
+    let escaped = regex::escape(handle);
+    let pattern = format!(r"(?i){}(?:[^a-zA-Z0-9\-]|$)", escaped);
+    regex::Regex::new(&pattern)
+        .map(|re| re.is_match(body))
+        .unwrap_or(false)
 }
 
 pub fn is_bot_sender(login: &str, bot_login: Option<&str>) -> bool {
@@ -190,7 +194,7 @@ mod tests {
     // ---- mentions_handle tests (T010) ----
 
     #[test]
-    fn mentions_handle_present_returns_true() {
+    fn mentions_handle_exact_match_returns_true() {
         assert!(mentions_handle("hey @hoosh please fix this", "@hoosh"));
     }
 
@@ -200,8 +204,68 @@ mod tests {
     }
 
     #[test]
-    fn mentions_handle_case_sensitive_non_match() {
-        assert!(!mentions_handle("hey @Hoosh please fix this", "@hoosh"));
+    fn mentions_handle_case_insensitive_match() {
+        assert!(mentions_handle("hey @Hoosh please fix this", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_prefix_of_longer_handle_returns_false() {
+        assert!(!mentions_handle("hey @hoosh-bot can you help?", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_alphanumeric_suffix_returns_false() {
+        assert!(!mentions_handle("@hoosh2 please look at this", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_at_end_of_string_returns_true() {
+        assert!(mentions_handle("@hoosh", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_empty_body_returns_false() {
+        assert!(!mentions_handle("", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_followed_by_comma_returns_true() {
+        assert!(mentions_handle("@hoosh, please review", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_followed_by_period_returns_true() {
+        assert!(mentions_handle("Thanks @hoosh.", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_followed_by_exclamation_returns_true() {
+        assert!(mentions_handle("cc @hoosh!", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_followed_by_colon_returns_true() {
+        assert!(mentions_handle("@hoosh: please check", "@hoosh"));
+    }
+
+    #[test]
+    fn mentions_handle_hyphenated_configured_handle_exact_match() {
+        assert!(mentions_handle("@hoosh-ci please run", "@hoosh-ci"));
+    }
+
+    #[test]
+    fn mentions_handle_hyphenated_configured_handle_prefix_returns_false() {
+        assert!(!mentions_handle("@hoosh-ci-staging", "@hoosh-ci"));
+    }
+
+    #[test]
+    fn mentions_handle_hyphenated_configured_handle_at_end_of_string() {
+        assert!(mentions_handle("@hoosh-ci", "@hoosh-ci"));
+    }
+
+    #[test]
+    fn mentions_handle_mixed_exact_and_longer_in_body_returns_true() {
+        assert!(mentions_handle("@hoosh @hoosh-bot @hoosh please help", "@hoosh"));
     }
 
     // ---- is_bot_sender tests (T010) ----
