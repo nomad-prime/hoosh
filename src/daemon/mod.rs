@@ -1,15 +1,15 @@
 pub mod api;
 pub mod config;
-pub mod executor;
 pub mod github_event;
+pub mod job;
+pub mod job_executor;
+pub mod job_store;
 pub mod permissions;
 pub mod sandbox;
-pub mod store;
-pub mod task;
 mod webhook;
 
 pub use api::DaemonServer;
 pub use config::DaemonConfig;
-pub use executor::TaskExecutor;
-pub use store::TaskStore;
-pub use task::{Task, TaskStatus};
+pub use job::{Job, JobStatus};
+pub use job_executor::JobExecutor;
+pub use job_store::JobStore;

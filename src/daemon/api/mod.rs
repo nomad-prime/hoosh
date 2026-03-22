@@ -14,45 +14,45 @@ use tokio::task::JoinHandle;
 use crate::config::AppConfig;
 use crate::console::console;
 use crate::daemon::config::DaemonConfig;
-use crate::daemon::executor::TaskExecutor;
-use crate::daemon::store::TaskStore;
-use crate::daemon::task::TaskStatus;
+use crate::daemon::job::JobStatus;
+use crate::daemon::job_executor::JobExecutor;
+use crate::daemon::job_store::JobStore;
 
-pub type ActiveTaskMap = Arc<RwLock<HashMap<String, (JoinHandle<()>, Arc<AtomicBool>)>>>;
+pub type ActiveJobMap = Arc<RwLock<HashMap<String, (JoinHandle<()>, Arc<AtomicBool>)>>>;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub store: Arc<TaskStore>,
-    pub executor: Arc<TaskExecutor>,
+    pub store: Arc<JobStore>,
+    pub executor: Arc<JobExecutor>,
     pub config: Arc<DaemonConfig>,
-    pub active_tasks: ActiveTaskMap,
+    pub active_jobs: ActiveJobMap,
     pub uptime_start: Instant,
     pub shutting_down: Arc<AtomicBool>,
 }
 
 impl AppState {
-    pub async fn spawn_task(&self, task_id: String) {
+    pub async fn spawn_job(&self, job_id: String) {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_clone = Arc::clone(&cancel);
         let executor = Arc::clone(&self.executor);
-        let id_for_spawn = task_id.clone();
+        let id_for_spawn = job_id.clone();
 
         let handle = tokio::spawn(async move {
             executor.run(id_for_spawn, cancel_clone).await;
         });
 
-        self.active_tasks
+        self.active_jobs
             .write()
             .await
-            .insert(task_id, (handle, cancel));
+            .insert(job_id, (handle, cancel));
     }
 }
 
 pub struct DaemonServer {
-    pub store: Arc<TaskStore>,
-    pub executor: Arc<TaskExecutor>,
+    pub store: Arc<JobStore>,
+    pub executor: Arc<JobExecutor>,
     pub config: Arc<DaemonConfig>,
-    pub active_tasks: ActiveTaskMap,
+    pub active_jobs: ActiveJobMap,
     pub uptime_start: Instant,
     pub shutting_down: Arc<AtomicBool>,
 }
@@ -60,14 +60,14 @@ pub struct DaemonServer {
 impl DaemonServer {
     pub fn new(
         config: Arc<DaemonConfig>,
-        store: Arc<TaskStore>,
-        executor: Arc<TaskExecutor>,
+        store: Arc<JobStore>,
+        executor: Arc<JobExecutor>,
     ) -> Self {
         Self {
             store,
             executor,
             config,
-            active_tasks: Arc::new(RwLock::new(HashMap::new())),
+            active_jobs: Arc::new(RwLock::new(HashMap::new())),
             uptime_start: Instant::now(),
             shutting_down: Arc::new(AtomicBool::new(false)),
         }
@@ -78,7 +78,7 @@ impl DaemonServer {
             store: Arc::clone(&self.store),
             executor: Arc::clone(&self.executor),
             config: Arc::clone(&self.config),
-            active_tasks: Arc::clone(&self.active_tasks),
+            active_jobs: Arc::clone(&self.active_jobs),
             uptime_start: self.uptime_start,
             shutting_down: Arc::clone(&self.shutting_down),
         }
@@ -89,9 +89,9 @@ impl DaemonServer {
         use routes::*;
 
         Router::new()
-            .route("/tasks", post(submit_task).get(list_tasks))
-            .route("/tasks/:id", get(get_task).delete(cancel_task))
-            .route("/tasks/:id/logs", get(get_task_logs))
+            .route("/tasks", post(submit_job).get(list_jobs))
+            .route("/tasks/:id", get(get_job).delete(cancel_job))
+            .route("/tasks/:id/logs", get(get_job_logs))
             .route("/health", get(health))
             .route(
                 "/github/webhook",
@@ -104,27 +104,26 @@ impl DaemonServer {
         self.shutting_down.store(true, Ordering::Relaxed);
 
         if force {
-            let tasks = self.active_tasks.read().await;
-            for (_, (_, cancel)) in tasks.iter() {
+            let jobs = self.active_jobs.read().await;
+            for (_, (_, cancel)) in jobs.iter() {
                 cancel.store(true, Ordering::Relaxed);
             }
         }
 
-        let mut tasks = self.active_tasks.write().await;
-        for (_, (handle, _)) in tasks.drain() {
+        let mut jobs = self.active_jobs.write().await;
+        for (_, (handle, _)) in jobs.drain() {
             let _ = handle.await;
         }
     }
 
     pub async fn start(self) -> Result<()> {
-        // Recover running tasks from a previous crash
-        let all_tasks = self.store.load_all().context("Failed to load tasks")?;
-        for mut task in all_tasks {
-            if task.status == TaskStatus::Running {
-                task.status = TaskStatus::Failed;
-                task.error_message = Some("[incomplete] daemon restarted unexpectedly".to_string());
-                task.completed_at = Some(Utc::now());
-                let _ = self.store.update(&task);
+        let all_jobs = self.store.load_all().context("Failed to load jobs")?;
+        for mut job in all_jobs {
+            if job.status == JobStatus::Running {
+                job.status = JobStatus::Failed;
+                job.error_message = Some("[incomplete] daemon restarted unexpectedly".to_string());
+                job.completed_at = Some(Utc::now());
+                let _ = self.store.update(&job);
             }
         }
 
@@ -140,7 +139,7 @@ impl DaemonServer {
         let router = self.router();
 
         let shutting_down = Arc::clone(&self.shutting_down);
-        let active_tasks = Arc::clone(&self.active_tasks);
+        let active_jobs = Arc::clone(&self.active_jobs);
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await
@@ -172,8 +171,8 @@ impl DaemonServer {
                 console().plain("hoosh daemon shutting down...");
                 shutting_down.store(true, Ordering::Relaxed);
 
-                let mut tasks = active_tasks.write().await;
-                for (_, (handle, _)) in tasks.drain() {
+                let mut jobs = active_jobs.write().await;
+                for (_, (handle, _)) in jobs.drain() {
                     let _ = handle.await;
                 }
 

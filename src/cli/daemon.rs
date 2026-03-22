@@ -7,8 +7,8 @@ use crate::config::AppConfig;
 use crate::console::console;
 use crate::daemon::api::DaemonServer;
 use crate::daemon::config::DaemonConfig;
-use crate::daemon::executor::TaskExecutor;
-use crate::daemon::store::TaskStore;
+use crate::daemon::job_executor::JobExecutor;
+use crate::daemon::job_store::JobStore;
 
 pub async fn handle_daemon(action: DaemonAction, config: AppConfig) -> Result<()> {
     let daemon_config = config.daemon.clone().unwrap_or_default();
@@ -57,7 +57,7 @@ async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Re
     backend.initialize().await?;
     let backend = Arc::from(backend);
 
-    let store = Arc::new(TaskStore::new().context("Failed to create task store")?);
+    let store = Arc::new(JobStore::new().context("Failed to create job store")?);
 
     let agent_manager =
         AgentDefinitionManager::new().context("Failed to load agent definitions")?;
@@ -66,7 +66,7 @@ async fn daemon_start(daemon_config: DaemonConfig, app_config: &AppConfig) -> Re
         .with_context(|| format!("Daemon agent '{}' not found", daemon_config.daemon_agent))?;
 
     let config = Arc::new(daemon_config);
-    let executor = Arc::new(TaskExecutor::new(
+    let executor = Arc::new(JobExecutor::new(
         Arc::clone(&store),
         Arc::clone(&config),
         backend,
@@ -214,8 +214,8 @@ async fn daemon_submit(
 
     if resp.status().is_success() {
         let value: serde_json::Value = resp.json().await.context("Failed to parse response")?;
-        if let Some(task_id) = value.get("task_id").and_then(|v| v.as_str()) {
-            println!("{}", task_id);
+        if let Some(job_id) = value.get("job_id").and_then(|v| v.as_str()) {
+            println!("{}", job_id);
         }
     } else {
         let status = resp.status();

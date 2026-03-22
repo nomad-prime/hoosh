@@ -68,6 +68,20 @@ fn reinstall_builtins() -> Result<()> {
     let agents_dir = AppConfig::agents_dir()?;
     AgentDefinitionManager::initialize_default_agents(&agents_dir)?;
 
+    if let Ok(mut config) = AppConfig::load() {
+        let default_agents = AppConfig::default().agents;
+        let mut updated = false;
+        for (name, agent_config) in default_agents {
+            if let std::collections::hash_map::Entry::Vacant(e) = config.agents.entry(name) {
+                e.insert(agent_config);
+                updated = true;
+            }
+        }
+        if updated {
+            config.save()?;
+        }
+    }
+
     console().info("Built-in agent files have been reinstalled.");
 
     Ok(())

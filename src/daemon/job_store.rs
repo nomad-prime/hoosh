@@ -6,14 +6,14 @@ use std::sync::{Arc, RwLock};
 
 use crate::config::AppConfig;
 use crate::console::console;
-use crate::daemon::task::{Task, TaskStatus};
+use crate::daemon::job::{Job, JobStatus};
 
-pub struct TaskStore {
+pub struct JobStore {
     tasks_dir: PathBuf,
-    cache: Arc<RwLock<HashMap<String, Task>>>,
+    cache: Arc<RwLock<HashMap<String, Job>>>,
 }
 
-impl TaskStore {
+impl JobStore {
     pub fn new() -> Result<Self> {
         let tasks_dir = AppConfig::hoosh_data_dir()
             .context("Could not determine data directory")?
@@ -28,7 +28,7 @@ impl TaskStore {
             cache: Arc::new(RwLock::new(HashMap::new())),
         };
 
-        store.recover_running_tasks()?;
+        store.recover_running_jobs()?;
 
         Ok(store)
     }
@@ -43,24 +43,24 @@ impl TaskStore {
             cache: Arc::new(RwLock::new(HashMap::new())),
         };
 
-        store.recover_running_tasks()?;
+        store.recover_running_jobs()?;
 
         Ok(store)
     }
 
-    fn recover_running_tasks(&self) -> Result<()> {
-        let tasks = self.load_all_from_disk()?;
+    fn recover_running_jobs(&self) -> Result<()> {
+        let jobs = self.load_all_from_disk()?;
         let mut cache = self.cache.write().unwrap();
-        for mut task in tasks {
-            if task.status == TaskStatus::Running {
-                task.status = TaskStatus::Failed;
-                task.error_message = Some("[incomplete] daemon restarted unexpectedly".to_string());
-                task.completed_at = Some(Utc::now());
-                let path = self.task_path(&task.id);
-                let json = serde_json::to_string_pretty(&task)?;
+        for mut job in jobs {
+            if job.status == JobStatus::Running {
+                job.status = JobStatus::Failed;
+                job.error_message = Some("[incomplete] daemon restarted unexpectedly".to_string());
+                job.completed_at = Some(Utc::now());
+                let path = self.task_path(&job.id);
+                let json = serde_json::to_string_pretty(&job)?;
                 std::fs::write(&path, json)?;
             }
-            cache.insert(task.id.clone(), task);
+            cache.insert(job.id.clone(), job);
         }
         Ok(())
     }
@@ -69,8 +69,8 @@ impl TaskStore {
         self.tasks_dir.join(format!("{}.json", id))
     }
 
-    fn load_all_from_disk(&self) -> Result<Vec<Task>> {
-        let mut tasks = Vec::new();
+    fn load_all_from_disk(&self) -> Result<Vec<Job>> {
+        let mut jobs = Vec::new();
         let entries = std::fs::read_dir(&self.tasks_dir).with_context(|| {
             format!(
                 "Failed to read tasks directory: {}",
@@ -83,12 +83,12 @@ impl TaskStore {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 let content = std::fs::read_to_string(&path)
-                    .with_context(|| format!("Failed to read task file: {}", path.display()))?;
-                match serde_json::from_str::<Task>(&content) {
-                    Ok(task) => tasks.push(task),
+                    .with_context(|| format!("Failed to read job file: {}", path.display()))?;
+                match serde_json::from_str::<Job>(&content) {
+                    Ok(job) => jobs.push(job),
                     Err(e) => {
                         console().warning(&format!(
-                            "Failed to parse task file {}: {}",
+                            "Failed to parse job file {}: {}",
                             path.display(),
                             e
                         ));
@@ -97,46 +97,46 @@ impl TaskStore {
             }
         }
 
-        Ok(tasks)
+        Ok(jobs)
     }
 
-    pub fn create(&self, task: &Task) -> Result<()> {
-        let path = self.task_path(&task.id);
-        let json = serde_json::to_string_pretty(task).context("Failed to serialize task")?;
+    pub fn create(&self, job: &Job) -> Result<()> {
+        let path = self.task_path(&job.id);
+        let json = serde_json::to_string_pretty(job).context("Failed to serialize job")?;
 
         let tmp = tempfile::NamedTempFile::new_in(&self.tasks_dir)
-            .context("Failed to create temp file for task")?;
-        std::fs::write(tmp.path(), &json).context("Failed to write task to temp file")?;
+            .context("Failed to create temp file for job")?;
+        std::fs::write(tmp.path(), &json).context("Failed to write job to temp file")?;
         tmp.persist(&path)
-            .with_context(|| format!("Failed to persist task file: {}", path.display()))?;
+            .with_context(|| format!("Failed to persist job file: {}", path.display()))?;
 
         let mut cache = self.cache.write().unwrap();
-        cache.insert(task.id.clone(), task.clone());
+        cache.insert(job.id.clone(), job.clone());
 
         Ok(())
     }
 
-    pub fn update(&self, task: &Task) -> Result<()> {
-        let path = self.task_path(&task.id);
-        let json = serde_json::to_string_pretty(task).context("Failed to serialize task")?;
+    pub fn update(&self, job: &Job) -> Result<()> {
+        let path = self.task_path(&job.id);
+        let json = serde_json::to_string_pretty(job).context("Failed to serialize job")?;
 
         let tmp = tempfile::NamedTempFile::new_in(&self.tasks_dir)
-            .context("Failed to create temp file for task update")?;
-        std::fs::write(tmp.path(), &json).context("Failed to write task update to temp file")?;
+            .context("Failed to create temp file for job update")?;
+        std::fs::write(tmp.path(), &json).context("Failed to write job update to temp file")?;
         tmp.persist(&path)
-            .with_context(|| format!("Failed to persist task update: {}", path.display()))?;
+            .with_context(|| format!("Failed to persist job update: {}", path.display()))?;
 
         let mut cache = self.cache.write().unwrap();
-        cache.insert(task.id.clone(), task.clone());
+        cache.insert(job.id.clone(), job.clone());
 
         Ok(())
     }
 
-    pub fn get(&self, id: &str) -> Result<Option<Task>> {
+    pub fn get(&self, id: &str) -> Result<Option<Job>> {
         {
             let cache = self.cache.read().unwrap();
-            if let Some(task) = cache.get(id) {
-                return Ok(Some(task.clone()));
+            if let Some(job) = cache.get(id) {
+                return Ok(Some(job.clone()));
             }
         }
 
@@ -146,28 +146,28 @@ impl TaskStore {
         }
 
         let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read task file: {}", path.display()))?;
-        let task: Task = serde_json::from_str(&content).context("Failed to parse task")?;
+            .with_context(|| format!("Failed to read job file: {}", path.display()))?;
+        let job: Job = serde_json::from_str(&content).context("Failed to parse job")?;
 
         let mut cache = self.cache.write().unwrap();
-        cache.insert(task.id.clone(), task.clone());
+        cache.insert(job.id.clone(), job.clone());
 
-        Ok(Some(task))
+        Ok(Some(job))
     }
 
-    pub fn load_all(&self) -> Result<Vec<Task>> {
+    pub fn load_all(&self) -> Result<Vec<Job>> {
         let cache = self.cache.read().unwrap();
         Ok(cache.values().cloned().collect())
     }
 
     pub fn query_active_by_trigger_ref(&self, trigger_ref: &str) -> Option<String> {
         let cache = self.cache.read().unwrap();
-        cache.values().find_map(|task| {
-            if matches!(task.status, TaskStatus::Queued | TaskStatus::Running)
-                && let Some(ref trigger) = task.trigger
+        cache.values().find_map(|job| {
+            if matches!(job.status, JobStatus::Queued | JobStatus::Running)
+                && let Some(ref trigger) = job.trigger
                 && trigger.trigger_ref == trigger_ref
             {
-                return Some(task.id.clone());
+                return Some(job.id.clone());
             }
             None
         })
@@ -177,15 +177,15 @@ impl TaskStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::task::{GithubEventType, GithubTrigger, Task, TaskStatus};
+    use crate::daemon::job::{GithubEventType, GithubTrigger, Job, JobStatus};
     use tempfile::TempDir;
 
-    fn make_store(dir: &TempDir) -> TaskStore {
-        TaskStore::new_with_dir(dir.path().join("tasks")).unwrap()
+    fn make_store(dir: &TempDir) -> JobStore {
+        JobStore::new_with_dir(dir.path().join("tasks")).unwrap()
     }
 
-    fn make_task() -> Task {
-        Task::new(
+    fn make_job() -> Job {
+        Job::new(
             "https://github.com/example/repo".to_string(),
             "main".to_string(),
             "Do something".to_string(),
@@ -213,98 +213,98 @@ mod tests {
     fn create_and_load_persists_to_disk() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
-        let task = make_task();
-        let task_id = task.id.clone();
+        let job = make_job();
+        let job_id = job.id.clone();
 
-        store.create(&task).unwrap();
+        store.create(&job).unwrap();
 
-        let path = store.task_path(&task_id);
-        assert!(path.exists(), "Task file should exist on disk");
+        let path = store.task_path(&job_id);
+        assert!(path.exists(), "Job file should exist on disk");
 
         let content = std::fs::read_to_string(&path).unwrap();
-        let loaded: Task = serde_json::from_str(&content).unwrap();
-        assert_eq!(loaded.id, task_id);
+        let loaded: Job = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, job_id);
     }
 
     #[test]
     fn update_changes_status() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
-        let mut task = make_task();
-        let task_id = task.id.clone();
+        let mut job = make_job();
+        let job_id = job.id.clone();
 
-        store.create(&task).unwrap();
+        store.create(&job).unwrap();
 
-        task.status = TaskStatus::Running;
-        store.update(&task).unwrap();
+        job.status = JobStatus::Running;
+        store.update(&job).unwrap();
 
-        let loaded = store.get(&task_id).unwrap().unwrap();
-        assert_eq!(loaded.status, TaskStatus::Running);
+        let loaded = store.get(&job_id).unwrap().unwrap();
+        assert_eq!(loaded.status, JobStatus::Running);
     }
 
     #[test]
-    fn load_all_returns_all_tasks() {
+    fn load_all_returns_all_jobs() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
 
-        let task1 = make_task();
-        let task2 = make_task();
+        let job1 = make_job();
+        let job2 = make_job();
 
-        store.create(&task1).unwrap();
-        store.create(&task2).unwrap();
+        store.create(&job1).unwrap();
+        store.create(&job2).unwrap();
 
         let all = store.load_all().unwrap();
         assert_eq!(all.len(), 2);
     }
 
     #[test]
-    fn queued_task_with_trigger_ref_returns_id() {
+    fn queued_job_with_trigger_ref_returns_id() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
-        let mut task = make_task();
-        task.trigger = Some(make_trigger("issue:47"));
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        let mut job = make_job();
+        job.trigger = Some(make_trigger("issue:47"));
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let found = store.query_active_by_trigger_ref("issue:47");
-        assert_eq!(found, Some(task_id));
+        assert_eq!(found, Some(job_id));
     }
 
     #[test]
-    fn running_task_with_trigger_ref_returns_id() {
+    fn running_job_with_trigger_ref_returns_id() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
-        let mut task = make_task();
-        task.status = TaskStatus::Running;
-        task.trigger = Some(make_trigger("pr:82"));
-        let task_id = task.id.clone();
-        store.create(&task).unwrap();
+        let mut job = make_job();
+        job.status = JobStatus::Running;
+        job.trigger = Some(make_trigger("pr:82"));
+        let job_id = job.id.clone();
+        store.create(&job).unwrap();
 
         let found = store.query_active_by_trigger_ref("pr:82");
-        assert_eq!(found, Some(task_id));
+        assert_eq!(found, Some(job_id));
     }
 
     #[test]
-    fn completed_task_with_trigger_ref_returns_none() {
+    fn completed_job_with_trigger_ref_returns_none() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
-        let mut task = make_task();
-        task.status = TaskStatus::Completed;
-        task.trigger = Some(make_trigger("issue:10"));
-        store.create(&task).unwrap();
+        let mut job = make_job();
+        job.status = JobStatus::Completed;
+        job.trigger = Some(make_trigger("issue:10"));
+        store.create(&job).unwrap();
 
         let found = store.query_active_by_trigger_ref("issue:10");
         assert_eq!(found, None);
     }
 
     #[test]
-    fn failed_task_with_trigger_ref_returns_none() {
+    fn failed_job_with_trigger_ref_returns_none() {
         let dir = TempDir::new().unwrap();
         let store = make_store(&dir);
-        let mut task = make_task();
-        task.status = TaskStatus::Failed;
-        task.trigger = Some(make_trigger("issue:10"));
-        store.create(&task).unwrap();
+        let mut job = make_job();
+        job.status = JobStatus::Failed;
+        job.trigger = Some(make_trigger("issue:10"));
+        store.create(&job).unwrap();
 
         let found = store.query_active_by_trigger_ref("issue:10");
         assert_eq!(found, None);
@@ -323,17 +323,17 @@ mod tests {
         let tasks_dir = dir.path().join("tasks");
 
         {
-            let store = TaskStore::new_with_dir(tasks_dir.clone()).unwrap();
-            let mut task = make_task();
-            task.status = TaskStatus::Running;
-            store.create(&task).unwrap();
+            let store = JobStore::new_with_dir(tasks_dir.clone()).unwrap();
+            let mut job = make_job();
+            job.status = JobStatus::Running;
+            store.create(&job).unwrap();
         }
 
-        let store2 = TaskStore::new_with_dir(tasks_dir).unwrap();
+        let store2 = JobStore::new_with_dir(tasks_dir).unwrap();
         let all = store2.load_all().unwrap();
         assert_eq!(all.len(), 1);
         let recovered = &all[0];
-        assert_eq!(recovered.status, TaskStatus::Failed);
+        assert_eq!(recovered.status, JobStatus::Failed);
         assert!(
             recovered
                 .error_message

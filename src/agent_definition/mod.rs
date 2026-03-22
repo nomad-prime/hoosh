@@ -21,6 +21,64 @@ pub struct AgentDefinitionManager {
     config: AppConfig,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn initialize_default_agents_writes_all_agent_files() {
+        let dir = TempDir::new().unwrap();
+        AgentDefinitionManager::initialize_default_agents(dir.path()).unwrap();
+
+        for (file_name, _) in crate::config::DEFAULT_AGENTS {
+            assert!(
+                dir.path().join(file_name).exists(),
+                "Missing agent file: {}",
+                file_name
+            );
+        }
+    }
+
+    #[test]
+    fn initialize_default_agents_writes_all_core_instruction_files() {
+        let dir = TempDir::new().unwrap();
+        AgentDefinitionManager::initialize_default_agents(dir.path()).unwrap();
+
+        for (file_name, _) in crate::config::DEFAULT_CORE_INSTRUCTIONS {
+            assert!(
+                dir.path().join(file_name).exists(),
+                "Missing core instructions file: {}",
+                file_name
+            );
+        }
+    }
+
+    #[test]
+    fn initialize_default_agents_writes_correct_content() {
+        let dir = TempDir::new().unwrap();
+        AgentDefinitionManager::initialize_default_agents(dir.path()).unwrap();
+
+        for (file_name, expected_content) in crate::config::DEFAULT_AGENTS {
+            let actual = std::fs::read_to_string(dir.path().join(file_name)).unwrap();
+            assert_eq!(actual, *expected_content, "Content mismatch for: {}", file_name);
+        }
+    }
+
+    #[test]
+    fn default_config_registers_all_builtin_agents() {
+        let config = AppConfig::default();
+        for (file_name, _) in crate::config::DEFAULT_AGENTS {
+            let agent_name = file_name.strip_suffix(".txt").unwrap_or(file_name);
+            assert!(
+                config.agents.contains_key(agent_name),
+                "Default config missing entry for builtin agent: {}",
+                agent_name
+            );
+        }
+    }
+}
+
 impl AgentDefinition {
     pub fn from_config(
         name: String,
