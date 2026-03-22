@@ -265,7 +265,10 @@ mod tests {
 
     #[test]
     fn mentions_handle_mixed_exact_and_longer_in_body_returns_true() {
-        assert!(mentions_handle("@hoosh @hoosh-bot @hoosh please help", "@hoosh"));
+        assert!(mentions_handle(
+            "@hoosh @hoosh-bot @hoosh please help",
+            "@hoosh"
+        ));
     }
 
     // ---- is_bot_sender tests (T010) ----
