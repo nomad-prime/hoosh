@@ -388,6 +388,18 @@ hoosh --config /path/to/config.toml --data-dir /path/to/data daemon start
     └── ...
 ```
 
+#### Server Deployment
+
+To deploy the daemon on a Linux server, download and run the setup script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nomad-prime/hoosh/main/scripts/server-setup.sh | sudo bash
+```
+
+See [SERVER_GUIDE.md](SERVER_GUIDE.md) for full setup details including Cloudflare tunnel and GitHub access.
+
+---
+
 #### Daemon Mode and Custom Paths
 
 For running multiple isolated daemon instances or deploying in environments without a home directory (CI, containers, sandboxed environments), use both flags together:
