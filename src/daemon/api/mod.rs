@@ -77,7 +77,7 @@ impl DaemonServer {
         }
     }
 
-    fn app_state(&self) -> AppState {
+    pub fn app_state(&self) -> AppState {
         AppState {
             store: Arc::clone(&self.store),
             executor: Arc::clone(&self.executor),
@@ -89,6 +89,10 @@ impl DaemonServer {
     }
 
     pub fn router(&self) -> Router {
+        Self::build_router(self.app_state())
+    }
+
+    fn build_router(state: AppState) -> Router {
         use axum::routing::post;
         use routes::*;
 
@@ -101,7 +105,27 @@ impl DaemonServer {
                 "/github/webhook",
                 post(crate::daemon::webhook::handle_github_webhook),
             )
-            .with_state(self.app_state())
+            .with_state(state)
+    }
+
+    pub async fn recover_on_startup(&self, app_state: &AppState) -> Result<()> {
+        let all_jobs = self.store.load_all().context("Failed to load jobs")?;
+        for mut job in all_jobs {
+            match job.status {
+                JobStatus::Running => {
+                    job.status = JobStatus::Failed;
+                    job.error_message =
+                        Some("[incomplete] daemon restarted unexpectedly".to_string());
+                    job.completed_at = Some(Utc::now());
+                    let _ = self.store.update(&job);
+                }
+                JobStatus::Queued => {
+                    app_state.spawn_job(job.id).await;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     pub async fn shutdown(&self, force: bool) {
@@ -121,15 +145,8 @@ impl DaemonServer {
     }
 
     pub async fn start(self) -> Result<()> {
-        let all_jobs = self.store.load_all().context("Failed to load jobs")?;
-        for mut job in all_jobs {
-            if job.status == JobStatus::Running {
-                job.status = JobStatus::Failed;
-                job.error_message = Some("[incomplete] daemon restarted unexpectedly".to_string());
-                job.completed_at = Some(Utc::now());
-                let _ = self.store.update(&job);
-            }
-        }
+        let app_state = self.app_state();
+        self.recover_on_startup(&app_state).await?;
 
         // Write PID file
         if let Ok(data_dir) = AppConfig::hoosh_data_dir() {
@@ -140,7 +157,7 @@ impl DaemonServer {
         }
 
         let addr = self.config.bind_address;
-        let router = self.router();
+        let router = Self::build_router(app_state);
 
         let shutting_down = Arc::clone(&self.shutting_down);
         let active_jobs = Arc::clone(&self.active_jobs);

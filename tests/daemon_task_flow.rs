@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use hoosh::backends::{LlmBackend, LlmError, LlmResponse};
 use hoosh::daemon::api::DaemonServer;
 use hoosh::daemon::config::DaemonConfig;
+use hoosh::daemon::job::Job;
+use hoosh::daemon::job::JobStatus;
 use hoosh::daemon::job_executor::JobExecutor;
 use hoosh::daemon::job_store::JobStore;
 use std::net::SocketAddr;
@@ -258,6 +260,94 @@ async fn list_tasks_returns_all_tasks() {
         .await
         .unwrap();
     assert!(!tasks.is_empty());
+}
+
+fn make_server(store: Arc<JobStore>, sandbox_dir: &TempDir) -> DaemonServer {
+    let config = Arc::new(DaemonConfig {
+        sandbox_base_dir: sandbox_dir.path().to_path_buf(),
+        bind_address: "127.0.0.1:0".parse().unwrap(),
+        ..Default::default()
+    });
+    let executor = Arc::new(JobExecutor::new(
+        Arc::clone(&store),
+        Arc::clone(&config),
+        Arc::new(MockBackend),
+        include_str!("../src/prompts/hoosh_daemon_coder.txt").to_string(),
+        include_str!("../src/prompts/hoosh_daemon_coder_core_instructions.txt").to_string(),
+    ));
+    DaemonServer::new(config, store, executor)
+}
+
+#[tokio::test]
+async fn running_jobs_are_marked_failed_on_recovery() {
+    let store_dir = TempDir::new().unwrap();
+    let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("jobs")).unwrap());
+
+    let mut job = Job::new(
+        "file:///fake".to_string(),
+        "main".to_string(),
+        "do something".to_string(),
+        None,
+        100_000,
+    );
+    job.status = JobStatus::Running;
+    job.started_at = Some(chrono::Utc::now());
+    store.create(&job).unwrap();
+    let job_id = job.id.clone();
+
+    let sandbox_dir = TempDir::new().unwrap();
+    let server = make_server(Arc::clone(&store), &sandbox_dir);
+    let app_state = server.app_state();
+    server.recover_on_startup(&app_state).await.unwrap();
+
+    let recovered = store.get(&job_id).unwrap().unwrap();
+    assert_eq!(recovered.status, JobStatus::Failed);
+    assert!(
+        recovered
+            .error_message
+            .as_deref()
+            .unwrap_or("")
+            .contains("[incomplete]")
+    );
+}
+
+#[tokio::test]
+async fn queued_jobs_are_resumed_on_recovery() {
+    let remote_dir = TempDir::new().unwrap();
+    init_bare_with_commit(remote_dir.path());
+    let repo_url = format!("file://{}", remote_dir.path().display());
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Arc::new(JobStore::new_with_dir(store_dir.path().join("jobs")).unwrap());
+
+    let job = Job::new(
+        repo_url,
+        "main".to_string(),
+        "do nothing".to_string(),
+        None,
+        100_000,
+    );
+    let job_id = job.id.clone();
+    store.create(&job).unwrap();
+    assert_eq!(
+        store.get(&job_id).unwrap().unwrap().status,
+        JobStatus::Queued
+    );
+
+    let sandbox_dir = TempDir::new().unwrap();
+    let server = make_server(Arc::clone(&store), &sandbox_dir);
+    let app_state = server.app_state();
+    server.recover_on_startup(&app_state).await.unwrap();
+
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let status = store.get(&job_id).unwrap().unwrap().status;
+        if status == JobStatus::Completed || status == JobStatus::Failed {
+            assert_eq!(status, JobStatus::Completed);
+            return;
+        }
+    }
+    panic!("Queued job did not complete after recovery");
 }
 
 #[tokio::test]
