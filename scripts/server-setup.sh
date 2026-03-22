@@ -104,6 +104,16 @@ setup_ssh_key() {
 
   chown -R "$SERVICE_USER:$SERVICE_USER" "$SSH_DIR"
   chmod 600 "$SSH_KEY"
+
+  info "Adding GitHub to system known_hosts"
+  ssh-keyscan github.com 2>/dev/null | tee -a /etc/ssh/ssh_known_hosts > /dev/null
+
+  info "Configuring ssh_key_path in $CONFIG_DST/config.toml"
+  if grep -q "ssh_key_path" "$CONFIG_DST/config.toml" 2>/dev/null; then
+    sed -i "s|.*ssh_key_path.*|ssh_key_path = \"$SSH_KEY\"|" "$CONFIG_DST/config.toml"
+  else
+    echo "ssh_key_path = \"$SSH_KEY\"" >> "$CONFIG_DST/config.toml"
+  fi
 }
 
 setup_env_file() {
