@@ -198,7 +198,89 @@ bot_login = "your-github-bot-username"
 
 ---
 
-## 7. Useful Commands
+## 7. Git & GitHub Access
+
+The daemon clones repositories, creates branches, commits changes, and pushes — all as
+the `hoosh` system user. Since that user has no home directory, you must set up credentials
+explicitly.
+
+### 7a. SSH Deploy Key (for git clone/push)
+
+Generate a dedicated key (no passphrase — the daemon runs unattended):
+
+```bash
+sudo mkdir -p /etc/hoosh/ssh
+sudo ssh-keygen -t ed25519 -C "hoosh-daemon" -N "" -f /etc/hoosh/ssh/id_ed25519
+sudo chown -R hoosh:hoosh /etc/hoosh/ssh
+sudo chmod 700 /etc/hoosh/ssh
+sudo chmod 600 /etc/hoosh/ssh/id_ed25519
+```
+
+Print the public key and add it to GitHub:
+
+```bash
+sudo cat /etc/hoosh/ssh/id_ed25519.pub
+```
+
+Go to the target repository on GitHub → **Settings → Deploy keys → Add deploy key**.
+Enable **Allow write access** — the daemon needs to push branches.
+
+Then tell Hoosh about the key in `/etc/hoosh/config.toml`:
+
+```toml
+[daemon]
+ssh_key_path = "/etc/hoosh/ssh/id_ed25519"
+```
+
+> **Note:** The deploy key is per-repository. Repeat this for each repo the daemon should
+> have access to — or use a GitHub bot account and add its SSH key as a collaborator
+> with push access instead.
+
+### 7b. GitHub CLI Authentication (for PR creation)
+
+The daemon creates pull requests via the `gh` CLI. Since the `hoosh` user has no home
+directory, authenticate via a token stored in an environment file.
+
+Create a [GitHub personal access token](https://github.com/settings/tokens) (classic or
+fine-grained) with at minimum: `repo` scope (or `pull_requests: write` for fine-grained).
+
+Store it in a protected env file:
+
+```bash
+sudo tee /etc/hoosh/env > /dev/null << 'EOF'
+GH_TOKEN=your-github-token-here
+EOF
+sudo chown hoosh:hoosh /etc/hoosh/env
+sudo chmod 600 /etc/hoosh/env
+```
+
+Update the systemd service to load it — edit `/etc/systemd/system/hoosh-daemon.service`:
+
+```ini
+[Service]
+...
+EnvironmentFile=/etc/hoosh/env
+```
+
+Or run the setup script again after adding the `EnvironmentFile` line — it rewrites the
+unit file on every run.
+
+Reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart hoosh-daemon
+```
+
+Verify `gh` can authenticate:
+
+```bash
+sudo -u hoosh GH_TOKEN=$(sudo cat /etc/hoosh/env | grep GH_TOKEN | cut -d= -f2) gh auth status
+```
+
+---
+
+## 8. Useful Commands
 
 ```bash
 # Check daemon status
@@ -226,6 +308,8 @@ curl http://localhost:7979
 |------|---------|
 | `/usr/local/bin/hoosh` | Hoosh binary |
 | `/etc/hoosh/config.toml` | Hoosh config (chmod 600, owned by hoosh) |
+| `/etc/hoosh/env` | Environment variables (GH_TOKEN etc., chmod 600) |
+| `/etc/hoosh/ssh/id_ed25519` | SSH deploy key for git operations (chmod 600) |
 | `/var/lib/hoosh/` | Daemon runtime data (task store, sessions) |
 | `/etc/systemd/system/hoosh-daemon.service` | systemd unit |
 | `/etc/cloudflared/config.yml` | Cloudflare tunnel config |
@@ -243,3 +327,6 @@ curl http://localhost:7979
 | `Cannot determine default config path` | sudo loses home context | Pass `--config /full/path/config.yml` explicitly |
 | Config permission warning | File is 640 not 600 | `chmod 600 /etc/hoosh/config.toml` |
 | Webhook returns 500 | `webhook_secret` not set | Configure `[github]` section in config.toml |
+| Git clone/push fails | No SSH key configured | Generate deploy key, set `ssh_key_path` in config.toml |
+| PR creation fails | `gh` not authenticated | Set `GH_TOKEN` in `/etc/hoosh/env` |
+| Deploy key rejected | Write access not enabled | Re-add key on GitHub with "Allow write access" checked |
