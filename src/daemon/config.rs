@@ -50,7 +50,7 @@ fn default_daemon_agent() -> String {
 }
 
 fn default_token_budget() -> usize {
-    100_000
+    500_000
 }
 
 fn default_sandbox_base_dir() -> PathBuf {
