@@ -99,18 +99,14 @@ impl JobExecutor {
         let _ = writeln!(sandbox, "[{}] Clone completed", Utc::now());
 
         if job.trigger.is_some() {
-            let gh_ok = tokio::process::Command::new("gh")
-                .arg("auth")
-                .arg("status")
-                .output()
-                .await
-                .map(|o| o.status.success())
-                .unwrap_or(false);
+            let gh_ok = std::env::var("GH_TOKEN")
+                .or_else(|_| std::env::var("GITHUB_TOKEN"))
+                .is_ok();
             if !gh_ok {
                 let _ = writeln!(sandbox, "[{}] gh CLI not authenticated", Utc::now());
                 job.status = JobStatus::Failed;
                 job.error_message = Some(
-                    "gh CLI not authenticated — run 'gh auth login' on the daemon machine"
+                    "GH_TOKEN not set — add it to /etc/hoosh/env and restart the daemon"
                         .to_string(),
                 );
                 job.completed_at = Some(Utc::now());
