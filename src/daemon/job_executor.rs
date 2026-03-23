@@ -15,7 +15,9 @@ use crate::daemon::permissions::PermissionResolver;
 use crate::daemon::sandbox::Sandbox;
 use crate::permissions::PermissionManager;
 use crate::permissions::storage::PermissionsFile;
-use crate::system_reminders::{PeriodicCoreReminderStrategy, SystemReminder};
+use crate::system_reminders::{
+    PeriodicCoreReminderStrategy, SystemReminder, TokenBudgetReminderStrategy,
+};
 use crate::tool_executor::ToolExecutor;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 
@@ -246,9 +248,17 @@ impl JobExecutor {
                     .with_event_sender(event_tx.clone()),
             );
 
-            let system_reminder = Arc::new(SystemReminder::new().add_strategy(Box::new(
-                PeriodicCoreReminderStrategy::new(10_000, self.core_instructions.clone()),
-            )));
+            let system_reminder = Arc::new(
+                SystemReminder::new()
+                    .add_strategy(Box::new(PeriodicCoreReminderStrategy::new(
+                        10_000,
+                        self.core_instructions.clone(),
+                    )))
+                    .add_strategy(Box::new(TokenBudgetReminderStrategy::new(
+                        Arc::clone(&token_count),
+                        budget,
+                    ))),
+            );
 
             let agent = Agent::new(Arc::clone(&self.backend), tool_registry, tool_executor)
                 .with_event_sender(event_tx.clone())
