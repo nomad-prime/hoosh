@@ -49,8 +49,8 @@ fn default_daemon_agent() -> String {
     "hoosh_daemon_coder".to_string()
 }
 
-fn default_token_budget() -> usize {
-    500_000
+fn default_output_token_budget() -> usize {
+    50_000
 }
 
 fn default_sandbox_base_dir() -> PathBuf {
@@ -61,8 +61,8 @@ fn default_sandbox_base_dir() -> PathBuf {
 pub struct DaemonConfig {
     #[serde(default = "default_bind_address")]
     pub bind_address: SocketAddr,
-    #[serde(default = "default_token_budget")]
-    pub default_token_budget: usize,
+    #[serde(default = "default_output_token_budget")]
+    pub output_token_budget: usize,
     #[serde(default)]
     pub ssh_key_path: Option<PathBuf>,
     #[serde(default = "default_sandbox_base_dir")]
@@ -79,7 +79,7 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             bind_address: default_bind_address(),
-            default_token_budget: default_token_budget(),
+            output_token_budget: default_output_token_budget(),
             ssh_key_path: None,
             sandbox_base_dir: default_sandbox_base_dir(),
             retain_sandboxes: false,

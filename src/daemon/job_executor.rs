@@ -192,7 +192,7 @@ impl JobExecutor {
                         output_tokens,
                         ..
                     } => {
-                        total += input_tokens + output_tokens;
+                        total += output_tokens;
                         token_count_monitor.store(total, Ordering::Relaxed);
                         if total >= budget {
                             cancel_monitor.store(true, Ordering::Relaxed);

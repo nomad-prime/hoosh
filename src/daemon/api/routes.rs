@@ -67,7 +67,7 @@ pub async fn submit_job(
         req.base_branch,
         req.instructions,
         req.token_budget,
-        state.config.default_token_budget,
+        state.config.output_token_budget,
     );
 
     let mut job = job;
