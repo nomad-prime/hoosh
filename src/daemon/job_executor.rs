@@ -187,11 +187,7 @@ impl JobExecutor {
             let mut total = 0usize;
             while let Some(event) = rx.recv().await {
                 match &event {
-                    AgentEvent::TokenUsage {
-                        input_tokens,
-                        output_tokens,
-                        ..
-                    } => {
+                    AgentEvent::TokenUsage { output_tokens, .. } => {
                         total += output_tokens;
                         token_count_monitor.store(total, Ordering::Relaxed);
                         if total >= budget {
