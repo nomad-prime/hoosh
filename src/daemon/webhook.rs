@@ -150,7 +150,7 @@ pub async fn handle_github_webhook(
         trigger.default_branch.clone(),
         agent_message,
         None,
-        state.config.default_token_budget,
+        state.config.output_token_budget,
     );
     job.trigger = Some(trigger);
 
