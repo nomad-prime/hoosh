@@ -90,6 +90,36 @@ create_data_dir() {
   chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 }
 
+install_gh_cli() {
+  if command -v gh &>/dev/null; then
+    info "gh CLI already installed ($(gh --version | head -1)) — skipping"
+    return
+  fi
+  info "Installing gh CLI"
+  local arch
+  arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+  [[ "$arch" == "x86_64" ]] && arch="amd64"
+  [[ "$arch" == "aarch64" ]] && arch="arm64"
+  local version="2.68.1"
+  local tarball="gh_${version}_linux_${arch}.tar.gz"
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${version}/${tarball}" \
+    | tar -xz -C /tmp
+  install -m 755 "/tmp/gh_${version}_linux_${arch}/bin/gh" /usr/local/bin/gh
+  rm -rf "/tmp/gh_${version}_linux_${arch}"
+  info "gh CLI installed: $(gh --version | head -1)"
+}
+
+setup_git_identity() {
+  info "Configuring git identity for $SERVICE_USER"
+  local git_config="$DATA_DIR/.gitconfig"
+  cat > "$git_config" << EOF
+[user]
+	name = hoosh
+	email = hoosh@localhost
+EOF
+  chown "$SERVICE_USER:$SERVICE_USER" "$git_config"
+}
+
 setup_ssh_key() {
   mkdir -p "$SSH_DIR"
   chmod 700 "$SSH_DIR"
@@ -193,9 +223,11 @@ if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
   systemctl stop "$SERVICE_NAME"
 fi
 install_binary
+install_gh_cli
 create_service_user
 sync_config
 create_data_dir
+setup_git_identity
 setup_ssh_key
 setup_env_file
 install_service
