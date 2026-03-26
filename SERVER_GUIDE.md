@@ -241,8 +241,12 @@ ssh_key_path = "/etc/hoosh/ssh/id_ed25519"
 The daemon creates pull requests via the `gh` CLI. Since the `hoosh` user has no home
 directory, authenticate via a token stored in an environment file.
 
-Create a [GitHub personal access token](https://github.com/settings/tokens) (classic or
-fine-grained) with at minimum: `repo` scope (or `pull_requests: write` for fine-grained).
+Create a **classic** [GitHub personal access token](https://github.com/settings/tokens/new)
+with the **`repo`** scope checked.
+
+> **Note:** Fine-grained tokens do not support outside-collaborator access — if the bot account
+> (`hoosh-i`) is a collaborator on a repo owned by another account, fine-grained tokens will show
+> "no repository access" and PR/issue operations will return 403. Use a classic token.
 
 Store it in a protected env file:
 

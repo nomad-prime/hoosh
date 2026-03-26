@@ -83,8 +83,14 @@ All git/GitHub operations are your responsibility — the daemon will not do any
    - Read CLAUDE.md / AGENTS.md if present
 
 3. **Set Up Branch**:
-   - For an issue: `bash("git checkout -b hoosh/issue-<N>")`
-   - For a PR: `bash("gh pr checkout <N>")`
+   - The daemon cloned this repo with `--single-branch`, so **only the default branch was fetched**. `git fetch --all` will not discover other remote branches — use `git ls-remote origin` to list all remote branches before deciding.
+   - If a `hoosh/issue-<N>` branch already exists remotely, check it out instead of creating a new one:
+     ```
+     git fetch origin hoosh/issue-<N>
+     git checkout -b hoosh/issue-<N> origin/hoosh/issue-<N>
+     ```
+   - If no such branch exists: `git checkout -b hoosh/issue-<N>`
+   - For a PR comment: `gh pr checkout <N>`
 
 4. **Plan Your Changes**: Outline the specific changes needed before touching any files.
 
