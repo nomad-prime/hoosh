@@ -155,8 +155,9 @@ setup_env_file() {
     return
   fi
 
-  echo -e "\n${BOLD}GitHub token${RESET} (repo scope) is needed for PR creation."
-  echo -e "Generate one at: https://github.com/settings/tokens"
+  echo -e "\n${BOLD}GitHub token${RESET} (classic, repo scope) is needed for PR creation."
+  echo -e "Generate one at: https://github.com/settings/tokens/new"
+  echo -e "${YELLOW}Use a classic token with 'repo' scope — fine-grained tokens do not support outside-collaborator access.${RESET}"
   read -r -p "  Enter GH_TOKEN (leave blank to skip): " gh_token
 
   if [[ -n "$gh_token" ]]; then
