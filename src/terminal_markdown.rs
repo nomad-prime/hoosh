@@ -108,12 +108,10 @@ impl TerminalMarkdownRenderer {
                         }
                         current_line.push_str(&format!("{} ", "│".bright_black()));
                     }
-                    Tag::Table(_) => {
-                        if !current_line.is_empty() {
-                            output.push_str(&current_line);
-                            output.push('\n');
-                            current_line.clear();
-                        }
+                    Tag::Table(_) if !current_line.is_empty() => {
+                        output.push_str(&current_line);
+                        output.push('\n');
+                        current_line.clear();
                     }
                     _ => {}
                 },
@@ -167,12 +165,10 @@ impl TerminalMarkdownRenderer {
                             current_line.clear();
                         }
                     }
-                    TagEnd::BlockQuote => {
-                        if !current_line.is_empty() {
-                            output.push_str(&current_line);
-                            output.push('\n');
-                            current_line.clear();
-                        }
+                    TagEnd::BlockQuote if !current_line.is_empty() => {
+                        output.push_str(&current_line);
+                        output.push('\n');
+                        current_line.clear();
                     }
                     _ => {}
                 },

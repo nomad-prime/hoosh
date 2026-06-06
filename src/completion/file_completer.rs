@@ -168,7 +168,7 @@ impl Completer for FileCompleter {
             .collect();
 
         // Sort by score (descending)
-        matches.sort_by(|a, b| b.1.cmp(&a.1));
+        matches.sort_by_key(|m| std::cmp::Reverse(m.1));
 
         // Return top 50 matches
         Ok(matches.into_iter().take(50).map(|(path, _)| path).collect())
