@@ -113,6 +113,7 @@ async fn main() -> Result<()> {
                 cli.skip_permissions,
                 cli.continue_last,
                 cli.mode,
+                cli.memory_mode,
                 cli.message,
                 &config,
             )

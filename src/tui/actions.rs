@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -82,11 +83,37 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
     let system_reminder = Arc::clone(&event_loop_context.system_resources.system_reminder);
     let event_tx = event_loop_context.channels.event_tx.clone();
     let context_manager = Arc::clone(&event_loop_context.conversation_state.context_manager);
+    let memory_manager = event_loop_context
+        .runtime
+        .memory_mode_manager
+        .as_ref()
+        .map(Arc::clone);
 
     tokio::spawn(async move {
+        let turn_start = SystemTime::now();
         let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
 
         let mut conv = conversation.lock().await;
+
+        if let Some(ref manager) = memory_manager {
+            if manager.summary_written_since_last_turn() {
+                let n_before = conv.messages.len();
+                conv.clear_turn_history();
+                let cleared = n_before.saturating_sub(conv.messages.len());
+                crate::console::console().debug(&format!(
+                    "Memory mode: cleared {} messages from prior turn",
+                    cleared
+                ));
+            }
+
+            let summary = manager.read_summary();
+            let content = match summary {
+                Some(ref s) => format!("{}\n\n## Session Memory\n\n{}", manager.instructions, s),
+                None => manager.instructions.clone(),
+            };
+            conv.add_system_message(content);
+        }
+
         conv.add_user_message(expanded_input.clone());
 
         let agent = Agent::new(backend, tool_registry, tool_executor)
@@ -96,6 +123,10 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
 
         // Error is already sent as AgentEvent::Error from within handle_turn
         let _ = agent.handle_turn(&mut conv).await;
+
+        if let Some(ref manager) = memory_manager {
+            manager.record_turn_end(turn_start);
+        }
     })
 }
 

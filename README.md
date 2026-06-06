@@ -18,6 +18,7 @@ NOTE: HOOSH is still in development and does not support backward compatibility 
 - **Conversation Management**: Maintain context across multiple interactions
 - **Permission System**: Control what actions the AI can perform on your system
 - **Review/Autopilot Modes**: Toggle between reviewing every operation or running on autopilot (Shift+Tab)
+- **Session Summary Mode**: Reduce token usage across long sessions — the agent writes a structured summary each turn, which is injected at the start of the next turn instead of replaying the full history
 - **Configurable**: Customize behavior through TOML configuration files
 - **Graceful Error Handling**: Automatic retry with exponential backoff for transient errors (rate limits, server
   errors) with real-time user feedback through the event system
@@ -178,6 +179,54 @@ git diff | @hoosh "explain these changes"
 - Conversation context is saved to `~/.hoosh/sessions/session_[PID].json`
 - Context is tied to your terminal process (cleared when you close the terminal)
 - Old session files are automatically cleaned up after 7 days
+
+## Session Summary Mode
+
+Session summary mode reduces token consumption across long sessions by replacing the full conversation history with a compact, structured summary at the start of each turn.
+
+When enabled, the agent is instructed to call `update_session_file` as its last action each turn. That summary is automatically injected into the next turn's context, and the raw turn history is cleared.
+
+### Enable via CLI
+
+```bash
+hoosh --memory-mode summary
+```
+
+### Enable via config (`~/.config/hoosh/config.toml`)
+
+```toml
+memory_mode = "summary"
+```
+
+### Resume a session in summary mode
+
+```bash
+hoosh --memory-mode summary --continue
+```
+
+The summary from the last turn is automatically injected at conversation start.
+
+### How it works
+
+Each turn the agent produces a summary in this structure:
+
+- **Goal** — what you are ultimately trying to achieve (carried forward unchanged)
+- **This turn** — files changed, commands run, decisions made, errors resolved
+- **State** — where things stand now, enough to resume cold
+- **Next** — concrete remaining steps
+
+The summary is stored at `.hoosh/memory/<conversation_id>/summary.txt` in the working directory and persists across process restarts.
+
+**Fallback**: if the agent skips `update_session_file` in a given turn, the full history is silently retained for that turn — no data is lost.
+
+### Revert to full history mode
+
+```bash
+hoosh --memory-mode conversation
+# or simply omit --memory-mode (conversation is the default)
+```
+
+---
 
 ### Review vs Autopilot Mode
 
@@ -343,6 +392,7 @@ application including:
 - **default_backend**: The backend to use by default (e.g., "anthropic", "openai", "ollama")
 - **default_agent**: The default agent to use for conversations
 - **verbosity**: Logging verbosity level (quiet, normal, verbose, debug)
+- **memory_mode**: Session memory strategy — `"conversation"` (default, full history) or `"summary"` (per-turn summary injection)
 - **backends**: Backend-specific configurations
     - **api_key**: Authentication key for the backend
     - **model**: Model to use for this backend

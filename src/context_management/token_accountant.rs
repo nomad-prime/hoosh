@@ -82,11 +82,9 @@ impl TokenAccountant {
 
     pub fn average_tokens_per_call(&self) -> usize {
         let call_count = self.call_count.load(Ordering::Relaxed);
-        if call_count == 0 {
-            0
-        } else {
-            self.total_consumed_tokens() / call_count
-        }
+        self.total_consumed_tokens()
+            .checked_div(call_count)
+            .unwrap_or(0)
     }
 
     pub fn statistics(&self) -> TokenAccountantStats {

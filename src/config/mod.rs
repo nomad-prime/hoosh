@@ -1,6 +1,7 @@
 use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
 use crate::daemon::config::DaemonConfig;
+use crate::memory_mode::MemoryMode;
 use crate::terminal_mode::TerminalMode;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
@@ -76,6 +77,10 @@ pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
         "hoosh_daemon_coder_core_instructions.txt",
         include_str!("../prompts/hoosh_daemon_coder_core_instructions.txt"),
     ),
+    (
+        "memory_summary_instructions.txt",
+        include_str!("../prompts/memory_summary_instructions.txt"),
+    ),
 ];
 
 fn default_session_context_enabled() -> bool {
@@ -129,6 +134,8 @@ pub struct AppConfig {
     pub session_context_enabled: bool,
     #[serde(default)]
     pub daemon: Option<DaemonConfig>,
+    #[serde(default)]
+    pub memory_mode: Option<MemoryMode>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -155,6 +162,8 @@ pub struct ProjectConfig {
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default)]
     pub session_context_enabled: Option<bool>,
+    #[serde(default)]
+    pub memory_mode: Option<MemoryMode>,
 }
 
 impl Default for AppConfig {
@@ -187,6 +196,7 @@ impl Default for AppConfig {
             terminal_mode: None,
             session_context_enabled: default_session_context_enabled(),
             daemon: None,
+            memory_mode: None,
         }
     }
 }
@@ -450,6 +460,18 @@ impl AppConfig {
         Ok(Self::hoosh_config_dir()?.join("permissions.json"))
     }
 
+    pub fn load_memory_summary_instructions() -> String {
+        if let Ok(agents_dir) = Self::agents_dir() {
+            let path = agents_dir.join("memory_summary_instructions.txt");
+            if let Ok(content) = fs::read_to_string(&path) {
+                return content.trim().to_string();
+            }
+        }
+        crate::memory_mode::SUMMARY_MODE_AGENT_INSTRUCTIONS
+            .trim()
+            .to_string()
+    }
+
     pub fn agents_dir() -> ConfigResult<PathBuf> {
         let mut path = Self::hoosh_config_dir()?;
         path.push("agents");
@@ -509,6 +531,10 @@ impl AppConfig {
 
         if other.session_context_enabled.is_some() {
             self.session_context_enabled = other.session_context_enabled.unwrap_or(true);
+        }
+
+        if other.memory_mode.is_some() {
+            self.memory_mode = other.memory_mode;
         }
     }
 
