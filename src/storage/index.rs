@@ -36,7 +36,7 @@ impl ConversationIndex {
 
     pub fn list(&self) -> Vec<ConversationMetadata> {
         let mut conversations: Vec<_> = self.conversations.values().cloned().collect();
-        conversations.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        conversations.sort_by_key(|c| std::cmp::Reverse(c.updated_at));
         conversations
     }
 

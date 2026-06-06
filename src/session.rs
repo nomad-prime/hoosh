@@ -16,6 +16,7 @@ use crate::context_management::{
     ContextManager, MessageSummarizer, SlidingWindowStrategy, ToolOutputTruncationStrategy,
 };
 use crate::history::PromptHistory;
+use crate::memory_mode::{MemoryMode, MemoryModeManager};
 use crate::parser::MessageParser;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
@@ -52,6 +53,7 @@ pub struct SessionConfig {
     pub working_dir: PathBuf,
     pub todo_state: TodoState,
     pub terminal_mode: Option<TerminalMode>,
+    pub memory_mode: MemoryMode,
 }
 
 impl SessionConfig {
@@ -75,6 +77,7 @@ impl SessionConfig {
             working_dir,
             todo_state,
             terminal_mode: None,
+            memory_mode: MemoryMode::default(),
         }
     }
 
@@ -85,6 +88,11 @@ impl SessionConfig {
 
     pub fn with_terminal_mode(mut self, terminal_mode: Option<TerminalMode>) -> Self {
         self.terminal_mode = terminal_mode;
+        self
+    }
+
+    pub fn with_memory_mode(mut self, mode: MemoryMode) -> Self {
+        self.memory_mode = mode;
         self
     }
 }
@@ -101,6 +109,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         working_dir,
         todo_state,
         terminal_mode,
+        memory_mode,
     } = session_config;
 
     let detected_terminal_mode = detect_terminal_mode(terminal_mode, config.terminal_mode);
@@ -207,6 +216,20 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     let conversation = Arc::new(tokio::sync::Mutex::new(conversation));
 
+    // Construct MemoryModeManager once per session when in summary mode
+    let memory_mode_manager: Option<Arc<MemoryModeManager>> = if memory_mode == MemoryMode::Summary
+    {
+        match MemoryModeManager::new(&conversation_id) {
+            Ok(manager) => Some(Arc::new(manager)),
+            Err(e) => {
+                eprintln!("Warning: Failed to initialize memory mode manager: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Display message when storage is disabled (privacy-first mode)
     if !storage_enabled {
         app_state.add_message("Conversation storage disabled".to_string());
@@ -297,6 +320,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         working_dir: working_dir_display,
         config,
         todo_state,
+        memory_mode_manager,
     };
 
     let event_loop_context = EventLoopContext {

@@ -15,6 +15,7 @@ use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
 use crate::console::{VerbosityLevel, console};
 use crate::context_management::{ContextManager, MessageSummarizer};
+use crate::memory_mode::MemoryModeManager;
 use crate::parser::MessageParser;
 use crate::storage::ConversationStorage;
 use crate::tool_executor::ToolExecutor;
@@ -60,6 +61,7 @@ pub struct RuntimeState {
     pub working_dir: String,
     pub config: AppConfig,
     pub todo_state: TodoState,
+    pub memory_mode_manager: Option<Arc<MemoryModeManager>>,
 }
 
 pub struct EventLoopContext {

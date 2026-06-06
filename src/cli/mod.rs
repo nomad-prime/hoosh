@@ -58,6 +58,10 @@ pub struct Cli {
     #[arg(long, value_parser = ["inline", "fullview", "tagged"])]
     pub mode: Option<String>,
 
+    /// Memory mode: how conversation history is managed (conversation, summary)
+    #[arg(long = "memory-mode", value_parser = ["conversation", "summary"])]
+    pub memory_mode: Option<String>,
+
     /// Message to send (for tagged mode non-interactive use)
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub message: Vec<String>,
