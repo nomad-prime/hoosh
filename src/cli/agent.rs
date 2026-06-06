@@ -1,4 +1,6 @@
 use crate::backends::backend_factory::create_backend;
+use crate::memory_mode::MemoryMode;
+use crate::memory_mode::tool::UpdateSessionFileTool;
 use crate::session::{SessionConfig, initialize_session};
 use crate::terminal_mode::TerminalMode;
 use crate::tools::todo_state::TodoState;
@@ -17,6 +19,7 @@ pub async fn handle_agent(
     skip_permissions: bool,
     continue_last: bool,
     mode: Option<String>,
+    memory_mode: Option<String>,
     message: Vec<String>,
     config: &AppConfig,
 ) -> anyhow::Result<()> {
@@ -38,15 +41,25 @@ pub async fn handle_agent(
     // Create shared todo state for the session
     let todo_state = TodoState::new();
 
-    let tool_registry = ToolRegistry::new().with_provider(Arc::new(
-        BuiltinToolProvider::with_todo_state(working_dir.clone(), todo_state.clone()),
-    ));
-
     // Parse mode string to TerminalMode enum
     let terminal_mode = mode
         .as_deref()
         .and_then(|s| s.parse::<TerminalMode>().ok())
         .unwrap_or_default();
+
+    // Parse memory mode, falling back to config value
+    let resolved_memory_mode = memory_mode
+        .as_deref()
+        .and_then(|s| s.parse::<MemoryMode>().ok())
+        .unwrap_or_else(|| config.memory_mode.unwrap_or_default());
+
+    let mut tool_registry = ToolRegistry::new().with_provider(Arc::new(
+        BuiltinToolProvider::with_todo_state(working_dir.clone(), todo_state.clone()),
+    ));
+
+    if resolved_memory_mode == MemoryMode::Summary {
+        let _ = tool_registry.register_tool(Arc::new(UpdateSessionFileTool));
+    }
 
     // Handle permissions based on mode
     if !skip_permissions {
@@ -115,7 +128,8 @@ pub async fn handle_agent(
         todo_state,
     )
     .with_working_dir(working_dir)
-    .with_terminal_mode(Some(terminal_mode));
+    .with_terminal_mode(Some(terminal_mode))
+    .with_memory_mode(resolved_memory_mode);
 
     let session = initialize_session(session_config).await?;
 

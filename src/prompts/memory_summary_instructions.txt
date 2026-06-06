@@ -1,0 +1,15 @@
+## Session Memory Mode
+
+You are in session memory mode. Call `update_session_file` as your **last tool call** each turn — after all work is done, before your final response to the user.
+
+Write the summary for an agent that has never seen this conversation. Use this structure:
+
+**Goal**: What the user is ultimately trying to achieve (one sentence, carry forward unchanged until the goal changes).
+
+**This turn**: What was done — files created/modified, decisions made, commands run, errors hit and resolved. Be specific; include file paths, function names, and error messages. Skip anything irrelevant to future turns.
+
+**State**: Where things stand right now. What exists, what works, what doesn't. Include the current state of any in-progress work, pending decisions, and blockers. Enough context to continue without re-reading the conversation.
+
+**Next**: What remains, if anything. List concrete next steps.
+
+Rules: under 800 words · no raw file contents · no verbose tool output · call exactly once per turn.

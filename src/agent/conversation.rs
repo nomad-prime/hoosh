@@ -206,6 +206,12 @@ impl Conversation {
         self.messages.clear();
     }
 
+    pub fn clear_turn_history(&mut self) {
+        if self.messages.len() > 2 {
+            self.messages.truncate(2);
+        }
+    }
+
     pub fn get_messages_for_api(&self) -> &Vec<ConversationMessage> {
         &self.messages
     }
@@ -862,5 +868,46 @@ mod tests {
         // 10009 / 4 = 2502 tokens (rounded up)
         let tokens = conversation.estimate_token();
         (2500..=2510).contains(&tokens);
+    }
+
+    #[test]
+    fn test_clear_turn_history_preserves_first_two_system_messages() {
+        let mut conversation = Conversation::new();
+        conversation.add_system_message("agent definition".to_string());
+        conversation.add_system_message("env context".to_string());
+        conversation.add_user_message("hello".to_string());
+        conversation.add_assistant_message(Some("hi".to_string()), None);
+
+        conversation.clear_turn_history();
+
+        assert_eq!(conversation.messages.len(), 2);
+        assert_eq!(conversation.messages[0].role, "system");
+        assert_eq!(conversation.messages[1].role, "system");
+    }
+
+    #[test]
+    fn test_clear_turn_history_removes_user_and_assistant_messages() {
+        let mut conversation = Conversation::new();
+        conversation.add_system_message("sys1".to_string());
+        conversation.add_system_message("sys2".to_string());
+        conversation.add_user_message("user msg".to_string());
+        conversation.add_assistant_message(Some("response".to_string()), None);
+        conversation.add_user_message("follow up".to_string());
+
+        conversation.clear_turn_history();
+
+        assert_eq!(conversation.messages.len(), 2);
+        assert!(conversation.messages.iter().all(|m| m.role == "system"));
+    }
+
+    #[test]
+    fn test_clear_turn_history_is_safe_when_fewer_than_two_messages() {
+        let mut conversation = Conversation::new();
+        conversation.clear_turn_history();
+        assert_eq!(conversation.messages.len(), 0);
+
+        conversation.add_system_message("only one".to_string());
+        conversation.clear_turn_history();
+        assert_eq!(conversation.messages.len(), 1);
     }
 }

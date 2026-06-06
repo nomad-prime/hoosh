@@ -8,6 +8,7 @@
 
 use anyhow::{Context, Result};
 use std::io::{self, IsTerminal, Read};
+use std::time::SystemTime;
 
 use crate::agent::{Agent, AgentEvent};
 use crate::console::console;
@@ -123,9 +124,39 @@ pub async fn run_tagged_mode(
         .await
         .unwrap_or_else(|_| input.to_string());
 
-    // Add user message to conversation
+    let memory_manager = event_loop_context
+        .runtime
+        .memory_mode_manager
+        .as_ref()
+        .map(std::sync::Arc::clone);
+
+    // Add user message to conversation (with optional memory injection)
+    let turn_start = SystemTime::now();
     {
         let mut conv = conversation.lock().await;
+
+        if let Some(ref manager) = memory_manager {
+            if manager.summary_written_since_last_turn() {
+                let n_before = conv.messages.len();
+                conv.clear_turn_history();
+                let cleared = n_before.saturating_sub(conv.messages.len());
+                console().debug(&format!(
+                    "Memory mode: cleared {} messages from prior turn",
+                    cleared
+                ));
+            }
+
+            let summary = manager.read_summary();
+            let content = match summary {
+                Some(ref s) => format!(
+                    "{}\n\n## Session Memory\n\n{}",
+                    manager.instructions, s
+                ),
+                None => manager.instructions.clone(),
+            };
+            conv.add_system_message(content);
+        }
+
         conv.add_user_message(expanded_input.clone());
     }
 
@@ -246,6 +277,10 @@ pub async fn run_tagged_mode(
                 break;
             }
         }
+    }
+
+    if let Some(ref manager) = memory_manager {
+        manager.record_turn_end(turn_start);
     }
 
     // Display response (unless interrupted)
