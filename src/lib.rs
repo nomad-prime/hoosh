@@ -10,6 +10,7 @@ pub mod context_management;
 pub mod daemon;
 pub mod history;
 pub mod memory_mode;
+pub mod output_format;
 pub mod parser;
 pub mod permissions;
 pub mod security;

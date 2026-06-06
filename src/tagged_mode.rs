@@ -12,6 +12,7 @@ use std::time::SystemTime;
 
 use crate::agent::{Agent, AgentEvent};
 use crate::console::console;
+use crate::output_format::OutputFormat;
 use crate::session::AgentSession;
 use crate::session_files::store::{SessionFile, get_terminal_pid};
 use crate::terminal_spinner::TerminalSpinner;
@@ -33,12 +34,25 @@ use crate::terminal_spinner::TerminalSpinner;
 pub async fn run_tagged_mode(
     session: AgentSession,
     message: Option<String>,
+    output_format: OutputFormat,
     permission_response_tx: tokio::sync::mpsc::UnboundedSender<crate::agent::PermissionResponse>,
     approval_response_tx: tokio::sync::mpsc::UnboundedSender<crate::agent::ApprovalResponse>,
 ) -> Result<()> {
     let AgentSession {
         event_loop_context, ..
     } = session;
+    let json_mode = output_format == OutputFormat::Json;
+
+    let backend_name = event_loop_context
+        .system_resources
+        .backend
+        .backend_name()
+        .to_string();
+    let model_name = event_loop_context
+        .system_resources
+        .backend
+        .model_name()
+        .to_string();
 
     // Get terminal PID for session file lookup
     let terminal_pid = get_terminal_pid()?;
@@ -172,10 +186,12 @@ pub async fn run_tagged_mode(
     )
     .with_system_reminder(event_loop_context.system_resources.system_reminder.clone());
 
-    // Start spinner
-    console().newline();
+    // Start spinner (text mode only)
     let mut spinner = TerminalSpinner::new("Processing");
-    spinner.start();
+    if !json_mode {
+        console().newline();
+        spinner.start();
+    }
 
     // Execute agent in background
     let conversation_clone = conversation.clone();
@@ -188,88 +204,128 @@ pub async fn run_tagged_mode(
     let mut event_rx = event_loop_context.channels.event_rx;
     let mut response_content = String::new();
     let mut interrupted = false;
+    let mut total_input_tokens: usize = 0;
+    let mut total_output_tokens: usize = 0;
+    let mut error_message: Option<String> = None;
 
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
-                spinner.stop();
-                console().newline();
-                console().warning("Interrupted - saving partial context...");
+                if !json_mode {
+                    spinner.stop();
+                    console().newline();
+                    console().warning("Interrupted - saving partial context...");
+                }
                 interrupted = true;
                 break;
             }
             Some(event) = event_rx.recv() => {
                 match event {
                     AgentEvent::Thinking => {
-                        spinner.update_message("Thinking");
+                        if !json_mode { spinner.update_message("Thinking"); }
                     }
                     AgentEvent::AssistantThought(thought) => {
-                        spinner.stop();
-                        console().newline();
-                        console().markdown(&thought);
-                        console().newline();
-                        spinner.start();
+                        if !json_mode {
+                            spinner.stop();
+                            console().newline();
+                            console().markdown(&thought);
+                            console().newline();
+                            spinner.start();
+                        }
                     }
                     AgentEvent::ToolExecutionStarted { tool_name, .. } => {
-                        spinner.update_message(format!("Executing: {}", tool_name));
+                        if !json_mode {
+                            spinner.update_message(format!("Executing: {}", tool_name));
+                        }
                     }
                     AgentEvent::ToolPermissionRequest { descriptor, request_id } => {
-                        spinner.stop();
-                        if let Some((allowed, scope)) = prompt_permission(&descriptor)? {
-                            let response = crate::agent::PermissionResponse {
+                        if json_mode {
+                            let _ = permission_response_tx.send(crate::agent::PermissionResponse {
                                 request_id,
-                                allowed,
-                                scope,
-                            };
-                            let _ = permission_response_tx.send(response);
+                                allowed: false,
+                                scope: None,
+                            });
+                        } else {
+                            spinner.stop();
+                            if let Some((allowed, scope)) = prompt_permission(&descriptor)? {
+                                let response = crate::agent::PermissionResponse {
+                                    request_id,
+                                    allowed,
+                                    scope,
+                                };
+                                let _ = permission_response_tx.send(response);
+                            }
+                            console().newline();
+                            spinner.start();
                         }
-                        console().newline();
-                        spinner.start();
                     }
                     AgentEvent::ToolPreview { preview } => {
-                        spinner.stop();
-                        console().newline();
-                        console().plain(&preview);
-                        console().newline();
-                        spinner.start();
+                        if !json_mode {
+                            spinner.stop();
+                            console().newline();
+                            console().plain(&preview);
+                            console().newline();
+                            spinner.start();
+                        }
                     }
                     AgentEvent::ApprovalRequest { tool_call_id, .. } => {
-                        spinner.stop();
-                        if let Some((approved, rejection_reason)) = prompt_approval()? {
-                            let response = crate::agent::ApprovalResponse {
+                        if json_mode {
+                            let _ = approval_response_tx.send(crate::agent::ApprovalResponse {
                                 tool_call_id,
-                                approved,
-                                rejection_reason,
-                            };
-                            let _ = approval_response_tx.send(response);
+                                approved: false,
+                                rejection_reason: Some("approval not supported in --output-format json".to_string()),
+                            });
+                        } else {
+                            spinner.stop();
+                            if let Some((approved, rejection_reason)) = prompt_approval()? {
+                                let response = crate::agent::ApprovalResponse {
+                                    tool_call_id,
+                                    approved,
+                                    rejection_reason,
+                                };
+                                let _ = approval_response_tx.send(response);
+                            }
+                            console().newline();
+                            spinner.start();
                         }
-                        console().newline();
-                        spinner.start();
+                    }
+                    AgentEvent::TokenUsage { input_tokens, output_tokens, .. } => {
+                        total_input_tokens += input_tokens;
+                        total_output_tokens += output_tokens;
                     }
                     AgentEvent::FinalResponse(content) => {
                         response_content = content;
-                        spinner.stop();
+                        if !json_mode { spinner.stop(); }
                         break;
                     }
                     AgentEvent::Error(err) => {
-                        spinner.stop();
-                        console().newline();
-                        console().error(&err);
-                        return Ok(());
+                        if !json_mode {
+                            spinner.stop();
+                            console().newline();
+                            console().error(&err);
+                            return Ok(());
+                        }
+                        error_message = Some(err);
+                        break;
                     }
                     AgentEvent::Exit => {
-                        spinner.stop();
+                        if !json_mode { spinner.stop(); }
                         break;
                     }
                     _ => {}
                 }
             }
             result = &mut agent_handle => {
-                spinner.stop();
+                if !json_mode { spinner.stop(); }
                 if let Err(e) = result {
-                    console().newline();
-                    console().error(&format!("Agent execution failed: {}", e));
-                    return Err(e.into());
+                    if json_mode {
+                        error_message = Some(format!("Agent execution failed: {}", e));
+                        break;
+                    } else {
+                        console().newline();
+                        console().error(&format!("Agent execution failed: {}", e));
+                        return Err(e.into());
+                    }
                 }
                 break;
             }
@@ -280,26 +336,58 @@ pub async fn run_tagged_mode(
         manager.record_turn_end(turn_start);
     }
 
-    // Display response (unless interrupted)
-    if !interrupted {
+    // Display response (text mode only; JSON mode emits at the end)
+    if !json_mode && !interrupted {
         console().newline();
         console().markdown(&response_content);
     }
 
     // Save session file with updated messages (including partial state on interruption)
-    {
+    let storage_enabled = event_loop_context
+        .runtime
+        .config
+        .conversation_storage
+        .unwrap_or(false);
+    let conv_id_for_json = {
         let conv = conversation.lock().await;
         session_file.messages = conv
             .messages
             .iter()
             .filter_map(|msg| serde_json::to_value(msg).ok())
             .collect();
-    }
+        conv.id().to_string()
+    };
 
     if let Err(e) = session_file.save() {
-        console().warning(&format!("Failed to save session: {}", e));
-    } else if interrupted {
+        if !json_mode {
+            console().warning(&format!("Failed to save session: {}", e));
+        }
+    } else if interrupted && !json_mode {
         console().success("Partial context saved");
+    }
+
+    if json_mode {
+        let session_id_value = if storage_enabled {
+            serde_json::Value::String(conv_id_for_json)
+        } else {
+            serde_json::Value::Null
+        };
+        let mut out = serde_json::json!({
+            "result": response_content,
+            "session_id": session_id_value,
+            "backend": backend_name,
+            "model": model_name,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "interrupted": interrupted,
+        });
+        if let Some(err) = error_message {
+            out["error"] = serde_json::Value::String(err);
+        }
+        println!(
+            "{}",
+            serde_json::to_string(&out).unwrap_or_else(|_| "{}".to_string())
+        );
     }
 
     Ok(())

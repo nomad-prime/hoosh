@@ -62,6 +62,14 @@ pub struct Cli {
     #[arg(long = "memory-mode", value_parser = ["conversation", "summary"])]
     pub memory_mode: Option<String>,
 
+    /// Output format for tagged mode (text, json)
+    #[arg(long = "output-format", value_parser = ["text", "json"])]
+    pub output_format: Option<String>,
+
+    /// Resume a specific conversation by id
+    #[arg(long, value_name = "ID", conflicts_with = "continue_last")]
+    pub resume: Option<String>,
+
     /// Message to send (for tagged mode non-interactive use)
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub message: Vec<String>,
