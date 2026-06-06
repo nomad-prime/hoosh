@@ -108,10 +108,7 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
 
             let summary = manager.read_summary();
             let content = match summary {
-                Some(ref s) => format!(
-                    "{}\n\n## Session Memory\n\n{}",
-                    manager.instructions, s
-                ),
+                Some(ref s) => format!("{}\n\n## Session Memory\n\n{}", manager.instructions, s),
                 None => manager.instructions.clone(),
             };
             conv.add_system_message(content);

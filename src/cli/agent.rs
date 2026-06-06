@@ -13,6 +13,7 @@ use crate::{
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_agent(
     backend_name: Option<String>,
     add_dirs: Vec<String>,

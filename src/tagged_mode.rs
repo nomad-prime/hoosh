@@ -148,10 +148,7 @@ pub async fn run_tagged_mode(
 
             let summary = manager.read_summary();
             let content = match summary {
-                Some(ref s) => format!(
-                    "{}\n\n## Session Memory\n\n{}",
-                    manager.instructions, s
-                ),
+                Some(ref s) => format!("{}\n\n## Session Memory\n\n{}", manager.instructions, s),
                 None => manager.instructions.clone(),
             };
             conv.add_system_message(content);

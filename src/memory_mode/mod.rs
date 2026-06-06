@@ -184,6 +184,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_tool_writes_summary_to_correct_path() {
         let _lock = CWD_LOCK.lock().unwrap();
         let dir = TempDir::new().unwrap();
@@ -213,6 +214,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_tool_overwrites_existing_summary() {
         let _lock = CWD_LOCK.lock().unwrap();
         let dir = TempDir::new().unwrap();
