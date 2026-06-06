@@ -1,5 +1,11 @@
 # Hoosh Daemon — Server Setup Guide
 
+> **As of 2026-06-06:** Cloudflare tunnel config is no longer hand-edited on the box.
+> Source of truth lives in [`nomad-prime/bana`](https://github.com/nomad-prime/bana) at
+> `hosts/hooshi/cloudflared/config.yml`, deployed via `bana/scripts/deploy-cloudflared.sh hooshi`.
+> The cloudflared sections below remain useful as the bootstrap path on a fresh host
+> where bana isn't set up yet. For routine ingress changes on hooshi, edit bana's config.
+
 ## Overview
 
 This guide documents how to deploy the Hoosh daemon on a Linux server (Debian 13+),
