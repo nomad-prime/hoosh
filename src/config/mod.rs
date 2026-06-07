@@ -505,6 +505,13 @@ impl AppConfig {
         Ok(path)
     }
 
+    pub fn commands_dir() -> ConfigResult<PathBuf> {
+        let mut path = Self::hoosh_config_dir()?;
+        path.push("commands");
+        fs::create_dir_all(&path).map_err(ConfigError::IoError)?;
+        Ok(path)
+    }
+
     pub fn get_core_reminder_token_threshold(&self) -> usize {
         self.core_reminder_token_threshold.unwrap_or(20000)
     }

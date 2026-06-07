@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use hoosh::cli::{
-    handle_agent, handle_agents, handle_alias_install, handle_config, handle_conversations,
-    handle_daemon, handle_setup,
+    handle_agent, handle_agents, handle_alias_install, handle_commands, handle_config,
+    handle_conversations, handle_daemon, handle_setup,
 };
 use hoosh::session_files::cleanup_stale_sessions;
 use hoosh::{
@@ -32,6 +32,7 @@ async fn main() -> Result<()> {
         Some(Commands::Config { .. })
             | Some(Commands::Conversations { .. })
             | Some(Commands::Agent { .. })
+            | Some(Commands::Command { .. })
             | Some(Commands::Alias { .. })
             | Some(Commands::Daemon { .. })
     ) {
@@ -54,6 +55,9 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Agent { action }) => {
             handle_agents(action)?;
+        }
+        Some(Commands::Command { action }) => {
+            handle_commands(action)?;
         }
         Some(Commands::Alias { action }) => {
             use hoosh::cli::AliasAction;

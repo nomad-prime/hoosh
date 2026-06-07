@@ -1,6 +1,7 @@
 mod agent;
 mod agents;
 mod alias;
+mod commands;
 mod config;
 mod conversations;
 pub mod daemon;
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 pub use agent::handle_agent;
 pub use agents::handle_agents;
 pub use alias::handle_alias_install;
+pub use commands::handle_commands;
 pub use config::handle_config;
 pub use conversations::handle_conversations;
 pub use daemon::handle_daemon;
@@ -101,6 +103,10 @@ pub enum Commands {
         #[command(subcommand)]
         action: AgentAction,
     },
+    Command {
+        #[command(subcommand)]
+        action: CommandAction,
+    },
     Alias {
         #[command(subcommand)]
         action: AliasAction,
@@ -158,6 +164,11 @@ pub enum AgentAction {
         #[arg(short, long)]
         description: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum CommandAction {
+    ReinstallBuiltins,
 }
 
 #[derive(Subcommand)]
