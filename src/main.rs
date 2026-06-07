@@ -112,8 +112,10 @@ async fn main() -> Result<()> {
                 cli.add_dir,
                 cli.skip_permissions,
                 cli.continue_last,
+                cli.resume,
                 cli.mode,
                 cli.memory_mode,
+                cli.output_format,
                 cli.message,
                 &config,
             )
