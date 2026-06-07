@@ -74,6 +74,11 @@ pub struct Cli {
     #[arg(short = 'n', long = "name", value_name = "NAME")]
     pub name: Option<String>,
 
+    /// Force-disable conversation persistence for this invocation, ignoring config.
+    /// Useful for one-shot scripted runs that shouldn't pollute the conversation store.
+    #[arg(long = "no-session-persistence")]
+    pub no_session_persistence: bool,
+
     /// Message to send (for tagged mode non-interactive use)
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub message: Vec<String>,
@@ -181,5 +186,24 @@ impl Cli {
             // No CLI verbosity specified, use config
             config_verbosity
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn no_session_persistence_flag_parses() {
+        let cli = Cli::try_parse_from(["hoosh", "--no-session-persistence", "hello"]).unwrap();
+        assert!(cli.no_session_persistence);
+        assert_eq!(cli.message, vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn no_session_persistence_defaults_false() {
+        let cli = Cli::try_parse_from(["hoosh", "hello"]).unwrap();
+        assert!(!cli.no_session_persistence);
     }
 }

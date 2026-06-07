@@ -115,6 +115,7 @@ async fn main() -> Result<()> {
                 cli.continue_last,
                 cli.resume,
                 cli.name,
+                cli.no_session_persistence,
                 cli.mode,
                 cli.memory_mode,
                 cli.output_format,

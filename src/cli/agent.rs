@@ -22,12 +22,26 @@ pub async fn handle_agent(
     continue_last: bool,
     resume: Option<String>,
     name: Option<String>,
+    no_session_persistence: bool,
     mode: Option<String>,
     memory_mode: Option<String>,
     output_format: Option<String>,
     message: Vec<String>,
     config: &AppConfig,
 ) -> anyhow::Result<()> {
+    // Apply per-invocation overrides on a config clone.
+    let mut config = config.clone();
+    if no_session_persistence {
+        if resume.is_some() {
+            anyhow::bail!("--no-session-persistence cannot be combined with --resume");
+        }
+        if name.is_some() {
+            anyhow::bail!("--no-session-persistence cannot be combined with --name");
+        }
+        config.conversation_storage = Some(crate::storage::ConversationStorageMode::Off);
+    }
+    let config = &config;
+
     let backend_name = backend_name.unwrap_or_else(|| config.default_backend.clone());
 
     let backend: Box<dyn LlmBackend> = create_backend(&backend_name, config)?;
