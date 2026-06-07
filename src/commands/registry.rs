@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::agent::Conversation;
 use crate::agent_definition::AgentDefinitionManager;
 use crate::config::AppConfig;
-use crate::context_management::{ContextManager, MessageSummarizer};
+use crate::context_management::ContextManager;
 use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,6 @@ pub struct CommandContext {
     pub command_registry: Option<Arc<CommandRegistry>>,
     pub working_directory: String,
     pub permission_manager: Option<Arc<crate::permissions::PermissionManager>>,
-    pub summarizer: Option<Arc<MessageSummarizer>>,
     pub current_agent_name: Option<String>,
     pub event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     pub config: Option<AppConfig>,
@@ -41,7 +40,6 @@ impl CommandContext {
             command_registry: None,
             working_directory: String::new(),
             permission_manager: None,
-            summarizer: None,
             current_agent_name: None,
             event_tx: None,
             config: None,
@@ -80,11 +78,6 @@ impl CommandContext {
         manager: Arc<crate::permissions::PermissionManager>,
     ) -> Self {
         self.permission_manager = Some(manager);
-        self
-    }
-
-    pub fn with_summarizer(mut self, summarizer: Arc<MessageSummarizer>) -> Self {
-        self.summarizer = Some(summarizer);
         self
     }
 

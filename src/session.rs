@@ -13,7 +13,7 @@ use crate::commands::{CommandRegistry, register_custom_commands, register_defaul
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
-    ContextManager, MessageSummarizer, SlidingWindowStrategy, ToolOutputTruncationStrategy,
+    ContextManager, SlidingWindowStrategy, ToolOutputTruncationStrategy,
 };
 use crate::history::PromptHistory;
 use crate::memory_mode::{MemoryMode, MemoryModeManager};
@@ -278,7 +278,6 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     );
 
     // Setup context management
-    let summarizer = Arc::new(MessageSummarizer::new(Arc::clone(&backend)));
     let context_manager = setup_context_manager(&config);
 
     let command_registry = setup_command_registry()?;
@@ -320,7 +319,6 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     // Build conversation state
     let conversation_state = ConversationState {
         conversation,
-        summarizer,
         context_manager,
         current_agent_name: default_agent
             .as_ref()

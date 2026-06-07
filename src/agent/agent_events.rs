@@ -50,16 +50,6 @@ pub enum AgentEvent {
         current_pressure: f32,
         threshold: f32,
     },
-    Summarizing {
-        message_count: usize,
-    },
-    SummaryComplete {
-        message_count: usize,
-        summary: String,
-    },
-    SummaryError {
-        error: String,
-    },
     TokenUsage {
         input_tokens: usize,
         output_tokens: usize,
