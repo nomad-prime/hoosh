@@ -54,6 +54,8 @@ pub struct SessionConfig {
     pub todo_state: TodoState,
     pub terminal_mode: Option<TerminalMode>,
     pub memory_mode: MemoryMode,
+    /// Optional human-readable name to set on the (new or resumed) conversation.
+    pub conversation_name: Option<String>,
 }
 
 impl SessionConfig {
@@ -78,6 +80,7 @@ impl SessionConfig {
             todo_state,
             terminal_mode: None,
             memory_mode: MemoryMode::default(),
+            conversation_name: None,
         }
     }
 
@@ -95,6 +98,11 @@ impl SessionConfig {
         self.memory_mode = mode;
         self
     }
+
+    pub fn with_conversation_name(mut self, name: Option<String>) -> Self {
+        self.conversation_name = name;
+        self
+    }
 }
 
 /// Initialize a complete agent session with all required resources
@@ -110,6 +118,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         todo_state,
         terminal_mode,
         memory_mode,
+        conversation_name,
     } = session_config;
 
     let detected_terminal_mode = detect_terminal_mode(terminal_mode, config.terminal_mode);
@@ -177,19 +186,27 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     let tool_registry = Arc::new(tool_registry);
 
     // Setup conversation storage and load conversation
-    // Check if storage is enabled in config (privacy-first: defaults to false if None)
-    let storage_enabled = config.conversation_storage.unwrap_or(false);
+    // Resolve storage root from config mode (privacy-first: defaults to Off).
+    let storage_root = config.conversation_storage_root(&working_dir)?;
+    let storage_enabled = storage_root.is_some();
 
-    let (conversation_storage, conversation_id, conversation) = if storage_enabled {
-        // Storage enabled: create with persistence
-        let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
+    let (conversation_storage, conversation_id, conversation) = if let Some(root) = storage_root {
+        // Storage enabled: create with persistence at resolved root
+        let conversation_storage = Arc::new(ConversationStorage::with_root(&root));
         let conversation_id = setup_conversation(
             &conversation_storage,
             continue_conversation_id,
             &mut app_state,
         )?;
 
-        let conversation = load_or_create_conversation(
+        // In local mode, ensure .gitignore covers the conversation store.
+        if config.conversation_storage_mode() == crate::storage::ConversationStorageMode::Local
+            && let Err(e) = crate::storage::ensure_local_storage_gitignored(&working_dir)
+        {
+            eprintln!("Warning: Failed to update .gitignore: {}", e);
+        }
+
+        let mut conversation = load_or_create_conversation(
             Some(Arc::clone(&conversation_storage)),
             &conversation_id,
             default_agent.as_ref(),
@@ -197,9 +214,18 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             &working_dir,
         )?;
 
+        // Apply optional --name to the (new or resumed) conversation. We mutate
+        // the in-memory Conversation so subsequent metadata writes (title, etc.)
+        // don't clobber the name on disk.
+        if let Some(n) = conversation_name.as_ref().filter(|s| !s.is_empty()) {
+            conversation.set_name(Some(n.clone()));
+        }
+
         (conversation_storage, conversation_id, conversation)
     } else {
-        // Storage disabled (privacy-first): create ephemeral conversation
+        // Storage disabled (privacy-first): create ephemeral conversation.
+        // We still construct a ConversationStorage handle pointing at the default
+        // local path for downstream code that expects an Arc, but it is unused.
         let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
         let conversation_id = ConversationStorage::generate_conversation_id();
 

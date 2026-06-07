@@ -14,6 +14,8 @@ pub struct ConversationMetadata {
     pub created_at: u64,
     pub updated_at: u64,
     pub message_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl ConversationMetadata {
@@ -29,6 +31,7 @@ impl ConversationMetadata {
             created_at: now,
             updated_at: now,
             message_count: 0,
+            name: None,
         }
     }
 
@@ -74,6 +77,15 @@ impl ConversationStorage {
     pub fn with_default_path() -> Result<Self> {
         let path = Self::default_path()?;
         Self::new(path)
+    }
+
+    /// Build a `ConversationStorage` rooted at `root`, with its index file at
+    /// `<root>/index.json`. Use this for non-default storage roots (e.g. central
+    /// mode under `~/.local/share/hoosh/projects/<encoded>/conversations`).
+    pub fn with_root<P: AsRef<Path>>(root: P) -> Self {
+        let base = root.as_ref().to_path_buf();
+        let index = IndexStorage::new(base.join("index.json"));
+        Self::new_with_index(base, index)
     }
 
     fn conversation_dir(&self, conversation_id: &str) -> PathBuf {
@@ -182,6 +194,37 @@ impl ConversationStorage {
         metadata.update();
         self.save_metadata(&metadata)?;
         Ok(())
+    }
+
+    pub fn update_name(&self, conversation_id: &str, name: Option<String>) -> Result<()> {
+        let mut metadata = self.load_metadata(conversation_id)?;
+        metadata.name = name.filter(|s| !s.is_empty());
+        metadata.update();
+        self.save_metadata(&metadata)?;
+        Ok(())
+    }
+
+    /// Find a conversation by name. Returns the metadata when exactly one match exists.
+    /// Errors when ambiguous; returns Ok(None) when no match.
+    pub fn find_by_name(&self, name: &str) -> Result<Option<ConversationMetadata>> {
+        let matches: Vec<_> = self
+            .list_conversations()?
+            .into_iter()
+            .filter(|c| c.name.as_deref() == Some(name))
+            .collect();
+
+        match matches.len() {
+            0 => Ok(None),
+            1 => Ok(matches.into_iter().next()),
+            _ => {
+                let ids: Vec<String> = matches.iter().map(|c| c.id.clone()).collect();
+                anyhow::bail!(
+                    "Conversation name '{}' is ambiguous (matches: {}). Use --resume <id> instead.",
+                    name,
+                    ids.join(", ")
+                );
+            }
+        }
     }
 
     pub fn conversation_exists(&self, conversation_id: &str) -> bool {
@@ -293,6 +336,43 @@ mod tests {
         let id = ConversationStorage::generate_conversation_id();
         assert!(id.starts_with("conv_"));
         assert!(id.len() > 5);
+    }
+
+    #[test]
+    fn test_update_name_and_find_by_name() {
+        let (storage, _temp) = create_test_storage();
+        storage.create_conversation("conv_001").unwrap();
+        storage.create_conversation("conv_002").unwrap();
+
+        assert!(storage.find_by_name("peyk").unwrap().is_none());
+
+        storage
+            .update_name("conv_001", Some("peyk".to_string()))
+            .unwrap();
+        let found = storage.find_by_name("peyk").unwrap().unwrap();
+        assert_eq!(found.id, "conv_001");
+
+        // Ambiguous match → error
+        storage
+            .update_name("conv_002", Some("peyk".to_string()))
+            .unwrap();
+        assert!(storage.find_by_name("peyk").is_err());
+
+        // Clear name on one disambiguates
+        storage.update_name("conv_002", None).unwrap();
+        let again = storage.find_by_name("peyk").unwrap().unwrap();
+        assert_eq!(again.id, "conv_001");
+    }
+
+    #[test]
+    fn test_with_root_uses_index_in_same_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = ConversationStorage::with_root(temp_dir.path());
+        storage.create_conversation("conv_root").unwrap();
+        assert!(temp_dir.path().join("index.json").exists());
+        let list = storage.list_conversations().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "conv_root");
     }
 
     #[test]

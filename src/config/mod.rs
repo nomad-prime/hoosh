@@ -2,8 +2,12 @@ use crate::console::{VerbosityLevel, console};
 use crate::context_management::ContextManagerConfig;
 use crate::daemon::config::DaemonConfig;
 use crate::memory_mode::MemoryMode;
+use crate::storage::{
+    ConversationStorageMode, deserialize_conversation_storage, resolve_storage_root,
+};
 use crate::terminal_mode::TerminalMode;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::OnceLock;
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -126,8 +130,8 @@ pub struct AppConfig {
     pub context_manager: Option<ContextManagerConfig>,
     #[serde(default)]
     pub core_reminder_token_threshold: Option<usize>,
-    #[serde(default)]
-    pub conversation_storage: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_conversation_storage")]
+    pub conversation_storage: Option<ConversationStorageMode>,
     #[serde(default)]
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default = "default_session_context_enabled")]
@@ -156,8 +160,8 @@ pub struct ProjectConfig {
     pub core_reminder_token_threshold: Option<usize>,
     #[serde(default)]
     pub core_instructions_file: Option<String>,
-    #[serde(default)]
-    pub conversation_storage: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_conversation_storage")]
+    pub conversation_storage: Option<ConversationStorageMode>,
     #[serde(default)]
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default)]
@@ -481,6 +485,18 @@ impl AppConfig {
 
     pub fn get_core_reminder_token_threshold(&self) -> usize {
         self.core_reminder_token_threshold.unwrap_or(20000)
+    }
+
+    pub fn conversation_storage_mode(&self) -> ConversationStorageMode {
+        self.conversation_storage.unwrap_or_default()
+    }
+
+    /// Resolve the on-disk root for conversation storage for the given cwd.
+    /// Returns `None` when storage is disabled.
+    pub fn conversation_storage_root(&self, cwd: &Path) -> ConfigResult<Option<PathBuf>> {
+        let mode = self.conversation_storage_mode();
+        let data_dir = Self::hoosh_data_dir()?;
+        Ok(resolve_storage_root(mode, cwd, &data_dir))
     }
 
     pub fn project_config_path() -> ConfigResult<PathBuf> {
