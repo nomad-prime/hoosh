@@ -207,7 +207,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             eprintln!("Warning: Failed to update .gitignore: {}", e);
         }
 
-        let conversation = load_or_create_conversation(
+        let mut conversation = load_or_create_conversation(
             Some(Arc::clone(&conversation_storage)),
             &conversation_id,
             default_agent.as_ref(),
@@ -215,11 +215,11 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             &working_dir,
         )?;
 
-        // Apply optional --name to the (new or resumed) conversation
-        if let Some(n) = conversation_name.as_ref().filter(|s| !s.is_empty())
-            && let Err(e) = conversation_storage.update_name(&conversation_id, Some(n.clone()))
-        {
-            eprintln!("Warning: Failed to set conversation name: {}", e);
+        // Apply optional --name to the (new or resumed) conversation. We mutate
+        // the in-memory Conversation so subsequent metadata writes (title, etc.)
+        // don't clobber the name on disk.
+        if let Some(n) = conversation_name.as_ref().filter(|s| !s.is_empty()) {
+            conversation.set_name(Some(n.clone()));
         }
 
         (conversation_storage, conversation_id, conversation)
