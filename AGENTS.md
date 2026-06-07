@@ -1,72 +1,81 @@
-# hoosh Development Guidelines
+# hoosh
 
-Auto-generated from all feature plans. Last updated: 2025-12-09
+Guidelines for AI assistants and humans working in this repo. `CLAUDE.md` is a symlink to this file — there is one source of truth.
 
-## Active Technologies
-- N/A (no persistence, transient rendering only) (001-markdown-table-rendering)
-- Rust 2024 edition + okio (async runtime), serde/toml (config), anyhow (errors), ratatui (TUI) (001-disable-conversation-storage)
-- File-based (.hoosh/conversations/) - JSONL for messages, JSON for metadata/index (001-disable-conversation-storage)
+## Core Principles (non-negotiable)
 
-- Rust 2024 edition (matches project `Cargo.toml:4`) (001-custom-commands)
+These override other considerations. Violations need explicit justification.
 
-## Project Structure
+### Tests come first
 
-```text
-src/
-tests/
-```
+- Unit tests for business logic, isolated components, and pure functions
+- Integration tests for component interactions and multi-module workflows
+- Test names describe behavior (`agent_handles_simple_response`), not implementation (`test_internal_state`)
+- Use millisecond sleeps in async tests — keep CI fast
+- For complex modules use a sibling `_expanded_tests.rs` file via `#[path]`
+- Mocks implement the same traits as real dependencies and simulate realistic behavior, not static returns
 
-## Commands
+### Trait-based design
 
-cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] cargo clippy
+- Backend integrations and other replaceable dependencies are accessed via traits
+- Async traits use `#[async_trait::async_trait]` and `Send + Sync` bounds
+- Use the factory pattern (`fn create_backend(...) -> Box<dyn Trait>`) for runtime polymorphism
+- Dependencies are injected through constructors — no globals, no hidden state
+- Builder patterns improve readability of complex test setup
 
-## Code Style
+### Single responsibility
 
-Rust 2024 edition (matches project `Cargo.toml:4`): Follow standard conventions
+- One concern per module (`config.rs` for config, `chat_handler.rs` for chat)
+- Functions do one thing with a verb-shaped name (`create_client`, `parse_response`)
+- No god objects — large structs handling multiple concerns
+- Separate business logic from I/O, parsing from validation
 
-## Recent Changes
-- 001-disable-conversation-storage: Added Rust 2024 edition + okio (async runtime), serde/toml (config), anyhow (errors), ratatui (TUI)
-- 001-markdown-table-rendering: Added Rust 2024 edition (matches project `Cargo.toml:4`)
+### Flat module structure
 
-- 001-custom-commands: Added Rust 2024 edition (matches project `Cargo.toml:4`)
+- Avoid nested modules. Top-level dirs (`backends/`, `cli/`, `config/`, `tui/`)
+- `mod.rs` for module declarations; re-export public API through `lib.rs`
+- Keep `main.rs` minimal — just CLI entry
 
-<!-- MANUAL ADDITIONS START -->
-# AGENTS.md
+### Clean code
+
+- No comments stating the obvious — code should be self-documenting
+- Naming: structs/traits PascalCase, functions/files snake_case, constants SCREAMING_SNAKE_CASE
+- Errors: `anyhow::Result` at boundaries, `thiserror` for domain errors
+- Idiomatic 2024 Rust: `Arc<T>` for shared async state, `Box<dyn Trait>` for trait objects, `async fn` over `-> impl Future`
+
+### Quality gates (before merge)
+
+- `cargo test` — all tests pass
+- `cargo clippy` — no warnings
+- `cargo fmt` — formatted
+- New functionality covered by tests
+- Principle violations are justified or removed
+
+## Threat model
+
+hoosh is not sandboxed. The threat model is "a confused agent makes a mistake," not "malicious input or malicious code." File-ops tools resolve relative paths against the working directory as a convenience, but do not enforce a filesystem boundary — `bash` is unrestricted and any agent can read or write anywhere the user can. For real isolation, run hoosh under OS-level sandboxing (`landlock`, `bwrap`, `firejail`) — don't add validators that pretend to enforce a boundary they can't.
 
 ## Coding Style
 
-### Comments
+### Naming
 
-- DO NOT ADD comments stating the obvious in the code
+- **Structs**: PascalCase (`LlmBackend`, `ChatMessage`)
+- **Traits**: PascalCase with descriptive behavior (`MessageSender`, `ConfigProvider`)
+- **Functions**: snake_case verbs (`create_client`, `parse_response`)
+- **Files**: snake_case (`together_ai.rs`, `chat_handler.rs`)
+- **Constants**: SCREAMING_SNAKE_CASE (`DEFAULT_MODEL`, `API_VERSION`)
 
-### Module Organization
-
-- Use `mod.rs` files for module declarations
-- Group related functionality in modules (e.g., `backends/`, `cli/`, `config/`)
-- Re-export public APIs through `lib.rs`
-- Keep `main.rs` minimal - just CLI entry point
-
-### Naming Conventions
-
-- **Structs**: PascalCase (e.g., `LlmBackend`, `ChatMessage`)
-- **Traits**: PascalCase with descriptive behavior (e.g., `MessageSender`, `ConfigProvider`)
-- **Functions**: snake_case with descriptive verbs (e.g., `create_client`, `parse_response`)
-- **Files**: snake_case (e.g., `togehter_ai.rs`, `chat_handler.rs`)
-- **Constants**: SCREAMING_SNAKE_CASE (e.g., `DEFAULT_MODEL`, `API_VERSION`)
-
-### Error Handling
+### Error handling
 
 ```rust
 use anyhow::{Context, Result};
 
-// Use Result<T> as return type for fallible operations
 fn process_message(input: &str) -> Result<String> {
     validate_input(input)
         .context("Failed to validate input")?;
     Ok(processed)
 }
 
-// Custom error types for domain-specific errors
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     #[error("API request failed: {0}")]
@@ -76,7 +85,7 @@ pub enum BackendError {
 }
 ```
 
-### Trait Design
+### Trait design
 
 ```rust
 #[async_trait::async_trait]
@@ -86,17 +95,16 @@ pub trait LlmBackend: Send + Sync {
     fn backend_name(&self) -> &'static str;
 }
 
-// Factory pattern for backend creation
 pub fn create_backend(config: &BackendConfig) -> Result<Box<dyn LlmBackend>> {
     match config.backend_type {
-        BackendType: TogetherAi => Ok(Box::new(TogetherAIBackend::new(config)?)),
+        BackendType::TogetherAi => Ok(Box::new(TogetherAIBackend::new(config)?)),
         BackendType::Anthropic => Ok(Box::new(AnthropicBackend::new(config)?)),
         BackendType::OpenAI => Ok(Box::new(OpenAIBackend::new(config)?)),
     }
 }
 ```
 
-### Configuration Pattern
+### Configuration
 
 ```rust
 #[derive(Debug, Deserialize, Serialize)]
@@ -118,7 +126,7 @@ impl AppConfig {
 }
 ```
 
-### CLI Structure
+### CLI
 
 ```rust
 #[derive(Parser)]
@@ -142,84 +150,62 @@ pub enum Commands {
 }
 ```
 
-### Testing
+### Async patterns
+
+- `tokio::main` for async main
+- Prefer `async fn` over `-> impl Future`
+- `Arc` for shared state across async contexts
+- `tokio::select!` for cancellation handling
+- `tokio::spawn` for CPU-intensive work to avoid blocking
+
+### Memory
+
+- `Box<dyn Trait>` for trait objects
+- `Arc<T>` over `Rc<T>` in multi-threaded contexts
+- `String` for owned, `&str` for borrowed
+- `Arc::clone()` rather than `thing.clone()`
+
+### Refactoring
+
+In place when local. Side-by-side (`client_v2.rs`) only when the migration is non-trivial. Remove old as soon as the new one carries traffic. Use feature flags if rollout is gradual.
+
+## Testing
+
+### Layout
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_test;
 
-    // Unit tests - test individual components in isolation
     #[tokio::test]
-    async fn test_message_parsing() {
-        let parser = MessageParser::new();
-        let result = parser.parse("test message").await;
-        assert!(result.is_ok());
-    }
-
-    // Integration tests - test component interactions
-    #[tokio::test]
-    async fn test_backend_integration() {
-        let mock_client = MockClient::new();
-        let backend = Backend::new_with_client(mock_client);
-        // Test actual backend behavior
+    async fn agent_handles_simple_response() {
+        // ...
     }
 }
 ```
 
-#### Test Coverage Guidelines
-
-When adding tests to complex components, focus on real-world use cases:
-
-**Happy Path Tests:**
-- Simple response handling
-- Multiple conversation turns
-- Builder pattern configuration
-
-**Tool Execution Tests:**
-- Agent handles responses with tool calls
-- Tool calls are properly executed
-- Results added to conversation
-
-**Error Handling Tests:**
-- Missing response content
-- Backend errors propagate correctly
-- Invalid tool call responses
-
-**State & Events Tests:**
-- Event emission during operation
-- Token usage tracking
-- Context manager integration
-- Multiple agents operate independently
-```
-
-#### Test Organization
-
-For complex modules, use a separate test file to keep tests organized:
+For complex modules, use a sibling file:
 
 ```rust
-// In src/component/core.rs
+// src/component/core.rs
 #[cfg(test)]
 #[path = "core_expanded_tests.rs"]
 mod tests;
 ```
 
-Use descriptive test names that describe **what behavior is being verified**, not implementation details.
+### Coverage
 
-Good test names:
-- `agent_handles_simple_response()` - Tests core behavior
-- `title_generation_returns_valid_string()` - Tests public contract  
-- `multiple_agents_operate_independently()` - Tests use case
-- `agent_handles_tool_calls_with_execution()` - Tests real workflow
+What tests need to hit:
 
-Bad test names:
-- `test_internal_state()` - Tests implementation details
-- `backend_call_count_increases()` - Tests internal mechanicsanics instead of behavior
+- **Happy path**: simple response handling, multi-turn conversations, builder configuration
+- **Tool execution**: tool calls executed and results added to conversation
+- **Error handling**: missing content, backend errors propagating, invalid responses
+- **State & events**: event emission, token tracking, context manager integration, multi-agent independence
 
-#### Mock Objects
+### Mocks
 
-Create realistic mocks that simulate actual dependencies:
+Mocks implement the trait and simulate behavior. Avoid static returns:
 
 ```rust
 struct MockBackend {
@@ -227,110 +213,61 @@ struct MockBackend {
     call_count: Arc<AtomicUsize>,
 }
 
-impl MockBackend {
-    fn new(responses: Vec<LlmResponse>) -> Self {
-        Self {
-            responses,
-            call_count: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-}
-
 #[async_trait]
 impl LlmBackend for MockBackend {
-    async fn send_message(&self, _message: &str) -> Result<String> {
-        let index = self.call_count.fetch_add(1, Ordering::SeqCst);
-        self.responses.get(index)
-            .cloned()
-            .ok_or_else(|| /* error */)
+    async fn send_message(&self, _: &str) -> Result<String> {
+        let i = self.call_count.fetch_add(1, Ordering::SeqCst);
+        self.responses.get(i).cloned()
+            .ok_or_else(|| anyhow!("MockBackend out of responses"))
     }
-    // ... other trait methods
 }
 ```
 
-#### Builder Pattern in Tests
-
-Use builder pattern with test setup to make tests more readable:
+### Builders
 
 ```rust
-fn create_test_agent(backend: Arc<dyn LlmBackend>) 
+fn create_test_agent(backend: Arc<dyn LlmBackend>)
     -> (Agent, Arc<ToolRegistry>, Arc<ToolExecutor>) {
     let tool_registry = Arc::new(ToolRegistry::new());
     let (event_tx, _) = mpsc::unbounded_channel();
     let tool_executor = Arc::new(ToolExecutor::new(tool_registry.clone()));
-    
+
     let agent = Agent::new(backend, tool_registry.clone(), tool_executor.clone());
     (agent, tool_registry, tool_executor)
 }
 ```
 
-### Async Patterns
+## Color palette
 
-- Use `tokio::main` for async main function
-- Prefer `async fn` over `-> impl Future`
-- Use `Arc` for shared state across async contexts
-- Handle cancellation with `tokio::select!` when appropriate
+Centralized in `src/tui/colors.rs`:
 
-### Memory Management
-
-- Use `Box<dyn Trait>` for trait objects
-- Prefer `Arc<T>` over `Rc<T>` for multi-threaded contexts
-- Use `String` for owned strings, `&str` for borrowed
-- Clone cheaply with `Arc::clone()` rather than `thing.clone()`
-
-### Refactoring
-
-When refactoring, create new modules alongside existing ones:
-
-- For example, if refactoring `client.rs`, create `client_v2.rs`
-- Update imports gradually, ensuring tests pass at each step
-- Remove old implementation only after complete migration
-- Use feature flags if gradual rollout is needed
-
-## Threat Model
-
-hoosh is **not** sandboxed. The threat model is "a confused agent makes a mistake," not "malicious input or malicious code." File-ops tools resolve relative paths against the working directory as a convenience, but do not enforce a filesystem boundary — `bash` is unrestricted and any agent can read or write anywhere the user can. If you need real isolation, run hoosh under OS-level sandboxing (`landlock`, `bwrap`, `firejail`) — don't add validators that pretend to enforce a boundary they can't.
-
-## Color Palette
-
-### Primary Colors Used
-
-| Color | Usage | Files |
-|-------|-------|-------|
-| **Cyan** | Primary borders, titles, selected items background | All dialogs |
-| **Black** | Selected item text, dialog background | All dialogs |
-| **Yellow** | Warnings, descriptions, instructions | setup_wizard, markdown |
-| **LightYellow** | Instructions (italic) | setup_wizard, init_permission |
-| **Red** | Destructive operations, errors | permission_dialog, markdown |
-| **Green** | Success markers, list bullets | setup_wizard (step 4), markdown |
-| **Gray/DarkGray** | Secondary text, borders | markdown, subagent_results |
-| **White** | Unselected items | completion_popup |
-| **Magenta** | Markdown headings | markdown |
-| **Blue** | Markdown links | markdown |
-
-### Color Constants Pattern
-
-Use centralized color constants from `src/tui/colors.rs`:
+| Color | Usage |
+|-------|-------|
+| **Cyan** | Primary borders, titles, selected item background |
+| **Black** | Selected item text, dialog background |
+| **Yellow** | Warnings, descriptions, instructions |
+| **LightYellow** | Italic instructions |
+| **Red** | Destructive operations, errors |
+| **Green** | Success markers, list bullets |
+| **Gray / DarkGray** | Secondary text, borders |
+| **White** | Unselected items |
+| **Magenta** | Markdown headings |
+| **Blue** | Markdown links |
 
 ```rust
-use ratatui::style::Color;
-
 pub mod palette {
-    use super::*;
+    use ratatui::style::Color;
 
-    // Primary colors
     pub const PRIMARY_BORDER: Color = Color::Cyan;
     pub const SELECTED_BG: Color = Color::Cyan;
     pub const SELECTED_FG: Color = Color::Black;
     pub const DIALOG_BG: Color = Color::Black;
 
-    // Semantic colors
     pub const DESTRUCTIVE: Color = Color::Red;
     pub const WARNING: Color = Color::Yellow;
     pub const SUCCESS: Color = Color::Green;
     pub const INFO: Color = Color::Cyan;
 
-    // Text colors
     pub const PRIMARY_TEXT: Color = Color::White;
     pub const SECONDARY_TEXT: Color = Color::Gray;
     pub const DIMMED_TEXT: Color = Color::DarkGray;
@@ -339,25 +276,23 @@ pub mod palette {
 
 ## Commands
 
-- `cargo run` - Run the CLI application
-- `cargo build --release` - Build optimized binary
-- `cargo test` - Run all tests
-- `cargo clippy` - Run linter
-- `cargo fmt` - Format code
-- `cargo doc --open` - Generate and open documentation
+- `cargo run` — run the CLI
+- `cargo build --release` — release build
+- `cargo test` — all tests
+- `cargo clippy` — lint
+- `cargo fmt` — format
+- `cargo doc --open` — docs
 
-## Dependencies Management
+## Dependencies
 
-- Keep dependencies minimal and well-maintained
-- Pin major versions in Cargo.toml
-- Use `cargo audit` to check for security vulnerabilities
+- Minimal and well-maintained
+- Pin major versions in `Cargo.toml`
+- `cargo audit` for vulnerability checks
 
-## Performance Notes
+## Performance
 
-- Use `tokio::spawn` for CPU-intensive tasks to avoid blocking
-- Consider `rayon` for parallel processing of large datasets
-- Profile with `cargo bench` for performance-critical paths
-- Use `tokio-console` for async debugging in development
-- In unit tests only use sleeps in millisecond so the tests stay fast
-
-<!-- MANUAL ADDITIONS END -->
+- `tokio::spawn` for CPU-intensive work
+- `rayon` for parallel processing of large datasets
+- `cargo bench` for performance-critical paths
+- `tokio-console` for async debugging
+- Use millisecond sleeps in unit tests

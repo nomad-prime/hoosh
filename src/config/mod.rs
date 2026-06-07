@@ -55,6 +55,23 @@ pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
 pub const DEFAULT_CUSTOM_COMMANDS: &[(&str, &str)] = &[
     ("handoff.md", include_str!("../prompts/handoff.md")),
     ("pickup.md", include_str!("../prompts/pickup.md")),
+    ("kargah-init.md", include_str!("../prompts/kargah-init.md")),
+    (
+        "kargah-brief.md",
+        include_str!("../prompts/kargah-brief.md"),
+    ),
+    (
+        "kargah-constitution.md",
+        include_str!("../prompts/kargah-constitution.md"),
+    ),
+    (
+        "kargah-facts.md",
+        include_str!("../prompts/kargah-facts.md"),
+    ),
+    (
+        "kargah-kickoff.md",
+        include_str!("../prompts/kargah-kickoff.md"),
+    ),
 ];
 
 pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
