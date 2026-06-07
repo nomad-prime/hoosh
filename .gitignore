@@ -3,7 +3,10 @@
 .aider*
 .zed
 .DS_Store
-.claude
+.claude/*
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/kargah-*.md
 .hoosh
 *.log
 .env*
