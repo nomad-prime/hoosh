@@ -21,8 +21,6 @@ impl CustomCommandManager {
             AppConfig::commands_dir().context("Failed to resolve global commands directory")?;
         let project_dir = Self::project_commands_dir()?;
 
-        Self::install_default_commands(&global_dir)?;
-
         Ok(Self {
             global_dir,
             project_dir,
@@ -30,12 +28,16 @@ impl CustomCommandManager {
         })
     }
 
-    /// Drop hoosh's default custom commands into `dir`, but never overwrite a
-    /// file the user has already created or edited.
-    fn install_default_commands(dir: &std::path::Path) -> Result<()> {
+    /// Install bundled custom command files into `dir`. If `overwrite` is
+    /// false, skip files that already exist (first-install semantics for
+    /// setup wizard). If true, overwrite unconditionally (reinstall
+    /// semantics for the CLI command).
+    pub fn install_default_commands_to(dir: &std::path::Path, overwrite: bool) -> Result<()> {
+        fs::create_dir_all(dir)
+            .with_context(|| format!("Failed to create commands directory: {}", dir.display()))?;
         for (file_name, content) in crate::config::DEFAULT_CUSTOM_COMMANDS {
             let path = dir.join(file_name);
-            if path.exists() {
+            if !overwrite && path.exists() {
                 continue;
             }
             fs::write(&path, content).with_context(|| {

@@ -1,7 +1,7 @@
+use crate::commands::custom::CustomCommandManager;
 use crate::config::AppConfig;
 use crate::console::console;
 use anyhow::{Context, Result};
-use std::fs;
 use std::io::{self, Write};
 
 pub fn handle_commands(action: super::CommandAction) -> Result<()> {
@@ -30,13 +30,8 @@ fn reinstall_builtins() -> Result<()> {
         return Ok(());
     }
 
-    let mut count = 0;
-    for (file_name, content) in crate::config::DEFAULT_CUSTOM_COMMANDS {
-        let path = commands_dir.join(file_name);
-        fs::write(&path, content)
-            .with_context(|| format!("Failed to write command file: {}", path.display()))?;
-        count += 1;
-    }
+    CustomCommandManager::install_default_commands_to(&commands_dir, true)?;
+    let count = crate::config::DEFAULT_CUSTOM_COMMANDS.len();
 
     console().success(&format!(
         "Reinstalled {} built-in command file{}.",

@@ -66,7 +66,7 @@ fn reinstall_builtins() -> Result<()> {
     }
 
     let agents_dir = AppConfig::agents_dir()?;
-    AgentDefinitionManager::initialize_default_agents(&agents_dir)?;
+    AgentDefinitionManager::initialize_default_agents(&agents_dir, true)?;
 
     if let Ok(mut config) = AppConfig::load() {
         let default_agents = AppConfig::default().agents;

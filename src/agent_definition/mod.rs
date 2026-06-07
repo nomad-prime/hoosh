@@ -45,15 +45,25 @@ impl AgentDefinitionManager {
         Ok(Self { config })
     }
 
-    pub fn initialize_default_agents(agents_dir: &Path) -> Result<()> {
+    /// Install bundled agent + core-instructions files into `agents_dir`.
+    /// If `overwrite` is false, skip files that already exist (first-install
+    /// semantics for setup wizard). If true, overwrite unconditionally
+    /// (reinstall semantics for the CLI command).
+    pub fn initialize_default_agents(agents_dir: &Path, overwrite: bool) -> Result<()> {
         for (file_name, content) in crate::config::DEFAULT_AGENTS {
             let agent_path = agents_dir.join(file_name);
+            if !overwrite && agent_path.exists() {
+                continue;
+            }
             fs::write(&agent_path, content)
                 .with_context(|| format!("Failed to write agent file: {}", file_name))?;
         }
 
         for (file_name, content) in crate::config::DEFAULT_CORE_INSTRUCTIONS {
             let path = agents_dir.join(file_name);
+            if !overwrite && path.exists() {
+                continue;
+            }
             fs::write(&path, content)
                 .with_context(|| format!("Failed to write core instructions: {}", file_name))?;
         }
@@ -137,7 +147,7 @@ mod tests {
     #[test]
     fn initialize_default_agents_writes_all_agent_files() {
         let dir = TempDir::new().unwrap();
-        AgentDefinitionManager::initialize_default_agents(dir.path()).unwrap();
+        AgentDefinitionManager::initialize_default_agents(dir.path(), true).unwrap();
 
         for (file_name, _) in crate::config::DEFAULT_AGENTS {
             assert!(
@@ -151,7 +161,7 @@ mod tests {
     #[test]
     fn initialize_default_agents_writes_all_core_instruction_files() {
         let dir = TempDir::new().unwrap();
-        AgentDefinitionManager::initialize_default_agents(dir.path()).unwrap();
+        AgentDefinitionManager::initialize_default_agents(dir.path(), true).unwrap();
 
         for (file_name, _) in crate::config::DEFAULT_CORE_INSTRUCTIONS {
             assert!(
@@ -165,7 +175,7 @@ mod tests {
     #[test]
     fn initialize_default_agents_writes_correct_content() {
         let dir = TempDir::new().unwrap();
-        AgentDefinitionManager::initialize_default_agents(dir.path()).unwrap();
+        AgentDefinitionManager::initialize_default_agents(dir.path(), true).unwrap();
 
         for (file_name, expected_content) in crate::config::DEFAULT_AGENTS {
             let actual = std::fs::read_to_string(dir.path().join(file_name)).unwrap();

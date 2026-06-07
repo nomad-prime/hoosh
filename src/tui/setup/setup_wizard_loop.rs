@@ -86,7 +86,12 @@ pub fn save_wizard_result(result: &SetupWizardResult) -> Result<()> {
     }
 
     let agents_dir = AppConfig::agents_dir()?;
-    AgentDefinitionManager::initialize_default_agents(&agents_dir)?;
+    AgentDefinitionManager::initialize_default_agents(&agents_dir, false)?;
+    let commands_dir = AppConfig::commands_dir()?;
+    crate::commands::custom::CustomCommandManager::install_default_commands_to(
+        &commands_dir,
+        false,
+    )?;
 
     Ok(())
 }
