@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -6,12 +7,23 @@ fn hoosh_bin() -> String {
     env!("CARGO_BIN_EXE_hoosh").to_string()
 }
 
+/// Write a minimal config so hoosh doesn't enter the setup wizard on CI.
+/// Returns the config path to pass via --config.
+fn write_min_config(dir: &TempDir) -> PathBuf {
+    let path = dir.path().join("hoosh-config.toml");
+    fs::write(&path, "default_backend = \"mock\"\n[backends.mock]\n").unwrap();
+    path
+}
+
 #[test]
 fn resume_without_storage_errors() {
     let dir = TempDir::new().unwrap();
+    let cfg = write_min_config(&dir);
     let output = Command::new(hoosh_bin())
         .current_dir(dir.path())
         .args([
+            "--config",
+            cfg.to_str().unwrap(),
             "--mode",
             "tagged",
             "--resume",
@@ -33,6 +45,7 @@ fn resume_without_storage_errors() {
 #[test]
 fn resume_unknown_id_errors() {
     let dir = TempDir::new().unwrap();
+    let cfg = write_min_config(&dir);
     fs::create_dir_all(dir.path().join(".hoosh")).unwrap();
     fs::write(
         dir.path().join(".hoosh/config.toml"),
@@ -43,6 +56,8 @@ fn resume_unknown_id_errors() {
     let output = Command::new(hoosh_bin())
         .current_dir(dir.path())
         .args([
+            "--config",
+            cfg.to_str().unwrap(),
             "--mode",
             "tagged",
             "--resume",
