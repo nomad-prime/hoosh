@@ -52,6 +52,11 @@ pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
     ),
 ];
 
+pub const DEFAULT_CUSTOM_COMMANDS: &[(&str, &str)] = &[
+    ("handoff.md", include_str!("../prompts/handoff.md")),
+    ("pickup.md", include_str!("../prompts/pickup.md")),
+];
+
 pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
     (
         "hoosh_core_instructions.txt",

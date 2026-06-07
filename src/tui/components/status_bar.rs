@@ -53,15 +53,6 @@ impl Component for StatusBar {
             )
         } else {
             match state.agent_state {
-                AgentState::Summarizing => {
-                    let spinner = thinking_spinners[state.current_thinking_spinner][state
-                        .animation_frame
-                        % thinking_spinners[state.current_thinking_spinner].len()];
-                    (
-                        format!("{} Summarizing", spinner),
-                        palette::STATUS_PROCESSING,
-                    )
-                }
                 AgentState::Idle => {
                     // Show "Todos" when idle and there are todos
                     if !state.todos.is_empty() {

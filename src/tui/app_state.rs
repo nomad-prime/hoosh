@@ -628,16 +628,6 @@ impl AppState {
                     self.add_retry_failure(&message);
                 }
             }
-            AgentEvent::Summarizing { .. } => {
-                self.agent_state = AgentState::Summarizing;
-            }
-            AgentEvent::SummaryComplete { .. } => {
-                self.agent_state = AgentState::Idle;
-            }
-            AgentEvent::SummaryError { error } => {
-                self.agent_state = AgentState::Idle;
-                self.add_message(format!("Error summarizing conversation: {}", error));
-            }
             AgentEvent::TokenPressureWarning {
                 current_pressure,
                 threshold,

@@ -14,7 +14,7 @@ use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
 use crate::config::AppConfig;
 use crate::console::{VerbosityLevel, console};
-use crate::context_management::{ContextManager, MessageSummarizer};
+use crate::context_management::ContextManager;
 use crate::memory_mode::MemoryModeManager;
 use crate::parser::MessageParser;
 use crate::storage::ConversationStorage;
@@ -38,7 +38,6 @@ pub struct SystemResources {
 
 pub struct ConversationState {
     pub conversation: Arc<Mutex<Conversation>>,
-    pub summarizer: Arc<MessageSummarizer>,
     pub context_manager: Arc<ContextManager>,
     pub current_agent_name: String,
     pub conversation_storage: Arc<ConversationStorage>,

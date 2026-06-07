@@ -1,6 +1,5 @@
 mod agents_command;
 mod clear_command;
-mod compact_command;
 pub mod custom;
 mod exit_command;
 mod help_command;

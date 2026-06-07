@@ -70,8 +70,6 @@ impl Default for SlidingWindowConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContextManagerConfig {
     pub max_tokens: usize,
-    pub compression_threshold: f32,
-    pub preserve_recent_percentage: f32,
     pub warning_threshold: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_output_truncation: Option<ToolOutputTruncationConfig>,
@@ -83,8 +81,6 @@ impl Default for ContextManagerConfig {
     fn default() -> Self {
         Self {
             max_tokens: 128_000,
-            compression_threshold: 0.80,
-            preserve_recent_percentage: 0.50,
             warning_threshold: 0.70,
             tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
             sliding_window: Some(SlidingWindowConfig::default()),
@@ -95,16 +91,6 @@ impl Default for ContextManagerConfig {
 impl ContextManagerConfig {
     pub fn with_max_tokens(mut self, max_tokens: usize) -> Self {
         self.max_tokens = max_tokens;
-        self
-    }
-
-    pub fn with_threshold(mut self, threshold: f32) -> Self {
-        self.compression_threshold = threshold.clamp(0.0, 1.0);
-        self
-    }
-
-    pub fn with_preserve_percentage(mut self, percentage: f32) -> Self {
-        self.preserve_recent_percentage = percentage.clamp(0.0, 1.0);
         self
     }
 
@@ -181,11 +167,9 @@ mod tests {
     fn test_context_manager_v2_config() {
         let config = ContextManagerConfig::default()
             .with_max_tokens(100_000)
-            .with_threshold(0.75)
             .with_warning_threshold(0.65);
 
         assert_eq!(config.max_tokens, 100_000);
-        assert_eq!(config.compression_threshold, 0.75);
         assert_eq!(config.warning_threshold, 0.65);
     }
 

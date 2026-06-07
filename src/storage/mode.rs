@@ -80,7 +80,7 @@ pub fn resolve_storage_root(
 }
 
 const GITIGNORE_MARKER: &str = ".hoosh/conversations/";
-const GITIGNORE_BLOCK: &str = "\n# hoosh conversations (added automatically). Remove this line if you want to commit conversation history.\n.hoosh/conversations/\n.hoosh/memory/\n";
+const GITIGNORE_BLOCK: &str = "\n# hoosh conversations (added automatically). Remove this line if you want to commit conversation history.\n.hoosh/conversations/\n.hoosh/memory/\n.hoosh/handoffs/\n";
 
 /// In a git repo, append `.hoosh/conversations/` and `.hoosh/memory/` to `.gitignore`
 /// if not already present. Idempotent and silent in non-git directories.
@@ -178,6 +178,7 @@ mod tests {
         let content = std::fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
         assert!(content.contains(".hoosh/conversations/"));
         assert!(content.contains(".hoosh/memory/"));
+        assert!(content.contains(".hoosh/handoffs/"));
     }
 
     #[test]

@@ -19,7 +19,6 @@ pub fn execute_command(input: String, event_loop_context: &EventLoopContext) {
     let working_dir = event_loop_context.runtime.working_dir.clone();
     let event_tx = event_loop_context.channels.event_tx.clone();
     let permission_manager = Arc::clone(&event_loop_context.runtime.permission_manager);
-    let summarizer = Arc::clone(&event_loop_context.conversation_state.summarizer);
     let current_agent_name = event_loop_context
         .conversation_state
         .current_agent_name
@@ -38,7 +37,6 @@ pub fn execute_command(input: String, event_loop_context: &EventLoopContext) {
             .with_command_registry(command_registry.clone())
             .with_working_directory(working_dir)
             .with_permission_manager(permission_manager)
-            .with_summarizer(summarizer)
             .with_current_agent_name(current_agent_name)
             .with_event_sender(event_tx.clone())
             .with_config(config)

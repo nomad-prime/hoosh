@@ -29,10 +29,27 @@ impl CustomCommandManager {
             );
         }
 
+        Self::install_default_commands(&commands_dir)?;
+
         Ok(Self {
             commands_dir,
             loaded_commands: Vec::new(),
         })
+    }
+
+    /// Drop hoosh's default custom commands into `commands_dir`, but never
+    /// overwrite a file the user has already created or edited.
+    fn install_default_commands(commands_dir: &std::path::Path) -> Result<()> {
+        for (file_name, content) in crate::config::DEFAULT_CUSTOM_COMMANDS {
+            let path = commands_dir.join(file_name);
+            if path.exists() {
+                continue;
+            }
+            fs::write(&path, content).with_context(|| {
+                format!("Failed to install default command: {}", path.display())
+            })?;
+        }
+        Ok(())
     }
 
     fn commands_dir() -> Result<PathBuf> {
