@@ -18,7 +18,7 @@ pub enum ToolError {
     #[error("Permission denied: {tool}")]
     PermissionDenied { tool: String },
 
-#[error("Timeout executing tool '{tool}' after {seconds} seconds")]
+    #[error("Timeout executing tool '{tool}' after {seconds} seconds")]
     Timeout { tool: String, seconds: u64 },
 
     #[error("File not found: {path}")]
