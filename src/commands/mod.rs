@@ -7,6 +7,7 @@ mod help_command;
 mod permissions_command;
 mod register;
 mod registry;
+mod rename_command;
 mod status_command;
 mod tools_command;
 mod untrust_command;

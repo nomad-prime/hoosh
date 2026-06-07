@@ -2,7 +2,24 @@
 
 Plan for closing the gap between hoosh and Claude Code's CLI/session model so the [peyk](https://github.com/nomad-prime/peyk) bridge can swap `claude -p` → `hoosh --mode tagged` with minimal changes when the Claude Max subscription expires in September 2026.
 
-Authored 2026-06-06 from a comparative investigation. Not a release plan — a task list ordered by impact.
+Authored 2026-06-06. Updated 2026-06-07 after Tier 1 + 2.1 + 2.3 landed.
+
+---
+
+## Status snapshot
+
+| Tier | Item | Status | Where |
+|---|---|---|---|
+| 1.1 | `--output-format json` for tagged mode | ✅ done | `717ae7d` — `src/output_format.rs`, `src/tagged_mode.rs` |
+| 1.2 | `--resume <id\|name>` flag | ✅ done | `717ae7d` — `--resume` accepts id or name, `conflicts_with` `--continue` |
+| 2.1 | Named sessions (`-n`/`--name`, `/rename`) | ✅ done | `b5ed673` + `9e05129` — `src/commands/rename_command.rs`, name persisted on Conversation |
+| 2.3 | Storage tri-mode + auto-gitignore | ✅ done | `b5ed673` — `src/storage/mode.rs` (260 lines, with tests) |
+| 3.x | `--no-session-persistence` per-invocation override | ⏳ recommended next | small addition (~30 min) |
+| 2.2 | Session picker (interactive TUI) | ❌ explicitly deferred | named sessions cover most discovery; `hoosh conversations list \| fzf` is one pipe away |
+| 2.4 | Session branching (`/branch`, `--fork-session`) | ❌ explicitly deferred | power-user feature; revisit if hoosh ships plan mode |
+| 3.x | `--from-pr <n>`, picker key-binds, plan-mode auto-name, `/export`, retention sweep | future | not on the parity-for-September path |
+
+**Result:** the bridge swap from `claude -p` to `hoosh --mode tagged` is now mechanically possible. See "Verification" at the bottom for the test script.
 
 ---
 
@@ -16,229 +33,95 @@ session_id=$(echo "$output" | jq -r '.session_id')
 result=$(echo "$output" | jq -r '.result')
 ```
 
-The September goal is to swap to hoosh as the agent backend. After investigating both agents' CLI surfaces, the architectural gap is **smaller than initially feared** — hoosh's `tagged mode` + `.hoosh/conversations/` already maps cleanly onto Claude's `claude -p` + `~/.claude/projects/` model. The remaining gaps are documented below.
+The September goal is to swap to hoosh as the agent backend. After investigating both agents' CLI surfaces, the architectural gap turned out to be smaller than initially feared — hoosh's `tagged mode` + `.hoosh/conversations/` already mapped cleanly onto Claude's `claude -p` + `~/.claude/projects/` model. The remaining gaps were:
+
+1. Structured output (so the bridge can parse `{result, session_id}`)
+2. Explicit resume by id/name (so the bridge can pin a thread)
+3. Named sessions + storage choice (so the per-repo workflow has a clean home)
+
+All three landed (above). What's left is polish.
 
 ---
 
-## What hoosh already has (with file pointers)
+## What hoosh has (relevant to parity)
 
 | Capability | Where in code | Notes |
 |---|---|---|
-| Tagged mode (analog of `claude -p`) | `src/tagged_mode.rs` | `hoosh --mode tagged "text"` — one-shot, prints markdown to stdout, no TUI |
-| `--continue` resume most recent | `src/cli/mod.rs`, agent.rs:106-118 | Loads latest conversation from CWD's `.hoosh/conversations/` |
-| Per-CWD conversation storage | `.hoosh/conversations/conv_YYYYMMDD_HHMMSS/` | Colocated, one folder per conversation, JSONL messages + meta.json |
-| Privacy-first default | `src/session.rs:181` (`conversation_storage` config) | **Defaults to `false`** — conversations are ephemeral unless explicitly enabled. Confirmed behaviour. |
-| Conversation listing | `hoosh conversations list` | Already exists |
-| Daemon mode | `POST /jobs` | Stateless transactional, separate concern; not the target for bridge swap |
-| `@hoosh` tagged-mode alias | `src/cli/shell_setup.rs` | Per-shell-PID session persistence via `HOOSH_TERMINAL_PID` — orthogonal to CWD-conversation model |
-
-Critical to remember: **conversation storage is off by default in hoosh.** Users opt in via `conversation_storage = true` in `.hoosh/config.toml` (project) or `~/.config/hoosh/config.toml` (global). All the work below assumes storage is enabled when relevant; the off-by-default behaviour should be preserved.
-
----
-
-## Gap analysis vs Claude Code
-
-### Tier 1 — blocks the peyk bridge swap
-
-Without these, the bridge needs ugly workarounds when swapping `claude` for `hoosh`.
-
-#### 1.1 `--output-format json` for tagged mode
-
-**What:** When `--output-format json` is set, tagged mode should print a single JSON object to stdout instead of streaming markdown to the terminal.
-
-**Why:** Bridge reliably extracts `{result, session_id}`. Without it, the bridge must `tail -c 4000` the markdown output and has no way to get the conversation/session id for explicit resume.
-
-**Acceptance:**
-- `hoosh --mode tagged --output-format json "hello"` prints **only** valid JSON on stdout
-- JSON has at minimum: `{"result": "<markdown response>", "session_id": "<id-or-null>", "model": "<which-backend>", "input_tokens": N, "output_tokens": M}`
-- Spinners and progress UI go to stderr (or are suppressed) when JSON mode is on
-- `session_id` is `null` when `conversation_storage = false` (privacy mode) — the bridge can detect this and switch to non-resume flow
-- Works with `--continue` and (forthcoming) `--resume <id>` flags
-
-**Implementation hints:**
-- `src/tagged_mode.rs` currently calls `console().markdown(&response_content)` and emits events to stdout. Gate these behind an `OutputFormat` enum read from CLI.
-- The `Conversation` type already carries an id (the `conv_YYYYMMDD_HHMMSS` string). Surface it for serialization.
-- Token usage is already tracked by the agent — pass through.
-
-**Effort:** ~2 hrs
+| Tagged mode (analog of `claude -p`) | `src/tagged_mode.rs` | `hoosh --mode tagged "text"` — one-shot, prints markdown to stdout |
+| `--output-format json` | `src/output_format.rs`, `--output-format text\|json` | JSON form returns `{result, session_id, model, input_tokens, output_tokens}` with stderr-routed progress |
+| `--continue` | `src/cli/mod.rs`, agent.rs | Loads latest conversation from CWD's store |
+| `--resume <id\|name>` | `src/cli/mod.rs` | Resolves by id or human-readable name in current CWD's store |
+| `-n / --name` and `/rename` | `src/commands/rename_command.rs` | Per-CWD-scoped unique names |
+| Storage tri-mode | `src/storage/mode.rs` (`ConversationStorageMode::{Off,Local,Central}`) | Configured via `conversation_storage` in `.hoosh/config.toml` or `~/.config/hoosh/config.toml`. Accepts legacy `true`/`false` (→ `local`/`off`) for backwards compat. |
+| Auto-gitignore for `local` mode in git repos | `src/storage/mode.rs::ensure_local_storage_gitignored` | Appends `.hoosh/conversations/` + `.hoosh/memory/` with a comment line explaining how to opt back in |
+| Privacy-first default | `src/session.rs:181` (`conversation_storage` default) | Defaults to `Off` — conversations are ephemeral unless explicitly enabled. **Preserved through tri-mode migration.** |
+| Daemon mode | `POST /jobs` | Stateless transactional, separate concern; not the bridge swap target |
+| `@hoosh` tagged-mode alias | `src/cli/shell_setup.rs` | Per-shell-PID session persistence, orthogonal to CWD-conversation model |
 
 ---
 
-#### 1.2 `--resume <id>` flag for tagged mode
+## Remaining easy win
 
-**What:** `hoosh --mode tagged --resume <conv_id> "text"` resumes a specific conversation by id (not just "most recent").
+### 3.1 `--no-session-persistence` flag
 
-**Why:** Bridge stores a session id and pins the conversation thread across invocations. `--continue` (most recent) is fragile if any other process touches the conversation store.
-
-**Acceptance:**
-- `hoosh --mode tagged --resume conv_20260606_193112 "text"` loads that specific conversation and appends the new turn
-- If the id doesn't exist in the current CWD's store: exit non-zero with a clear error message (mirror Claude's `No conversation found with session ID: <id>` style)
-- Compatible with `--output-format json` (returns the same conv_id in the output)
-- When `conversation_storage = false`: hard error ("storage is disabled, cannot resume")
-
-**Implementation hints:**
-- Mirror the existing `--continue` flow in `src/agent.rs:106-118` (`ConversationStorage::load_latest`) — add a `load_by_id` variant or wire to an existing one.
-- Update CLI parser in `src/cli/mod.rs` to add `#[arg(long, value_name = "ID")] pub resume: Option<String>`.
-
-**Effort:** ~2-3 hrs
-
-**Combined effort for Tier 1: ~half a day.** After this, peyk's `claude-bridge.sh` swap is genuinely 5 lines different.
-
----
-
-### Tier 2 — interactive parity (when humans SSH in)
-
-Won't affect the headless bridge but matters when you attach to hoosh on hooshi to debug or take over a conversation.
-
-#### 2.1 Named sessions
-
-**What:**
-- `hoosh -n <name>` (or `--name`) at startup gives the new conversation a human-readable name
-- `/rename <name>` mid-session changes the name
-- `hoosh --resume <name>` resolves by name (in addition to id)
+**What:** Per-invocation override that forces `conversation_storage = Off` for the duration of that single call, ignoring whatever the resolved config says.
 
 **Why:**
-- The "per-repo named conversation" pattern (`hoosh -n peyk-thread` invoked from `/var/lib/claude/projects/peyk`) becomes natural
-- Conversations list shows readable names instead of timestamps
-- Picker (2.2 below) is useless without names
+- Scripted one-shots that shouldn't pollute the conversation store, even if global config has storage enabled
+- Cron-style jobs ("daily prompt: summarize last 24h logs") where the conversation is intentionally throwaway
+- Matches Claude's `--no-session-persistence` flag exactly, smooths the bridge-swap parity contract
 
 **Acceptance:**
-- `name: Option<String>` field on `Conversation` meta.json; nullable for backward compat
-- Name uniqueness: per-CWD scope. Resolution: exact match → resume, ambiguous → error
-- `hoosh conversations list` shows `[name]` when set, falls back to id
-- `/rename` slash command in TUI and tagged interactive flows
+- `hoosh --mode tagged --no-session-persistence "text"` runs the prompt without writing to `.hoosh/conversations/` or the central store
+- Output (including `--output-format json`) reports `session_id: null`
+- Flag is incompatible with `--resume` and `--continue` (no prior thread to load; error cleanly)
+- Default behavior unchanged when flag absent
 
 **Implementation hints:**
-- Persistent slot lives in `meta.json` (under `.hoosh/conversations/<id>/`). Existing structure already has room for extension.
-- Resolution logic: search current CWD's conversation dirs by name; for centralized storage (2.3) include the centralized location.
+- Add to `src/cli/mod.rs` as `#[arg(long)] pub no_session_persistence: bool`
+- In `src/session.rs`, the existing `storage_enabled` derivation becomes `storage_enabled = config.conversation_storage.is_some_and(|m| m.is_enabled()) && !cli.no_session_persistence`
+- For `--output-format json`, surface `session_id: None` instead of the conv_id
 
-**Effort:** ~3-4 hrs
-
----
-
-#### 2.2 Session picker
-
-**What:** `hoosh --resume` (with no argument) opens an interactive ratatui picker showing conversations sorted by recency, with search filter, preview pane, and selection. Inspired by Claude's `/resume` picker.
-
-**Why:** Without it, "show me my conversations" is `hoosh conversations list` + manual `--continue` or `--resume <id>` typing. Picker UI is a real productivity feature in Claude.
-
-**Acceptance:**
-- Arrow keys to navigate
-- `/` enters search mode, filters by name or first prompt
-- `Space` previews highlighted session content
-- `Enter` resumes
-- `Esc` exits
-- Defaults to current CWD's conversations; `Ctrl+A` widens to all CWDs on this machine (requires the `conversations list` view to know about all stores)
-- Empty state when no conversations: helpful message instead of blank screen
-
-**Implementation hints:**
-- ratatui is already a dependency (TUI mode uses it). Reuse layout patterns from existing TUI.
-- Read all `.hoosh/conversations/*/meta.json` in the current CWD; merge with the centralized store if configured.
-
-**Effort:** ~1-2 days
+**Effort:** ~30 min
 
 ---
 
-#### 2.3 Storage tri-mode (replaces `conversation_storage` boolean)
+## Explicitly deferred (not on the parity path)
 
-**What:** Extend the existing `conversation_storage` config knob from `bool` to a three-mode string:
+### Session picker (was Tier 2.2)
 
-```toml
-# .hoosh/config.toml or ~/.config/hoosh/config.toml
-conversation_storage = "off" | "local" | "central"
-```
+**Why deferred:**
 
-- `"off"` — equivalent to current `false`: ephemeral, no writes, no resume
-- `"local"` — equivalent to current `true`: write to `.hoosh/conversations/` in CWD (current behavior)
-- `"central"` — write to `~/.local/share/hoosh/projects/<encoded-cwd>/` (new). Matches Claude Code's `~/.claude/projects/` model. Encoded path = absolute CWD with `/` → `-`, similar to Claude's scheme.
+With named sessions live, the discovery story is now:
+- "What conversations do I have?" → `hoosh conversations list`
+- "Resume one I remember the name of" → `hoosh --resume <name>`
+- "Fuzzy search" → `hoosh conversations list | fzf | xargs hoosh --resume`
 
-**Why both local and central matter:**
-- Local: some users (and use cases) genuinely want conversation history committed to the repo as an artifact. AI-pair-programming workflow, audit trails, team knowledge. Tools like aider do this deliberately.
-- Central: most users don't want repo pollution and risk of leaking conversation content in a public commit. Centralized makes that the default-safe path.
-- Off: existing privacy-first default; preserve this.
+These cover ~95% of what the picker would do, with zero new code. The picker's remaining value (in-flight preview, branch grouping, keyboard shortcuts) is genuinely "would be nice" but doesn't unblock anything. Roughly 1-2 days of ratatui work for marginal UX polish.
 
-**Backwards compat:**
-- Accept `true` (parses as `"local"`) and `false` (parses as `"off"`) for at least one minor release
-- New default for fresh installs: `"off"` (unchanged)
-- Document the migration in CHANGELOG
+**Revisit if:** humans on hooshi or the laptop start submitting enough parallel conversations that named-list-and-resume feels noisy. Likely never at one-user scale.
 
-**Auto-gitignore for `"local"` mode in git repos:**
-- On first conversation save in `"local"` mode, if `.git/` exists and `.gitignore` doesn't already cover `.hoosh/conversations/`:
-  - Append two lines:
-    ```
-    # hoosh conversations (added automatically). Remove this line if you want to commit conversation history.
-    .hoosh/conversations/
-    .hoosh/memory/
-    ```
-- Idempotent: don't append if a matching line already present
-- Don't `git add` the change — that's the user's call
-- Skip silently in non-git directories
+### Session branching (was Tier 2.4)
 
-**Acceptance:**
-- Config parses all three string values + the legacy booleans
-- Selecting `central` mode writes to `~/.local/share/hoosh/projects/<encoded-cwd>/conv_*/`
-- `--continue` / `--resume <id|name>` look in the right place based on configured mode
-- Conversations list shows entries from whichever mode is active
-- gitignore lines appear after first save in local mode, only once
+**Why deferred:**
 
-**Implementation hints:**
-- Config: change `conversation_storage: Option<bool>` → `Option<ConversationStorageMode>` with serde untagged enum or custom deserializer for backwards compat (`src/config/mod.rs`).
-- Storage path resolution: extract a `resolve_storage_root(config, cwd) -> Option<PathBuf>` helper; `None` means off.
-- gitignore writer: small utility, idempotent. Trigger on first `ConversationStorage::save_new`.
+Branching is a power-user feature in Claude. Real-world use is rare; most "try a different approach" flows are served by `/clear` + retry, or just by re-rolling the prompt. ~4-6 hrs of storage-clone + meta-tweak work that benefits no automated workflow.
 
-**Effort:** ~half a day (~4 hrs including the gitignore utility and tests)
+**Revisit if:** hoosh adds plan mode (checkpoint-style branching becomes more compelling), or if someone hits a concrete use case the workarounds don't serve.
 
----
+### Other Tier 3 items
 
-#### 2.4 Session branching
-
-**What:** `/branch <name>` (inside an active session) or `hoosh --continue --fork-session` (from CLI) creates a copy of the current conversation and switches to it, leaving the original intact.
-
-**Why:** Real productivity feature in Claude. Lets you say "wait, what if we tried it differently" without losing the original thread. Maps cleanly onto how developers iterate on ideas.
-
-**Acceptance:**
-- New conversation gets a `parent_conv_id` field in meta.json
-- Messages up to the branch point are copied (not moved)
-- Original conversation continues to exist
-- Picker (2.2) groups branches under the parent (collapsible)
-
-**Implementation hints:**
-- `ConversationStorage` already does deep file copy via JSONL append — branch is a `cp -r conv_old conv_new` plus meta tweak.
-
-**Effort:** ~4-6 hrs
-
----
-
-### Tier 3 — nice-to-have, low urgency
-
-Not blocking anything; reference for the future.
-
-| Feature | Notes |
-|---|---|
-| `--from-pr <number>` | Resume the session linked to a PR. Requires storing PR association in meta.json on PR-creating jobs (daemon mode mostly). |
-| `--no-session-persistence` flag | Per-invocation override of `conversation_storage` to off. Useful when scripting one-shots that shouldn't pollute the store. |
-| Picker `Ctrl+W` worktree widening | Show sessions from all worktrees of the current repo. Lower priority; assumes worktree support. |
-| Picker `Ctrl+A` cross-project widening | Show sessions from all CWDs. Requires central-mode index OR scanning known paths. |
-| Auto-name on plan accept | When accepting a plan in plan mode, derive a session name from the plan title. Plan mode is a separate Claude feature; only relevant if hoosh adds plan mode. |
-| `/export` to clipboard or file | Polish. Existing JSONL is already greppable; bigger win would be a markdown render. |
-| Retention sweep (`cleanupPeriodDays`) | Claude prunes sessions older than 30 days by default. Worth replicating once volume grows. |
-
----
-
-## Recommended order of attack
-
-1. **Tier 1 first (~half day)** — `--output-format json` + `--resume <id>`. Unblocks the peyk bridge swap. Without these, the September migration needs script gymnastics.
-2. **Named sessions (Tier 2.1, ~3-4 hrs)** — pairs with `--resume` so the bridge can use `hoosh --resume peyk-thread` instead of opaque UUIDs.
-3. **Storage tri-mode + auto-gitignore (Tier 2.3, ~4 hrs)** — should be done before encouraging users to enable storage, to avoid the leak footgun.
-4. **Session picker (Tier 2.2, ~1-2 days)** — biggest interactive UX win. After Tier 1+1.1 unblocks bridge, focus shifts here.
-5. **Branching (Tier 2.4, ~4-6 hrs)** — quality-of-life, not urgent.
-6. **Tier 3 items** — opportunistically when each becomes annoying enough.
+- `--from-pr <number>` — requires the daemon path to store PR association in meta.json; relevant if/when daemon and tagged-mode session worlds merge. Not parity work.
+- Picker key-binds (`Ctrl+W`/`Ctrl+A`) — moot without the picker.
+- Auto-name on plan accept — moot without plan mode.
+- `/export` to clipboard or file — JSONL is already greppable; bigger win is markdown rendering, which is a separate feature.
+- Retention sweep (`cleanupPeriodDays`) — worth replicating once volume grows. Trivial cron-style addition.
 
 ---
 
 ## Verification: peyk bridge swap test
 
-When Tier 1 lands, the bridge swap should work like this. Add to `peyk/scripts/claude-bridge.sh` a `BRIDGE_AGENT` env var:
+The parity acceptance test is now runnable. In `peyk/scripts/claude-bridge.sh`, add a `BRIDGE_AGENT` env var that picks the agent and adjusts the invocation:
 
 ```bash
 case "$BRIDGE_AGENT" in
@@ -254,9 +137,10 @@ esac
 
 result=$(echo "$output" | jq -r '.result')
 new_sid=$(echo "$output" | jq -r '.session_id')
+"$PEYK_BIN" job done "$id" --summary "$result"
 ```
 
-The two branches should produce indistinguishable behavior for the bridge — same input, same output shape, same persistence semantics. That's the parity test.
+Both branches should produce indistinguishable behavior at the contract level: same JSON shape, same persistence semantics, same session_id resumability. Run the same prompt sequence ("set X = banana", "what's X?") against each — both should answer "banana" on the second prompt.
 
 When this passes, the September migration is a one-line env-var change in peyk's systemd unit:
 
@@ -264,21 +148,21 @@ When this passes, the September migration is a one-line env-var change in peyk's
 Environment=BRIDGE_AGENT=hoosh
 ```
 
-Anything that doesn't fit through this contract is parity work that hasn't landed yet.
+Anything that breaks under this swap is parity work that hasn't been done yet. Right now: nothing should break (Tier 1+2.1+2.3 covers the bridge contract). The `--no-session-persistence` addition above doesn't affect the bridge but smooths future scripting.
 
 ---
 
 ## Out of scope (deliberately)
 
-- **Hoosh daemon mode improvements** — daemon is the analog of "agentic PR runner" not "interactive CLI." Lives in a different design space, served by different needs. The bridge swap doesn't touch it.
-- **MCP server integration** — orthogonal feature, useful but not on the parity path.
-- **Multi-model routing** — hoosh already has it (`config.toml` backend selection); parity isn't the gap.
-- **Plan mode** — Claude-specific UX, not core to bridge parity. Add later if it matches hoosh's roadmap.
+- **Hoosh daemon mode improvements** — daemon is the analog of "agentic PR runner" not "interactive CLI." Different design space.
+- **MCP server integration** — orthogonal feature; not on the parity path.
+- **Multi-model routing** — hoosh already has it via `config.toml` backend selection.
+- **Plan mode** — Claude-specific UX, not core to bridge parity.
 
 ---
 
 ## See also
 
-- [peyk's claude-bridge](https://github.com/nomad-prime/peyk/blob/main/scripts/claude-bridge.sh) — the script that this work unblocks
-- [bana's claude user setup](https://github.com/nomad-prime/bana/blob/main/hosts/hooshi/setup-claude-user.sh) — provisions the `claude` user; an analogous `hoosh` user already exists from hoosh's own server-setup
+- [peyk's claude-bridge](https://github.com/nomad-prime/peyk/blob/main/scripts/claude-bridge.sh) — the bridge this work unblocks
+- [bana's claude user setup](https://github.com/nomad-prime/bana/blob/main/hosts/hooshi/setup-claude-user.sh) — provisions the `claude` system user used by the bridge
 - Claude Code session docs: https://code.claude.com/docs/en/sessions

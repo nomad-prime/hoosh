@@ -757,7 +757,10 @@ fn test_conversation_storage_true_enables_persistence() {
     "#;
 
     let config: AppConfig = toml::from_str(config_content).unwrap();
-    assert_eq!(config.conversation_storage, Some(true));
+    assert_eq!(
+        config.conversation_storage,
+        Some(crate::storage::ConversationStorageMode::Local)
+    );
 }
 
 #[test]
@@ -768,7 +771,24 @@ fn test_conversation_storage_false_disables_persistence() {
     "#;
 
     let config: AppConfig = toml::from_str(config_content).unwrap();
-    assert_eq!(config.conversation_storage, Some(false));
+    assert_eq!(
+        config.conversation_storage,
+        Some(crate::storage::ConversationStorageMode::Off)
+    );
+}
+
+#[test]
+fn test_conversation_storage_string_central() {
+    let config_content = r#"
+        default_backend = "mock"
+        conversation_storage = "central"
+    "#;
+
+    let config: AppConfig = toml::from_str(config_content).unwrap();
+    assert_eq!(
+        config.conversation_storage,
+        Some(crate::storage::ConversationStorageMode::Central)
+    );
 }
 
 #[test]
@@ -785,15 +805,18 @@ fn test_conversation_storage_missing_defaults_to_none() {
 #[test]
 fn test_project_config_overrides_user_config() {
     let mut app_config = AppConfig {
-        conversation_storage: Some(false), // User has storage disabled
+        conversation_storage: Some(crate::storage::ConversationStorageMode::Off),
         ..Default::default()
     };
 
     let project_config = ProjectConfig {
-        conversation_storage: Some(true), // Project enables storage
+        conversation_storage: Some(crate::storage::ConversationStorageMode::Local),
         ..Default::default()
     };
 
     app_config.merge(project_config);
-    assert_eq!(app_config.conversation_storage, Some(true));
+    assert_eq!(
+        app_config.conversation_storage,
+        Some(crate::storage::ConversationStorageMode::Local)
+    );
 }

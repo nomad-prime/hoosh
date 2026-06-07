@@ -21,6 +21,7 @@ pub async fn handle_agent(
     skip_permissions: bool,
     continue_last: bool,
     resume: Option<String>,
+    name: Option<String>,
     mode: Option<String>,
     memory_mode: Option<String>,
     output_format: Option<String>,
@@ -112,26 +113,49 @@ pub async fn handle_agent(
         .and_then(|s| s.parse::<OutputFormat>().ok())
         .unwrap_or_default();
 
-    let storage_enabled = config.conversation_storage.unwrap_or(false);
+    let storage_mode = config.conversation_storage_mode();
+    let storage_enabled = storage_mode.is_enabled();
 
-    let continue_conversation_id = if let Some(ref id) = resume {
+    let storage_root = config.conversation_storage_root(&working_dir)?;
+
+    if name.is_some() && !storage_enabled {
+        anyhow::bail!("--name requires conversation_storage to be enabled in config");
+    }
+
+    let continue_conversation_id = if let Some(ref id_or_name) = resume {
         if !storage_enabled {
             anyhow::bail!("--resume requires conversation_storage to be enabled in config");
         }
-        let storage = ConversationStorage::with_default_path()?;
-        if !storage.conversation_exists(id) {
-            anyhow::bail!("No conversation found with id: {}", id);
-        }
-        Some(id.clone())
-    } else if continue_last {
-        let storage = ConversationStorage::with_default_path()?;
-        let conversations = storage.list_conversations()?;
-
-        if let Some(latest) = conversations.first() {
-            Some(latest.id.clone())
+        let root = storage_root
+            .clone()
+            .expect("storage enabled implies a storage root");
+        let storage = ConversationStorage::with_root(&root);
+        if storage.conversation_exists(id_or_name) {
+            Some(id_or_name.clone())
+        } else if let Some(meta) = storage.find_by_name(id_or_name)? {
+            Some(meta.id)
         } else {
-            console().warning("No previous conversations found. Starting new conversation.");
+            anyhow::bail!("No conversation found with id or name: {}", id_or_name);
+        }
+    } else if continue_last {
+        if !storage_enabled {
+            console().warning(
+                "Conversation storage is disabled — --continue has no effect. Starting fresh.",
+            );
             None
+        } else {
+            let root = storage_root
+                .clone()
+                .expect("storage enabled implies a storage root");
+            let storage = ConversationStorage::with_root(&root);
+            let conversations = storage.list_conversations()?;
+
+            if let Some(latest) = conversations.first() {
+                Some(latest.id.clone())
+            } else {
+                console().warning("No previous conversations found. Starting new conversation.");
+                None
+            }
         }
     } else {
         None
@@ -149,7 +173,8 @@ pub async fn handle_agent(
     )
     .with_working_dir(working_dir)
     .with_terminal_mode(Some(terminal_mode))
-    .with_memory_mode(resolved_memory_mode);
+    .with_memory_mode(resolved_memory_mode)
+    .with_conversation_name(name);
 
     let session = initialize_session(session_config).await?;
 

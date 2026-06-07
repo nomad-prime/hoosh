@@ -235,6 +235,25 @@ impl Conversation {
         &self.metadata.title
     }
 
+    pub fn name(&self) -> Option<&str> {
+        self.metadata.name.as_deref()
+    }
+
+    pub fn set_name(&mut self, name: Option<String>) {
+        self.metadata.name = name.filter(|s| !s.is_empty());
+        self.metadata.update();
+
+        if let Some(storage) = &self.storage
+            && let Err(e) = storage.save_metadata(&self.metadata)
+        {
+            console().error(&format!("Warning: Failed to persist name update: {}", e))
+        }
+    }
+
+    pub fn has_storage(&self) -> bool {
+        self.storage.is_some()
+    }
+
     fn persist_message(&mut self, message: &ConversationMessage) {
         if let Some(storage) = &self.storage {
             if let Err(e) = storage.append_message(&self.metadata.id, message) {

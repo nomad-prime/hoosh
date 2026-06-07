@@ -346,8 +346,8 @@ pub async fn run_tagged_mode(
     let storage_enabled = event_loop_context
         .runtime
         .config
-        .conversation_storage
-        .unwrap_or(false);
+        .conversation_storage_mode()
+        .is_enabled();
     let conv_id_for_json = {
         let conv = conversation.lock().await;
         session_file.messages = conv
