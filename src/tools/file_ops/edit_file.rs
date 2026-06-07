@@ -1,29 +1,35 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use similar::{ChangeTag, TextDiff};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub struct EditFileTool {
-    path_validator: PathValidator,
+    working_directory: PathBuf,
 }
 
 impl EditFileTool {
     pub fn new() -> Self {
         let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self {
-            path_validator: PathValidator::new(working_directory),
-        }
+        Self { working_directory }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            path_validator: PathValidator::new(working_dir),
+            working_directory: working_dir,
+        }
+    }
+
+    fn resolve(&self, path: &str) -> PathBuf {
+        let p = Path::new(path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.working_directory.join(p)
         }
     }
 
@@ -41,12 +47,7 @@ impl EditFileTool {
             });
         }
 
-        let file_path = self
-            .path_validator
-            .validate_and_resolve(&args.path)
-            .map_err(|e| ToolError::SecurityViolation {
-                message: e.to_string(),
-            })?;
+        let file_path = self.resolve(&args.path);
 
         // Read the file
         let content = fs::read_to_string(&file_path)
@@ -219,7 +220,7 @@ impl Tool for EditFileTool {
     async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: EditFileArgs = serde_json::from_value(args.clone()).ok()?;
 
-        let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
+        let file_path = self.resolve(&args.path);
         let content = fs::read_to_string(&file_path).await.ok()?;
 
         // Generate unified diff

@@ -1,41 +1,37 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub struct ListDirectoryTool {
-    path_validator: PathValidator,
+    working_directory: PathBuf,
 }
 
 impl ListDirectoryTool {
     pub fn new() -> Self {
         let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self {
-            path_validator: PathValidator::new(working_directory),
-        }
+        Self { working_directory }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            path_validator: PathValidator::new(working_dir),
+            working_directory: working_dir,
         }
     }
 
     fn resolve_path(&self, dir_path: &str) -> PathBuf {
         if dir_path.is_empty() || dir_path == "." {
-            return self
-                .path_validator
-                .validate_and_resolve(".")
-                .unwrap_or_else(|_| PathBuf::from("."));
+            return self.working_directory.clone();
         }
-
-        self.path_validator
-            .validate_and_resolve(dir_path)
-            .unwrap_or_else(|_| PathBuf::from("."))
+        let p = Path::new(dir_path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.working_directory.join(p)
+        }
     }
 
     async fn execute_impl(&self, args: &serde_json::Value) -> ToolResult<String> {

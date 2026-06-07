@@ -1,28 +1,34 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::security::PathValidator;
 use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub struct WriteFileTool {
-    path_validator: PathValidator,
+    working_directory: PathBuf,
 }
 
 impl WriteFileTool {
     pub fn new() -> Self {
         let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self {
-            path_validator: PathValidator::new(working_directory),
-        }
+        Self { working_directory }
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
-            path_validator: PathValidator::new(working_dir),
+            working_directory: working_dir,
+        }
+    }
+
+    fn resolve(&self, path: &str) -> PathBuf {
+        let p = Path::new(path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.working_directory.join(p)
         }
     }
 
@@ -33,12 +39,7 @@ impl WriteFileTool {
                 message: e.to_string(),
             })?;
 
-        let file_path = self
-            .path_validator
-            .validate_and_resolve(&args.path)
-            .map_err(|e| ToolError::SecurityViolation {
-                message: e.to_string(),
-            })?;
+        let file_path = self.resolve(&args.path);
 
         // Create parent directories if requested
         if args.create_dirs
@@ -153,7 +154,7 @@ impl Tool for WriteFileTool {
 
     async fn generate_preview(&self, args: &Value) -> Option<String> {
         let args: WriteFileArgs = serde_json::from_value(args.clone()).ok()?;
-        let file_path = self.path_validator.validate_and_resolve(&args.path).ok()?;
+        let file_path = self.resolve(&args.path);
         let content = args.content.as_deref().unwrap_or("");
 
         // Check if file exists

@@ -287,6 +287,10 @@ When refactoring, create new modules alongside existing ones:
 - Remove old implementation only after complete migration
 - Use feature flags if gradual rollout is needed
 
+## Threat Model
+
+hoosh is **not** sandboxed. The threat model is "a confused agent makes a mistake," not "malicious input or malicious code." File-ops tools resolve relative paths against the working directory as a convenience, but do not enforce a filesystem boundary — `bash` is unrestricted and any agent can read or write anywhere the user can. If you need real isolation, run hoosh under OS-level sandboxing (`landlock`, `bwrap`, `firejail`) — don't add validators that pretend to enforce a boundary they can't.
+
 ## Color Palette
 
 ### Primary Colors Used
