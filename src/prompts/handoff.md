@@ -13,6 +13,10 @@ Cover:
 - **Gotchas** — constraints, conventions, things a fresh agent would miss (project quirks, things that look wrong but are right, etc.)
 - **Key paths** — file paths and line numbers worth jumping to immediately
 
-Save the handoff to `.hoosh/handoffs/handoff_<UTC timestamp>.md` (e.g. `.hoosh/handoffs/handoff_20260607_124530.md`) using the `write_file` tool. Create the directory if it doesn't exist.
+Steps:
+
+1. Get the current UTC timestamp by running `date -u +%Y%m%d_%H%M%S` via the `bash` tool. Don't guess or use a placeholder — you can't know the time without checking.
+2. Create the handoffs directory if it doesn't exist: `mkdir -p .hoosh/handoffs`.
+3. Write the handoff to `.hoosh/handoffs/handoff_<that timestamp>.md` using the `write_file` tool.
 
 Once written, confirm only the path. Don't paste the contents back to the user.
