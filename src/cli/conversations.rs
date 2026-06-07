@@ -28,10 +28,7 @@ pub fn handle_conversations(action: ConversationsAction, config: &AppConfig) -> 
                     .as_deref()
                     .map(|n| format!("[{}]", n))
                     .unwrap_or_default();
-                console().plain(&format!(
-                    "{:<25} {:<20} {}",
-                    conv.id, label, conv.title
-                ));
+                console().plain(&format!("{:<25} {:<20} {}", conv.id, label, conv.title));
             }
         }
     }

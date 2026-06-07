@@ -200,8 +200,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         )?;
 
         // In local mode, ensure .gitignore covers the conversation store.
-        if config.conversation_storage_mode()
-            == crate::storage::ConversationStorageMode::Local
+        if config.conversation_storage_mode() == crate::storage::ConversationStorageMode::Local
             && let Err(e) = crate::storage::ensure_local_storage_gitignored(&working_dir)
         {
             eprintln!("Warning: Failed to update .gitignore: {}", e);

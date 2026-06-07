@@ -48,7 +48,9 @@ impl Command for RenameCommand {
 
         if args[0] == "--clear" || args[0] == "-c" {
             conv.set_name(None);
-            return Ok(CommandResult::Success("Conversation name cleared.".to_string()));
+            return Ok(CommandResult::Success(
+                "Conversation name cleared.".to_string(),
+            ));
         }
 
         let new_name = args.join(" ");

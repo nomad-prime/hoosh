@@ -161,7 +161,6 @@ pub async fn handle_agent(
         None
     };
 
-
     // Initialize session with all resources
     let session_config = SessionConfig::new(
         Arc::clone(&backend_arc),
