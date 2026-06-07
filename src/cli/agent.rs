@@ -1,6 +1,7 @@
 use crate::backends::backend_factory::create_backend;
 use crate::memory_mode::MemoryMode;
 use crate::memory_mode::tool::UpdateSessionFileTool;
+use crate::output_format::OutputFormat;
 use crate::session::{SessionConfig, initialize_session};
 use crate::terminal_mode::TerminalMode;
 use crate::tools::todo_state::TodoState;
@@ -19,8 +20,10 @@ pub async fn handle_agent(
     add_dirs: Vec<String>,
     skip_permissions: bool,
     continue_last: bool,
+    resume: Option<String>,
     mode: Option<String>,
     memory_mode: Option<String>,
+    output_format: Option<String>,
     message: Vec<String>,
     config: &AppConfig,
 ) -> anyhow::Result<()> {
@@ -104,7 +107,23 @@ pub async fn handle_agent(
         }
     }
 
-    let continue_conversation_id = if continue_last {
+    let resolved_output_format = output_format
+        .as_deref()
+        .and_then(|s| s.parse::<OutputFormat>().ok())
+        .unwrap_or_default();
+
+    let storage_enabled = config.conversation_storage.unwrap_or(false);
+
+    let continue_conversation_id = if let Some(ref id) = resume {
+        if !storage_enabled {
+            anyhow::bail!("--resume requires conversation_storage to be enabled in config");
+        }
+        let storage = ConversationStorage::with_default_path()?;
+        if !storage.conversation_exists(id) {
+            anyhow::bail!("No conversation found with id: {}", id);
+        }
+        Some(id.clone())
+    } else if continue_last {
         let storage = ConversationStorage::with_default_path()?;
         let conversations = storage.list_conversations()?;
 
@@ -159,6 +178,7 @@ pub async fn handle_agent(
             crate::tagged_mode::run_tagged_mode(
                 session,
                 message_text,
+                resolved_output_format,
                 permission_response_tx,
                 approval_response_tx,
             )
