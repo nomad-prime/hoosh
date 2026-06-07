@@ -49,7 +49,8 @@ async fn main() -> Result<()> {
             if let Err(e) = AppConfig::ensure_project_config() {
                 eprintln!("Warning: Failed to create project config: {}", e);
             }
-            handle_conversations(action)?;
+            let config = AppConfig::load().unwrap_or_default();
+            handle_conversations(action, &config)?;
         }
         Some(Commands::Agent { action }) => {
             handle_agents(action)?;
@@ -113,6 +114,7 @@ async fn main() -> Result<()> {
                 cli.skip_permissions,
                 cli.continue_last,
                 cli.resume,
+                cli.name,
                 cli.mode,
                 cli.memory_mode,
                 cli.output_format,

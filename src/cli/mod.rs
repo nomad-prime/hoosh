@@ -66,9 +66,13 @@ pub struct Cli {
     #[arg(long = "output-format", value_parser = ["text", "json"])]
     pub output_format: Option<String>,
 
-    /// Resume a specific conversation by id
-    #[arg(long, value_name = "ID", conflicts_with = "continue_last")]
+    /// Resume a specific conversation by id or name
+    #[arg(long, value_name = "ID_OR_NAME", conflicts_with = "continue_last")]
     pub resume: Option<String>,
+
+    /// Name this conversation (human-readable label, scoped per cwd)
+    #[arg(short = 'n', long = "name", value_name = "NAME")]
+    pub name: Option<String>,
 
     /// Message to send (for tagged mode non-interactive use)
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]

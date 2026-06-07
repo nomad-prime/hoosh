@@ -143,6 +143,7 @@ mod tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             message_count: 0,
+            name: None,
         }
     }
 
