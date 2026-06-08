@@ -150,6 +150,13 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
                 app.add_debug_message(msg);
             }
         }
+        AgentEvent::SwitchBackend {
+            backend,
+            model,
+            save,
+        } => {
+            super::app_loop::apply_backend_switch(app, context, backend, model, save);
+        }
         other_event => {
             app.handle_agent_event(other_event);
         }

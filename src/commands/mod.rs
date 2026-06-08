@@ -1,8 +1,10 @@
 mod agents_command;
+mod backend_command;
 mod clear_command;
 pub mod custom;
 mod exit_command;
 mod help_command;
+mod model_command;
 mod permissions_command;
 mod register;
 mod registry;

@@ -279,7 +279,10 @@ impl AppState {
     }
 
     pub fn find_completer_for_key(&self, key: char) -> Option<usize> {
-        self.completers.iter().position(|c| c.trigger_key() == key)
+        let input_before = self.get_input_text();
+        self.completers
+            .iter()
+            .position(|c| c.trigger_key() == key && c.should_trigger(&input_before))
     }
 
     pub fn is_completing(&self) -> bool {
@@ -709,6 +712,9 @@ impl AppState {
             }
             AgentEvent::StepStarted { .. } => {
                 // This event is used internally for step tracking, no UI update needed
+            }
+            AgentEvent::SwitchBackend { .. } => {
+                // Handled on the event loop's main task; no app_state mutation needed.
             }
             AgentEvent::TodoUpdate { todos } => {
                 // If all todos are completed, auto-clear after updating

@@ -343,6 +343,13 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
         AgentEvent::ClearConversation => {
             clear_conversation(app, context).await;
         }
+        AgentEvent::SwitchBackend {
+            backend,
+            model,
+            save,
+        } => {
+            super::app_loop::apply_backend_switch(app, context, backend, model, save);
+        }
         AgentEvent::DebugMessage(msg) => {
             tracing::debug!(target: "hoosh::agent", "{}", msg);
             if console().verbosity() >= VerbosityLevel::Debug {

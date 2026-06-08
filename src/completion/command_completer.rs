@@ -74,6 +74,12 @@ impl Completer for CommandCompleter {
         '/'
     }
 
+    fn should_trigger(&self, input_before_trigger: &str) -> bool {
+        // Slash commands are only valid at the start of the prompt — typing a
+        // '/' mid-sentence should be literal text, not a command trigger.
+        input_before_trigger.is_empty()
+    }
+
     async fn get_completions(&self, query: &str) -> Result<Vec<String>> {
         let commands = self.registry.list_commands();
 
@@ -115,6 +121,15 @@ mod tests {
         assert!(CommandCompleter::fuzzy_match("clr", "clear"));
         assert!(CommandCompleter::fuzzy_match("", "anything"));
         assert!(!CommandCompleter::fuzzy_match("xyz", "abc"));
+    }
+
+    #[test]
+    fn slash_only_triggers_at_start_of_prompt() {
+        let registry = Arc::new(CommandRegistry::new());
+        let completer = CommandCompleter::new(registry);
+        assert!(completer.should_trigger(""));
+        assert!(!completer.should_trigger("hello"));
+        assert!(!completer.should_trigger("ratio of 1/2"));
     }
 
     #[test]

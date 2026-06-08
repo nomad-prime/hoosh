@@ -2,10 +2,12 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use super::agents_command::AgentsCommand;
+use super::backend_command::BackendCommand;
 use super::clear_command::ClearCommand;
 use super::custom::CustomCommandManager;
 use super::exit_command::ExitCommand;
 use super::help_command::HelpCommand;
+use super::model_command::ModelCommand;
 use super::permissions_command::PermissionsCommand;
 use super::registry::CommandRegistry;
 use super::rename_command::RenameCommand;
@@ -23,6 +25,8 @@ pub fn register_default_commands(registry: &mut CommandRegistry) -> Result<()> {
     registry.register(Arc::new(UntrustCommand))?;
     registry.register(Arc::new(PermissionsCommand))?;
     registry.register(Arc::new(RenameCommand))?;
+    registry.register(Arc::new(BackendCommand))?;
+    registry.register(Arc::new(ModelCommand))?;
     Ok(())
 }
 

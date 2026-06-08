@@ -1,7 +1,11 @@
 //! File-based logging for hoosh.
 //!
-//! Writes daily-rotated logs to `~/.config/hoosh/logs/hoosh.log`. Level is
-//! controlled by `HOOSH_LOG` (preferred) or `RUST_LOG`, defaulting to `info`.
+//! Writes daily-rotated logs to the platform config directory:
+//!   - Linux/BSD: `~/.config/hoosh/logs/hoosh.log.YYYY-MM-DD`
+//!   - macOS:     `~/Library/Application Support/hoosh/logs/hoosh.log.YYYY-MM-DD`
+//!   - Windows:   `%APPDATA%\hoosh\logs\hoosh.log.YYYY-MM-DD`
+//!
+//! Level is controlled by `HOOSH_LOG` (preferred) or `RUST_LOG`, defaulting to `info`.
 //!
 //! The returned `LogGuard` must be kept alive for the lifetime of the program
 //! — dropping it stops the background flush worker and truncates pending logs.

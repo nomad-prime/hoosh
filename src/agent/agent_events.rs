@@ -83,4 +83,12 @@ pub enum AgentEvent {
     TodoUpdate {
         todos: Vec<TodoItem>,
     },
+    /// Request that the event loop swap the active backend and/or model.
+    /// Handled on the main task because it needs `&mut EventLoopContext`.
+    /// `save = true` also writes the new selection through to the config file.
+    SwitchBackend {
+        backend: Option<String>,
+        model: Option<String>,
+        save: bool,
+    },
 }

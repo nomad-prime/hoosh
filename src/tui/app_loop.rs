@@ -158,10 +158,83 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
                 app.add_debug_message(msg);
             }
         }
+        AgentEvent::SwitchBackend {
+            backend,
+            model,
+            save,
+        } => {
+            apply_backend_switch(app, context, backend, model, save);
+        }
         other_event => {
             app.handle_agent_event(other_event);
         }
     }
+}
+
+pub(crate) fn apply_backend_switch(
+    app: &mut AppState,
+    context: &mut EventLoopContext,
+    new_backend: Option<String>,
+    new_model: Option<String>,
+    save: bool,
+) {
+    let target_backend = new_backend
+        .clone()
+        .unwrap_or_else(|| context.runtime.config.default_backend.clone());
+
+    // Stage the change on a clone so a failure leaves the live config untouched.
+    let mut staged = context.runtime.config.clone();
+    if let Some(ref b) = new_backend {
+        staged.default_backend = b.clone();
+    }
+    if let Some(ref m) = new_model {
+        if let Some(cfg) = staged.backends.get_mut(&target_backend) {
+            cfg.model = Some(m.clone());
+        } else {
+            app.add_status_message(&format!(
+                "Switch failed: backend '{target_backend}' not configured\n"
+            ));
+            return;
+        }
+    }
+
+    let built = crate::backends::backend_factory::create_backend(&target_backend, &staged);
+    let new_backend_arc: Arc<dyn LlmBackend> = match built {
+        Ok(b) => Arc::from(b),
+        Err(e) => {
+            app.add_status_message(&format!("Switch failed: {e}\n"));
+            return;
+        }
+    };
+
+    context.runtime.config = staged;
+    context.system_resources.backend = new_backend_arc;
+
+    let mut summary = format!(
+        "Switched to backend '{}' (model: {})",
+        context.system_resources.backend.backend_name(),
+        context.system_resources.backend.model_name()
+    );
+    if let Some(p) = context.system_resources.backend.pricing() {
+        summary.push_str(&format!(
+            " — ${:.2}/M in, ${:.2}/M out",
+            p.input_per_million, p.output_per_million
+        ));
+    }
+    if save {
+        match context.runtime.config.save() {
+            Ok(()) => summary.push_str(" [saved]"),
+            Err(e) => summary.push_str(&format!(" [save failed: {e}]")),
+        }
+    }
+    summary.push('\n');
+    app.add_status_message(&summary);
+    tracing::info!(
+        target: "hoosh::session",
+        "backend switched to {} / {}",
+        context.system_resources.backend.backend_name(),
+        context.system_resources.backend.model_name()
+    );
 }
 
 async fn handle_user_input(
