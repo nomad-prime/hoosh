@@ -6,6 +6,22 @@ pub struct CommandPatternResult {
     pub pattern: String,
     pub persistent_message: String,
     pub safe: bool,
+    /// When false, the permission dialog must NOT offer the "trust project"
+    /// option for this command — typically because the pattern is too dynamic
+    /// for blanket trust (e.g. arbitrary subshells).
+    pub allow_project_wide_trust: bool,
+}
+
+impl Default for CommandPatternResult {
+    fn default() -> Self {
+        Self {
+            description: String::new(),
+            pattern: "*".to_string(),
+            persistent_message: String::new(),
+            safe: false,
+            allow_project_wide_trust: true,
+        }
+    }
 }
 
 pub trait BashCommandPattern: Send + Sync {
@@ -29,9 +45,16 @@ impl BashCommandPattern for SubshellPattern {
     fn analyze(&self, _command: &str) -> CommandPatternResult {
         CommandPatternResult {
             description: "command with subshell execution".to_string(),
-            pattern: "*".to_string(), // Too dynamic to pattern match specific commands
-            persistent_message: "don't ask me again for complex shell expansions (Be careful! this allows for arbitrary code execution)".to_string(),
+            // A subshell rule used to be stored as "*" — that silently
+            // matched every future bash command and granted blanket trust.
+            // Keep the pattern stable but mark trust-project as disallowed
+            // so no rule ever gets persisted from this prompt.
+            pattern: "subshell:none".to_string(),
+            persistent_message:
+                "subshells are evaluated per-call and cannot be pre-approved project-wide"
+                    .to_string(),
             safe: false, // NEVER safe to auto-approve subshells
+            allow_project_wide_trust: false,
         }
     }
 
@@ -60,6 +83,7 @@ impl BashCommandPattern for RedirectionPattern {
                 cmd
             ),
             safe: false,
+            allow_project_wide_trust: true,
         }
     }
 
@@ -111,6 +135,7 @@ impl BashCommandPattern for HeredocPattern {
                 cmd
             ),
             safe: false,
+            allow_project_wide_trust: true,
         }
     }
 
@@ -155,6 +180,7 @@ impl BashCommandPattern for PipelinePattern {
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
                 safe: false,
+                allow_project_wide_trust: true,
             };
         }
 
@@ -167,6 +193,7 @@ impl BashCommandPattern for PipelinePattern {
                     base_commands[0]
                 ),
                 safe: false,
+                allow_project_wide_trust: true,
             }
         } else {
             let display = base_commands.join(", ");
@@ -184,6 +211,7 @@ impl BashCommandPattern for PipelinePattern {
                     display
                 ),
                 safe: false,
+                allow_project_wide_trust: true,
             }
         }
     }
@@ -241,6 +269,7 @@ impl BashCommandPattern for CommandChainPattern {
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
                 safe: false,
+                allow_project_wide_trust: true,
             };
         }
 
@@ -253,6 +282,7 @@ impl BashCommandPattern for CommandChainPattern {
                     base_commands[0]
                 ),
                 safe: false,
+                allow_project_wide_trust: true,
             }
         } else {
             let display = base_commands.join(", ");
@@ -271,12 +301,156 @@ impl BashCommandPattern for CommandChainPattern {
                     display
                 ),
                 safe: false,
+                allow_project_wide_trust: true,
             }
         }
     }
 
     fn priority(&self) -> u32 {
         60
+    }
+}
+
+/// Read-only network commands: `curl <URL>`, `wget <URL>`, `gh api <...>` and
+/// the like — anything that fetches but does not write or post.
+///
+/// One persistent approval ("trust project") creates a stable `net:read` rule
+/// that covers all future read-only network calls in this project — so web
+/// fetches don't get permission-prompt friction.
+pub struct NetworkReadPattern;
+
+impl NetworkReadPattern {
+    const NETWORK_COMMANDS: &'static [&'static str] = &["curl", "wget", "gh"];
+
+    /// Flags whose presence (with any value, or with a non-GET method) means
+    /// the call mutates state. Matched by exact token OR by `flag=...` prefix.
+    const MUTATING_FLAGS_TAKING_VALUE: &'static [&'static str] = &[
+        "-d",
+        "--data",
+        "--data-raw",
+        "--data-binary",
+        "--data-urlencode",
+        "--form",
+        "-F",
+        "--upload-file",
+        "-T",
+        "--post-data",
+        "--post-file",
+    ];
+
+    /// Method flags: only allow when the value is GET.
+    const METHOD_FLAGS: &'static [&'static str] = &["-X", "--request", "--method"];
+
+    fn token_starts_with_flag(token: &str, flag: &str) -> bool {
+        // Matches "--flag=value" form. Exact `--flag` form handled separately.
+        token.starts_with(&format!("{flag}="))
+    }
+
+    fn is_read_only_network_command(command: &str) -> bool {
+        // Pipelines and chains are handled by their own patterns; this one is
+        // for a single read-only network call.
+        if command.contains('|') || command.contains("&&") || command.contains("||") {
+            return false;
+        }
+        if BashCommandParser::contains_subshell(command) {
+            return false;
+        }
+        // Redirects mean we're writing fetched content to a file — let
+        // RedirectionPattern require explicit consent for the write target.
+        if command.contains('>') {
+            return false;
+        }
+
+        let Some(first) = BashCommandParser::extract_base_commands(command)
+            .into_iter()
+            .next()
+        else {
+            return false;
+        };
+        if !Self::NETWORK_COMMANDS.contains(&first.as_str()) {
+            return false;
+        }
+
+        let tokens = match shlex::split(command) {
+            Some(t) => t,
+            None => return false,
+        };
+
+        let mut iter = tokens.iter().peekable();
+        while let Some(token) = iter.next() {
+            // Mutating flags with required values.
+            if Self::MUTATING_FLAGS_TAKING_VALUE.contains(&token.as_str()) {
+                return false;
+            }
+            for flag in Self::MUTATING_FLAGS_TAKING_VALUE {
+                if Self::token_starts_with_flag(token, flag) {
+                    return false;
+                }
+            }
+
+            // Method flags: need to inspect value (separate token or =value).
+            for mflag in Self::METHOD_FLAGS {
+                if token == mflag {
+                    // value is the next token
+                    let method = iter.peek().map(|s| s.as_str()).unwrap_or("");
+                    if !method.eq_ignore_ascii_case("get") {
+                        return false;
+                    }
+                } else if let Some(rest) = token.strip_prefix(&format!("{mflag}="))
+                    && !rest.eq_ignore_ascii_case("get")
+                {
+                    return false;
+                }
+            }
+            // `-XPOST` (no space) form.
+            if let Some(rest) = token.strip_prefix("-X")
+                && !rest.is_empty()
+                && !rest.eq_ignore_ascii_case("get")
+            {
+                return false;
+            }
+        }
+
+        // `gh` is broad: only `gh api ...` is in scope. Other subcommands
+        // (`gh pr create`, `gh issue close`, etc.) are state-changing.
+        if first == "gh" {
+            let after_gh = tokens.iter().skip_while(|t| *t != "gh").nth(1);
+            if after_gh.map(String::as_str) != Some("api") {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl BashCommandPattern for NetworkReadPattern {
+    fn matches(&self, command: &str) -> bool {
+        Self::is_read_only_network_command(command)
+    }
+
+    fn matches_pattern(&self, pattern: &str, command: &str) -> bool {
+        pattern == "net:read" && Self::is_read_only_network_command(command)
+    }
+
+    fn analyze(&self, _command: &str) -> CommandPatternResult {
+        CommandPatternResult {
+            description: "read-only network request".to_string(),
+            pattern: "net:read".to_string(),
+            persistent_message:
+                "don't ask me again for read-only network requests (curl/wget/gh api) in this project"
+                    .to_string(),
+            safe: false,
+            allow_project_wide_trust: true,
+        }
+    }
+
+    fn priority(&self) -> u32 {
+        // Above PipelinePattern(80) is tempting but a pipeline like
+        // `curl URL | jq` should be evaluated as a pipeline so all its parts
+        // are considered. Keep below Pipeline(80) and below Redirection(70)
+        // so file writes still take precedence. Sits above CommandChain(60).
+        65
     }
 }
 
@@ -369,6 +543,7 @@ impl BashCommandPattern for SingleCommandPattern {
                     description
                 ),
                 safe,
+                allow_project_wide_trust: true,
             }
         } else {
             // Fallback
@@ -377,6 +552,7 @@ impl BashCommandPattern for SingleCommandPattern {
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash".to_string(),
                 safe: false,
+                allow_project_wide_trust: true,
             }
         }
     }

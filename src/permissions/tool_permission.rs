@@ -19,6 +19,11 @@ pub struct ToolPermissionDescriptor {
     command_preview: Option<String>,
     persistent_approval: String,
     suggested_pattern: Option<String>,
+    /// When false, the permission dialog must NOT offer "trust project" for
+    /// this descriptor. Used for inherently dynamic commands (subshells)
+    /// where a blanket project-wide rule would silently auto-approve
+    /// arbitrary future code.
+    allow_project_wide_trust: bool,
     pattern_matcher: Arc<dyn PatternMatcher>,
 }
 
@@ -112,6 +117,10 @@ impl ToolPermissionDescriptor {
         self.suggested_pattern.as_deref()
     }
 
+    pub fn allow_project_wide_trust(&self) -> bool {
+        self.allow_project_wide_trust
+    }
+
     /// Check if a pattern matches this descriptor's target
     /// Delegates to the tool-specific pattern matcher
     pub fn matches_pattern(&self, pattern: &str) -> bool {
@@ -132,6 +141,7 @@ pub struct ToolPermissionBuilder<'a> {
     command_preview: Option<String>,
     persistent_approval: Option<String>,
     suggested_pattern: Option<String>,
+    allow_project_wide_trust: bool,
     pattern_matcher: Option<Arc<dyn PatternMatcher>>,
 }
 
@@ -150,8 +160,14 @@ impl<'a> ToolPermissionBuilder<'a> {
             command_preview: None,
             persistent_approval: None,
             suggested_pattern: None,
+            allow_project_wide_trust: true,
             pattern_matcher: None,
         }
+    }
+
+    pub fn disallow_project_wide_trust(mut self) -> Self {
+        self.allow_project_wide_trust = false;
+        self
     }
 
     pub fn with_target(mut self, target: impl Into<String>) -> Self {
@@ -273,6 +289,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             command_preview: self.command_preview,
             persistent_approval,
             suggested_pattern: self.suggested_pattern,
+            allow_project_wide_trust: self.allow_project_wide_trust,
             pattern_matcher,
         })
     }

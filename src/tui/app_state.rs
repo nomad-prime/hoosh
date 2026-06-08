@@ -330,14 +330,16 @@ impl AppState {
         descriptor: ToolPermissionDescriptor,
         request_id: String,
     ) {
-        let options = if let Ok(current_dir) = std::env::current_dir() {
-            vec![
+        let options = match (
+            std::env::current_dir(),
+            descriptor.allow_project_wide_trust(),
+        ) {
+            (Ok(current_dir), true) => vec![
                 PermissionOption::YesOnce,
                 PermissionOption::TrustProject(current_dir),
                 PermissionOption::No,
-            ]
-        } else {
-            vec![PermissionOption::YesOnce, PermissionOption::No]
+            ],
+            _ => vec![PermissionOption::YesOnce, PermissionOption::No],
         };
 
         self.tool_permission_dialog_state = Some(ToolPermissionDialogState {

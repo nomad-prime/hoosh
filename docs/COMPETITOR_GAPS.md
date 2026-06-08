@@ -17,17 +17,18 @@ Wire `tracing` (or equivalent) to `~/.config/hoosh/logs/hoosh.log` with rotation
 ### 1.3 Runtime backend + model switch
 A `/backend` and `/model` slash command that swaps the live backend without editing TOML and restarting. Hoosh's multi-backend is the wedge — currently buried in config. Should also show current cost-per-1k and context size on switch.
 
-### 1.4 WebSearch / WebFetch (curl-first approach)
-Don't build a search tool. Pre-approve `curl` for HTTPS GETs to a configurable allowlist (or all of HTTPS by default in autopilot) and let the agent drive. For richer fetching add a thin `web_fetch` tool that wraps `curl` + readability extraction. Defer Playwright until a real use case asks for it.
+### ~~1.4 WebSearch / WebFetch~~ — folded into 2.1
+Decided not to ship as a separate tool. Bash already gives the agent `curl`; adding a dedicated tool would just add schema bloat to every turn for zero new capability. The actual blocker is permission friction on every `curl` invocation — addressed under 2.1 by classifying read-only network commands (`curl`/`wget`/`gh api` GETs) as a single pre-approvable class. Playwright stays deferred until real use cases prove curl is insufficient.
 
 ---
 
 ## Tier 2 — Medium
 
-### 2.1 Permission leak fixes
+### 2.1 Permission leak fixes + read-only-network class
 - Pipe redirects (`cmd > file`, `cmd >> file`, `tee`) must trigger write permission.
 - Heredocs stop re-prompting after first approval in the session.
 - Disallow / warn on `cd` outside working dir (agent keeps doing it).
+- **New**: classify read-only network reads as their own permission class — `curl https://...` (no `-X POST`/`--data`/`--upload-file`), `wget`, `gh api` GETs. Single one-time approval covers all of them so web fetch doesn't get permission-prompt friction.
 Audit the bash parser in `src/tools/bash/parser.rs`; add cases + tests.
 
 ### 2.2 Tool-call recovery on crash
@@ -70,3 +71,10 @@ Two-track:
 ## Execution order
 
 Suggest shipping in tier order. Tier 1 is 1-2 days total; gets immediate user-visible improvement. Tier 2 is the trust + UX foundation needed before plan-mode is worth building. Tier 3 is where hoosh starts pulling ahead.
+
+## Progress
+
+- **Tier 1.1** Ctrl+C / Esc cancel + prompt restore — shipped `bf1682f`
+- **Tier 1.2** File-based logging with rotation — shipped `bf1682f`
+- **Tier 1.3** Runtime `/backend` + `/model` switch + slash-only-at-start — shipped `d563c71`
+- **Tier 1.4** Folded into 2.1 (no separate tool needed)

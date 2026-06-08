@@ -89,6 +89,62 @@ impl BashCommandParser {
         matches!(token, "|" | "||" | "&&" | ";")
     }
 
+    /// Find every `cd <path>` invocation in the command and return the
+    /// target arg. Useful for sandbox checks. `cd` with no arg returns
+    /// an empty string (which the caller should treat as "go to $HOME",
+    /// almost always outside cwd).
+    ///
+    /// Walks the shlex-tokenized stream, resets on control operators so
+    /// that `cd /tmp && cd /var` returns both targets.
+    pub fn extract_cd_targets(input: &str) -> Vec<String> {
+        let input_to_parse = if Self::contains_heredoc(input) {
+            input.lines().next().unwrap_or("").to_string()
+        } else {
+            input.to_string()
+        };
+        let tokens = match shlex::split(&input_to_parse) {
+            Some(t) => t,
+            None => return vec![],
+        };
+
+        let mut targets = Vec::new();
+        let mut expect_command = true;
+        let mut iter = tokens.into_iter().peekable();
+        while let Some(token) = iter.next() {
+            if Self::is_control_operator(&token) {
+                expect_command = true;
+                continue;
+            }
+            if expect_command {
+                // skip env var prefixes
+                if token.contains('=') && !token.starts_with('-') {
+                    continue;
+                }
+                if token == "cd" {
+                    // Grab the next non-flag token as the target; `cd -` is a
+                    // valid target (previous dir), not a flag. `cd` with no
+                    // arg means $HOME.
+                    let next = loop {
+                        match iter.peek() {
+                            Some(t) if Self::is_control_operator(t) => break String::new(),
+                            // `-` alone is a target, not a flag.
+                            Some(t) if t == "-" => break iter.next().unwrap(),
+                            Some(t) if t.starts_with('-') => {
+                                iter.next();
+                                continue;
+                            }
+                            Some(_) => break iter.next().unwrap(),
+                            None => break String::new(),
+                        }
+                    };
+                    targets.push(next);
+                }
+                expect_command = false;
+            }
+        }
+        targets
+    }
+
     pub fn extract_first_command_and_arg(input: &str) -> Option<(String, Option<String>)> {
         let input_to_parse = if Self::contains_heredoc(input) {
             input.lines().next().unwrap_or("").to_string()
@@ -137,6 +193,41 @@ mod tests {
             "cd /tmp && RUST_BACKTRACE=1 ./app | grep error",
         );
         assert_eq!(cmds, vec!["cd", "./app", "grep"]);
+    }
+
+    #[test]
+    fn extract_cd_targets_basic() {
+        assert_eq!(
+            BashCommandParser::extract_cd_targets("cd /tmp && ls"),
+            vec!["/tmp"]
+        );
+        assert_eq!(
+            BashCommandParser::extract_cd_targets("cd /tmp && cd /var"),
+            vec!["/tmp", "/var"]
+        );
+        assert_eq!(
+            BashCommandParser::extract_cd_targets("ls -la"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn extract_cd_targets_handles_no_arg_and_dash() {
+        // `cd` alone → empty string sentinel ($HOME).
+        assert_eq!(
+            BashCommandParser::extract_cd_targets("cd"),
+            vec![String::new()]
+        );
+        assert_eq!(BashCommandParser::extract_cd_targets("cd -"), vec!["-"]);
+    }
+
+    #[test]
+    fn extract_cd_targets_skips_flags() {
+        // hypothetical `cd -P` — should still find the path
+        assert_eq!(
+            BashCommandParser::extract_cd_targets("cd -P /tmp"),
+            vec!["/tmp"]
+        );
     }
 
     #[test]

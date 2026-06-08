@@ -405,7 +405,16 @@ impl Tool for BashTool {
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
         let target_str = target.unwrap_or("*");
         let registry = BashCommandPatternRegistry::new();
-        let pattern_result = registry.analyze_command(target_str);
+        let mut pattern_result = registry.analyze_command(target_str);
+
+        // Sandbox-aware override: if the command does `cd <path>` and any
+        // target resolves outside the working directory, override the result
+        // so the user gets an explicit prompt with cwd-leaving context. We
+        // do this here (not in a registry pattern) because patterns are
+        // stateless and don't know the tool's cwd.
+        if self.cd_leaves_working_dir(target_str) {
+            pattern_result = CdOutsideCwdResult::result();
+        }
 
         // Build descriptor with safety info, but let ToolExecutor decide approval
         let mut builder = ToolPermissionBuilder::new(self, target_str)
@@ -414,16 +423,78 @@ impl Tool for BashTool {
             .with_command_preview(target_str.to_string())
             .with_persistent_approval(pattern_result.persistent_message)
             .with_suggested_pattern(pattern_result.pattern)
-            .with_pattern_matcher(Arc::new(BashPatternMatcher::new()));
+            .with_pattern_matcher(Arc::new(
+                BashPatternMatcher::new().with_working_dir(self.working_directory.clone()),
+            ));
 
         // Mark as read-only if safe (for ToolExecutor to auto-approve)
         if pattern_result.safe {
             builder = builder.into_read_only();
         }
 
+        if !pattern_result.allow_project_wide_trust {
+            builder = builder.disallow_project_wide_trust();
+        }
+
         builder
             .build()
             .expect("Failed to build BashTool permission descriptor")
+    }
+}
+
+impl BashTool {
+    /// True if the command runs `cd <path>` for a path that resolves outside
+    /// the configured working directory. `cd` with no arg counts as leaving
+    /// (it targets `$HOME`).
+    fn cd_leaves_working_dir(&self, command: &str) -> bool {
+        use crate::tools::bash::BashCommandParser;
+
+        let cwd = match self.working_directory.canonicalize() {
+            Ok(p) => p,
+            Err(_) => self.working_directory.clone(),
+        };
+        for target in BashCommandParser::extract_cd_targets(command) {
+            // Empty arg (`cd` alone) → $HOME → conservative: outside.
+            if target.is_empty() {
+                return true;
+            }
+            // `-` returns to previous dir; we can't know statically — flag it.
+            if target == "-" {
+                return true;
+            }
+            // Variable expansion or command substitution we can't resolve.
+            if target.contains('$') || target.contains('`') {
+                return true;
+            }
+            let resolved = if std::path::Path::new(&target).is_absolute() {
+                PathBuf::from(&target)
+            } else {
+                self.working_directory.join(&target)
+            };
+            let canonical = resolved.canonicalize().unwrap_or(resolved);
+            if !canonical.starts_with(&cwd) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Synthetic pattern result used when `cd` would leave the working dir.
+/// Kept separate from the registry so the registry stays stateless.
+struct CdOutsideCwdResult;
+
+impl CdOutsideCwdResult {
+    fn result() -> crate::tools::bash::command_pattern::CommandPatternResult {
+        crate::tools::bash::command_pattern::CommandPatternResult {
+            description: "cd outside working directory".to_string(),
+            pattern: "cd:outside".to_string(),
+            persistent_message:
+                "don't ask me again for `cd` outside the working directory in this project"
+                    .to_string(),
+            safe: false,
+            allow_project_wide_trust: true,
+        }
     }
 }
 
@@ -436,6 +507,50 @@ impl Default for BashTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::tools::Tool;
+
+    #[test]
+    fn cd_outside_cwd_overrides_descriptor() {
+        let tool = BashTool::new().with_working_directory(PathBuf::from("/Users/x/project"));
+        let desc = tool.describe_permission(Some("cd /etc && ls"));
+        assert_eq!(desc.suggested_pattern(), Some("cd:outside"));
+        assert!(!desc.is_read_only(), "must not auto-approve cd outside cwd");
+    }
+
+    #[test]
+    fn cd_inside_cwd_does_not_override() {
+        // Use a real path that exists so canonicalize succeeds.
+        let cwd = std::env::current_dir().unwrap();
+        let tool = BashTool::new().with_working_directory(cwd.clone());
+        let cmd = format!("cd {} && ls", cwd.display());
+        let desc = tool.describe_permission(Some(&cmd));
+        assert_ne!(
+            desc.suggested_pattern(),
+            Some("cd:outside"),
+            "cd into cwd shouldn't trip the outside override"
+        );
+    }
+
+    #[test]
+    fn cd_no_arg_treated_as_outside() {
+        let cwd = std::env::current_dir().unwrap();
+        let tool = BashTool::new().with_working_directory(cwd);
+        let desc = tool.describe_permission(Some("cd"));
+        assert_eq!(desc.suggested_pattern(), Some("cd:outside"));
+    }
+
+    #[test]
+    fn cd_outside_persistent_rule_matches_other_outside_cds() {
+        use crate::permissions::{BashPatternMatcher, PatternMatcher};
+        let cwd = std::env::current_dir().unwrap();
+        let matcher = BashPatternMatcher::new().with_working_dir(cwd.clone());
+        assert!(matcher.matches("cd:outside", "cd /etc"));
+        assert!(matcher.matches("cd:outside", "cd /tmp && ls"));
+        // cd into cwd or under cwd should NOT match the outside rule.
+        let inside = format!("cd {}", cwd.display());
+        assert!(!matcher.matches("cd:outside", &inside));
+    }
 
     #[tokio::test]
     async fn test_bash_tool_simple_command() {

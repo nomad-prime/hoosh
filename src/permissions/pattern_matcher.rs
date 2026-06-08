@@ -1,6 +1,7 @@
 use glob::Pattern;
+use std::path::PathBuf;
 
-use crate::tools::bash::BashCommandPatternRegistry;
+use crate::tools::bash::{BashCommandParser, BashCommandPatternRegistry};
 
 /// Trait for pattern matching logic specific to each tool type
 pub trait PatternMatcher: Send + Sync {
@@ -10,13 +11,45 @@ pub trait PatternMatcher: Send + Sync {
 
 pub struct BashPatternMatcher {
     registry: BashCommandPatternRegistry,
+    /// Optional working directory used to resolve the synthetic `cd:outside`
+    /// pattern (which means "any cd that leaves cwd"). When absent, the
+    /// pattern only matches by exact string.
+    working_dir: Option<PathBuf>,
 }
 
 impl BashPatternMatcher {
     pub fn new() -> Self {
         Self {
             registry: BashCommandPatternRegistry::new(),
+            working_dir: None,
         }
+    }
+
+    pub fn with_working_dir(mut self, dir: PathBuf) -> Self {
+        self.working_dir = Some(dir);
+        self
+    }
+
+    fn cd_leaves_working_dir(&self, target: &str) -> bool {
+        let Some(ref cwd) = self.working_dir else {
+            return false;
+        };
+        let canonical_cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.clone());
+        for arg in BashCommandParser::extract_cd_targets(target) {
+            if arg.is_empty() || arg == "-" || arg.contains('$') || arg.contains('`') {
+                return true;
+            }
+            let resolved = if std::path::Path::new(&arg).is_absolute() {
+                PathBuf::from(&arg)
+            } else {
+                cwd.join(&arg)
+            };
+            let canonical = resolved.canonicalize().unwrap_or(resolved);
+            if !canonical.starts_with(&canonical_cwd) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -30,6 +63,12 @@ impl PatternMatcher for BashPatternMatcher {
     fn matches(&self, pattern: &str, target: &str) -> bool {
         if pattern == "*" {
             return true;
+        }
+
+        // Synthetic pattern from BashTool — matches whenever the target's
+        // `cd` argument leaves the configured working directory.
+        if pattern == "cd:outside" {
+            return self.cd_leaves_working_dir(target);
         }
 
         // Delegate to registry
