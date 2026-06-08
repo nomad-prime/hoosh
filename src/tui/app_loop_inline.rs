@@ -29,6 +29,7 @@ pub async fn run_event_loop(
         process_agent_events(app, &mut context).await;
 
         cleanup_finished_task(&mut agent_task, app);
+        super::app_loop::start_next_queued_prompt(&mut agent_task, app, &context);
 
         app.tick_animation();
 
@@ -211,6 +212,14 @@ fn process_handler_result(
                 app.hide_tool_permission_dialog();
                 app.clear_active_tool_calls();
                 app.add_status_message("Task cancelled by user\n");
+                let dropped = app.queued_prompts.len();
+                if dropped > 0 {
+                    app.queued_prompts.clear();
+                    app.add_status_message(&format!(
+                        "Dropped {dropped} queued prompt{}\n",
+                        if dropped == 1 { "" } else { "s" }
+                    ));
+                }
                 super::app_loop::restore_cancelled_prompt(app);
             }
             app.should_cancel_task = false;

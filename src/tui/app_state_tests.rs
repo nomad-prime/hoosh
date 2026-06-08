@@ -185,6 +185,24 @@ fn app_state_new_has_no_cancelled_prompt_and_quit_disarmed() {
 }
 
 #[test]
+fn app_state_new_has_empty_queue() {
+    let state = AppState::new();
+    assert!(state.queued_prompts.is_empty());
+}
+
+#[test]
+fn queue_push_and_pop_preserves_order() {
+    let mut state = AppState::new();
+    state.queued_prompts.push_back("first".into());
+    state.queued_prompts.push_back("second".into());
+    state.queued_prompts.push_back("third".into());
+    assert_eq!(state.queued_prompts.pop_front().as_deref(), Some("first"));
+    assert_eq!(state.queued_prompts.pop_front().as_deref(), Some("second"));
+    assert_eq!(state.queued_prompts.pop_front().as_deref(), Some("third"));
+    assert!(state.queued_prompts.is_empty());
+}
+
+#[test]
 fn set_input_text_replaces_buffer_and_preserves_newlines() {
     let mut state = AppState::new();
     state.set_input_text("hello\nworld");

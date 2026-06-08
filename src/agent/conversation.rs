@@ -321,52 +321,103 @@ impl Conversation {
         None
     }
 
-    /// Repairs the conversation by adding synthetic tool_results for pending tool_calls.
-    /// This handles the case where the system crashed after persisting an assistant message
-    /// with tool_calls but before persisting the tool_results.
-    /// Returns true if any repair was performed.
-    pub fn repair_incomplete_tool_calls(&mut self) -> bool {
-        if !self.has_pending_tool_calls() {
-            return false;
-        }
+    /// Sanitize orphan tool_calls left by a crash or interruption.
+    ///
+    /// The previous behaviour injected synthetic "Error: Tool execution was
+    /// interrupted" tool messages so each assistant tool_call had a matching
+    /// result. That kept the conversation structurally valid but lied to the
+    /// model — it would see a "result" it never produced and either try to
+    /// recover or get confused.
+    ///
+    /// New behaviour: drop orphan calls. For each assistant message with
+    /// tool_calls whose results aren't fully present in the next run of
+    /// `tool` messages, remove the partial tool messages and either:
+    ///   - strip the tool_calls field from the assistant message if it has
+    ///     non-empty content (so the assistant's thought is preserved), OR
+    ///   - remove the assistant message entirely if it had no content.
+    ///
+    /// Any trailing user/system messages are preserved.
+    ///
+    /// If the conversation has on-disk storage, the file is rewritten so the
+    /// drop survives a reload.
+    ///
+    /// Returns true if any sanitization happened.
+    pub fn sanitize_orphan_tool_calls(&mut self) -> bool {
+        use std::collections::HashSet;
 
-        let tool_calls = self.get_pending_tool_calls().unwrap().clone();
-
-        // Check if last message is a user message (interruption + continue scenario)
-        let last_is_user = self
+        let assistant_with_calls: Vec<usize> = self
             .messages
-            .last()
-            .map(|m| m.role == "user")
-            .unwrap_or(false);
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.role == "assistant" && m.tool_calls.is_some())
+            .map(|(i, _)| i)
+            .collect();
 
-        // If last is user, we need to insert tool results before it
-        let user_message = if last_is_user {
-            self.messages.pop()
-        } else {
-            None
-        };
+        let mut changed = false;
 
-        // Add synthetic tool_results for each incomplete tool_call
-        for tool_call in tool_calls {
-            let synthetic_result = ConversationMessage {
-                role: "tool".to_string(),
-                content: Some(
-                    "Error: Tool execution was interrupted. The previous session ended before this tool could complete. Please try again.".to_string()
-                ),
-                tool_calls: None,
-                tool_call_id: Some(tool_call.id),
-                name: None,
-            };
-            self.messages.push(synthetic_result.clone());
-            self.persist_message(&synthetic_result);
+        // Walk backwards so removals don't invalidate earlier indices.
+        for &asst_idx in assistant_with_calls.iter().rev() {
+            let expected_ids: Vec<String> = self.messages[asst_idx]
+                .tool_calls
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|tc| tc.id.clone())
+                .collect();
+
+            // Collect the run of `tool` messages immediately after.
+            let mut tool_idxs = Vec::new();
+            let mut found: HashSet<String> = HashSet::new();
+            let mut j = asst_idx + 1;
+            while j < self.messages.len() && self.messages[j].role == "tool" {
+                if let Some(ref id) = self.messages[j].tool_call_id {
+                    found.insert(id.clone());
+                }
+                tool_idxs.push(j);
+                j += 1;
+            }
+
+            let any_missing = expected_ids.iter().any(|id| !found.contains(id));
+            if !any_missing {
+                continue;
+            }
+            changed = true;
+
+            // Remove partial tool messages in reverse.
+            for &idx in tool_idxs.iter().rev() {
+                self.messages.remove(idx);
+            }
+
+            let has_content = self.messages[asst_idx]
+                .content
+                .as_ref()
+                .map(|c| !c.trim().is_empty())
+                .unwrap_or(false);
+            if has_content {
+                self.messages[asst_idx].tool_calls = None;
+            } else {
+                self.messages.remove(asst_idx);
+            }
         }
 
-        // Put user message back if we removed it
-        if let Some(user_msg) = user_message {
-            self.messages.push(user_msg);
+        if changed {
+            // Rewrite the persisted log so the sanitization survives reloads.
+            if let Some(storage) = &self.storage
+                && let Err(e) = storage.rewrite_messages(&self.metadata.id, &self.messages)
+            {
+                eprintln!("Warning: failed to rewrite sanitized conversation log: {e}");
+            }
         }
 
-        true
+        changed
+    }
+
+    /// Deprecated name kept for one release to avoid breaking external callers.
+    #[deprecated(
+        note = "use sanitize_orphan_tool_calls — drops orphans instead of synthesising them"
+    )]
+    pub fn repair_incomplete_tool_calls(&mut self) -> bool {
+        self.sanitize_orphan_tool_calls()
     }
 
     /// Estimate the number of tokens in this conversation.
@@ -617,8 +668,9 @@ mod tests {
         assert!(conversation.get_pending_tool_calls().is_none());
     }
 
+    /// Orphan with no content: drop the assistant message entirely.
     #[test]
-    fn test_repair_incomplete_tool_calls_without_user_message() {
+    fn sanitize_drops_orphan_assistant_with_no_content() {
         let mut conversation = Conversation::new();
         conversation.add_user_message("Read test.txt".to_string());
 
@@ -630,168 +682,193 @@ mod tests {
                 arguments: "{\"path\": \"test.txt\"}".to_string(),
             },
         };
+        conversation.add_assistant_message(None, Some(vec![tool_call]));
 
-        conversation
-            .add_assistant_message(Some("Let me read that".to_string()), Some(vec![tool_call]));
-
-        // Last message is assistant with tool_calls (interruption scenario)
         assert_eq!(conversation.messages.len(), 2);
-        assert!(conversation.has_pending_tool_calls());
-
-        let repaired = conversation.repair_incomplete_tool_calls();
-        assert!(repaired);
-
-        // Should have added synthetic tool result
-        assert_eq!(conversation.messages.len(), 3);
-        assert_eq!(conversation.messages[2].role, "tool");
-        assert_eq!(
-            conversation.messages[2].tool_call_id,
-            Some("call_123".to_string())
-        );
-        assert!(
-            conversation.messages[2]
-                .content
-                .as_ref()
-                .unwrap()
-                .contains("interrupted")
-        );
+        assert!(conversation.sanitize_orphan_tool_calls());
+        // Assistant message removed → only user left.
+        assert_eq!(conversation.messages.len(), 1);
+        assert_eq!(conversation.messages[0].role, "user");
     }
 
+    /// Orphan with content: keep the assistant message but strip tool_calls.
     #[test]
-    fn test_repair_incomplete_tool_calls_with_user_message() {
+    fn sanitize_strips_tool_calls_but_keeps_assistant_content() {
         let mut conversation = Conversation::new();
-        conversation.add_user_message("Read test.txt".to_string());
+        conversation.add_user_message("read it".to_string());
 
         let tool_call = ToolCall {
             id: "call_123".to_string(),
             r#type: "function".to_string(),
             function: ToolFunction {
                 name: "read_file".to_string(),
-                arguments: "{\"path\": \"test.txt\"}".to_string(),
+                arguments: "{}".to_string(),
             },
         };
-
-        conversation
-            .add_assistant_message(Some("Let me read that".to_string()), Some(vec![tool_call]));
-        // User says "continue" after interruption
-        conversation.add_user_message("continue".to_string());
-
-        assert_eq!(conversation.messages.len(), 3);
-        assert!(conversation.has_pending_tool_calls());
-
-        let repaired = conversation.repair_incomplete_tool_calls();
-        assert!(repaired);
-
-        // Should have inserted synthetic tool result BEFORE user message
-        assert_eq!(conversation.messages.len(), 4);
-        assert_eq!(conversation.messages[2].role, "tool");
-        assert_eq!(
-            conversation.messages[2].tool_call_id,
-            Some("call_123".to_string())
+        conversation.add_assistant_message(
+            Some("I'll read that file now.".to_string()),
+            Some(vec![tool_call]),
         );
-        assert!(
-            conversation.messages[2]
-                .content
-                .as_ref()
-                .unwrap()
-                .contains("interrupted")
-        );
-        // User message should still be last
-        assert_eq!(conversation.messages[3].role, "user");
-        assert_eq!(
-            conversation.messages[3].content,
-            Some("continue".to_string())
-        );
-    }
 
-    #[test]
-    fn test_repair_multiple_incomplete_tool_calls() {
-        let mut conversation = Conversation::new();
-        conversation.add_user_message("Read two files".to_string());
-
-        let tool_call1 = ToolCall {
-            id: "call_123".to_string(),
-            r#type: "function".to_string(),
-            function: ToolFunction {
-                name: "read_file".to_string(),
-                arguments: "{\"path\": \"test1.txt\"}".to_string(),
-            },
-        };
-
-        let tool_call2 = ToolCall {
-            id: "call_456".to_string(),
-            r#type: "function".to_string(),
-            function: ToolFunction {
-                name: "read_file".to_string(),
-                arguments: "{\"path\": \"test2.txt\"}".to_string(),
-            },
-        };
-
-        conversation.add_assistant_message(None, Some(vec![tool_call1, tool_call2]));
-        conversation.add_user_message("continue".to_string());
-
-        assert!(conversation.has_pending_tool_calls());
-        assert_eq!(conversation.get_pending_tool_calls().unwrap().len(), 2);
-
-        let repaired = conversation.repair_incomplete_tool_calls();
-        assert!(repaired);
-
-        // Should have added 2 synthetic tool results before user message
-        assert_eq!(conversation.messages.len(), 5);
-        assert_eq!(conversation.messages[2].role, "tool");
-        assert_eq!(
-            conversation.messages[2].tool_call_id,
-            Some("call_123".to_string())
-        );
-        assert_eq!(conversation.messages[3].role, "tool");
-        assert_eq!(
-            conversation.messages[3].tool_call_id,
-            Some("call_456".to_string())
-        );
-        assert_eq!(conversation.messages[4].role, "user");
-    }
-
-    #[test]
-    fn test_repair_does_nothing_when_no_pending_calls() {
-        let mut conversation = Conversation::new();
-        conversation.add_user_message("Hello".to_string());
-        conversation.add_assistant_message(Some("Hi!".to_string()), None);
-
-        assert!(!conversation.has_pending_tool_calls());
-
-        let repaired = conversation.repair_incomplete_tool_calls();
-        assert!(!repaired);
-
-        // No changes should be made
+        assert!(conversation.sanitize_orphan_tool_calls());
         assert_eq!(conversation.messages.len(), 2);
+        assert_eq!(conversation.messages[1].role, "assistant");
+        assert_eq!(
+            conversation.messages[1].content,
+            Some("I'll read that file now.".to_string())
+        );
+        assert!(conversation.messages[1].tool_calls.is_none());
     }
 
+    /// Trailing user "continue" should be preserved on the timeline after a drop.
     #[test]
-    fn test_repair_idempotent() {
+    fn sanitize_preserves_trailing_user_message() {
         let mut conversation = Conversation::new();
-        conversation.add_user_message("Read test.txt".to_string());
+        conversation.add_user_message("read test.txt".to_string());
 
         let tool_call = ToolCall {
             id: "call_123".to_string(),
             r#type: "function".to_string(),
             function: ToolFunction {
                 name: "read_file".to_string(),
-                arguments: "{\"path\": \"test.txt\"}".to_string(),
+                arguments: "{}".to_string(),
             },
         };
-
         conversation.add_assistant_message(None, Some(vec![tool_call]));
         conversation.add_user_message("continue".to_string());
 
-        // First repair
-        let repaired1 = conversation.repair_incomplete_tool_calls();
-        assert!(repaired1);
-        let len_after_first = conversation.messages.len();
+        assert!(conversation.sanitize_orphan_tool_calls());
+        // Orphan assistant removed; both user messages remain.
+        assert_eq!(conversation.messages.len(), 2);
+        assert_eq!(conversation.messages[0].role, "user");
+        assert_eq!(conversation.messages[1].role, "user");
+        assert_eq!(
+            conversation.messages[1].content.as_deref(),
+            Some("continue")
+        );
+    }
 
-        // Second repair should do nothing (already repaired)
-        let repaired2 = conversation.repair_incomplete_tool_calls();
-        assert!(!repaired2);
-        assert_eq!(conversation.messages.len(), len_after_first);
+    /// Partial completion: some results present, others missing — drop the
+    /// partial results too, so the model never sees half a tool batch.
+    #[test]
+    fn sanitize_drops_partial_results_for_incomplete_batch() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("read both".to_string());
+
+        let tc1 = ToolCall {
+            id: "call_1".into(),
+            r#type: "function".into(),
+            function: ToolFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        let tc2 = ToolCall {
+            id: "call_2".into(),
+            r#type: "function".into(),
+            function: ToolFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        conversation.add_assistant_message(None, Some(vec![tc1, tc2]));
+
+        // Only call_1 was persisted before the crash.
+        conversation.add_tool_result(ToolCallResponse::success(
+            "call_1".into(),
+            "read_file".into(),
+            "Read(a)".into(),
+            "result-a".into(),
+        ));
+
+        assert!(conversation.sanitize_orphan_tool_calls());
+        // Both the assistant (no content) and the partial result should be gone.
+        assert_eq!(conversation.messages.len(), 1);
+        assert_eq!(conversation.messages[0].role, "user");
+    }
+
+    /// Sanitize is a no-op when every tool_call has its result.
+    #[test]
+    fn sanitize_noop_when_complete() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("read".to_string());
+
+        let tc = ToolCall {
+            id: "call_1".into(),
+            r#type: "function".into(),
+            function: ToolFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        conversation.add_assistant_message(None, Some(vec![tc]));
+        conversation.add_tool_result(ToolCallResponse::success(
+            "call_1".into(),
+            "read_file".into(),
+            "Read(a)".into(),
+            "ok".into(),
+        ));
+
+        assert!(!conversation.sanitize_orphan_tool_calls());
+        assert_eq!(conversation.messages.len(), 3);
+    }
+
+    /// Sanitize is idempotent.
+    #[test]
+    fn sanitize_is_idempotent() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("read".to_string());
+        let tc = ToolCall {
+            id: "call_1".into(),
+            r#type: "function".into(),
+            function: ToolFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        conversation.add_assistant_message(None, Some(vec![tc]));
+        conversation.add_user_message("continue".into());
+
+        assert!(conversation.sanitize_orphan_tool_calls());
+        let len_after = conversation.messages.len();
+        assert!(!conversation.sanitize_orphan_tool_calls());
+        assert_eq!(conversation.messages.len(), len_after);
+    }
+
+    /// Two separate orphan batches in one conversation: both get cleaned up.
+    #[test]
+    fn sanitize_handles_multiple_orphan_batches() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("first".into());
+        let tc = ToolCall {
+            id: "a".into(),
+            r#type: "function".into(),
+            function: ToolFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        conversation.add_assistant_message(Some("thinking…".into()), Some(vec![tc]));
+        conversation.add_user_message("second".into());
+        let tc2 = ToolCall {
+            id: "b".into(),
+            r#type: "function".into(),
+            function: ToolFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        };
+        conversation.add_assistant_message(None, Some(vec![tc2]));
+
+        assert!(conversation.sanitize_orphan_tool_calls());
+        // First assistant kept (had content, tool_calls stripped); second dropped (no content).
+        let roles: Vec<&str> = conversation
+            .messages
+            .iter()
+            .map(|m| m.role.as_str())
+            .collect();
+        assert_eq!(roles, vec!["user", "assistant", "user"]);
+        assert!(conversation.messages[1].tool_calls.is_none());
     }
 
     #[test]

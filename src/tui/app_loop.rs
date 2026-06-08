@@ -86,6 +86,7 @@ pub async fn run_event_loop(
         process_agent_events(app, &mut context).await;
 
         cleanup_finished_task(&mut agent_task, app);
+        start_next_queued_prompt(&mut agent_task, app, &context);
 
         app.tick_animation();
 
@@ -285,6 +286,14 @@ fn process_handler_result(
                 app.hide_tool_permission_dialog();
                 app.clear_active_tool_calls();
                 app.add_status_message("Task cancelled by user\n");
+                let dropped = app.queued_prompts.len();
+                if dropped > 0 {
+                    app.queued_prompts.clear();
+                    app.add_status_message(&format!(
+                        "Dropped {dropped} queued prompt{}\n",
+                        if dropped == 1 { "" } else { "s" }
+                    ));
+                }
                 restore_cancelled_prompt(app);
             }
             app.should_cancel_task = false;
@@ -333,6 +342,30 @@ fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>, app: &mut AppS
         // Turn ended naturally — drop the snapshot so a later idle Ctrl+C
         // doesn't restore a prompt that already ran.
         app.last_submitted_input = None;
+    }
+}
+
+/// If the agent task just finished (or never started) and the user queued
+/// prompts mid-flight, dequeue the next one and start it as a new turn.
+/// Slash commands queued this way fire as commands via `execute_command`.
+pub(crate) fn start_next_queued_prompt(
+    agent_task: &mut Option<JoinHandle<()>>,
+    app: &mut AppState,
+    context: &EventLoopContext,
+) {
+    if agent_task.is_some() {
+        return;
+    }
+    let Some(next) = app.queued_prompts.pop_front() else {
+        return;
+    };
+    app.add_user_input(&next);
+    if next.trim().starts_with('/') {
+        app.last_submitted_input = None;
+        execute_command(next, context);
+    } else {
+        app.last_submitted_input = Some(next.clone());
+        *agent_task = Some(answer(next, context));
     }
 }
 

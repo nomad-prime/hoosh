@@ -128,8 +128,9 @@ impl Agent {
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(AgentEvent::Thinking);
 
-        // Repair any incomplete tool calls from previous interrupted sessions
-        conversation.repair_incomplete_tool_calls();
+        // Drop any orphan tool_calls left by a crash or interruption so the
+        // model isn't fed synthetic "result" messages it never produced.
+        conversation.sanitize_orphan_tool_calls();
 
         // Apply context compression if configured
         if let Some(context_manager) = &self.context_manager {

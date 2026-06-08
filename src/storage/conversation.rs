@@ -164,6 +164,41 @@ impl ConversationStorage {
         Ok(())
     }
 
+    /// Atomically rewrite the on-disk message log to match `messages`.
+    /// Used by sanitization passes (e.g. removing orphan tool_calls left by
+    /// a crash) so the rewritten state survives a reload. Writes to a
+    /// temporary file in the same directory and renames into place.
+    pub fn rewrite_messages(
+        &self,
+        conversation_id: &str,
+        messages: &[ConversationMessage],
+    ) -> Result<()> {
+        let messages_path = self.messages_file(conversation_id);
+        let dir = messages_path
+            .parent()
+            .context("messages file has no parent dir")?;
+        fs::create_dir_all(dir)?;
+
+        let tmp_path = messages_path.with_extension("jsonl.tmp");
+        {
+            let mut tmp =
+                fs::File::create(&tmp_path).context("Failed to open temp messages file")?;
+            for message in messages {
+                let json = serde_json::to_string(message).context("Failed to serialize message")?;
+                writeln!(tmp, "{}", json).context("Failed to write message")?;
+            }
+            tmp.sync_all().ok();
+        }
+        fs::rename(&tmp_path, &messages_path).context("Failed to swap rewritten messages file")?;
+
+        let mut metadata = self.load_metadata(conversation_id)?;
+        metadata.message_count = messages.len();
+        metadata.update();
+        self.save_metadata(&metadata)?;
+
+        Ok(())
+    }
+
     pub fn load_messages(&self, conversation_id: &str) -> Result<Vec<ConversationMessage>> {
         let messages_path = self.messages_file(conversation_id);
 

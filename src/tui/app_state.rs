@@ -190,6 +190,10 @@ pub struct AppState {
     /// Restored into the input buffer if the turn is cancelled, so the user
     /// doesn't have to retype. Cleared when the turn completes naturally.
     pub last_submitted_input: Option<String>,
+    /// Prompts the user submitted while the agent was busy. Each is popped
+    /// off the front and started as a new turn the moment the current turn
+    /// finishes. Cleared on cancel.
+    pub queued_prompts: std::collections::VecDeque<String>,
     /// True after a cancel or an idle Ctrl+C with empty input — next Ctrl+C
     /// exits the app even if input is non-empty. Cleared on any other keypress.
     pub quit_armed: bool,
@@ -240,6 +244,7 @@ impl AppState {
             should_quit: false,
             should_cancel_task: false,
             last_submitted_input: None,
+            queued_prompts: std::collections::VecDeque::new(),
             quit_armed: false,
             max_messages: 100_000,
             completion_state: None,
