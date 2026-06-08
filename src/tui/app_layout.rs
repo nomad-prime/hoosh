@@ -66,6 +66,19 @@ impl AppLayout for Layout<AppState> {
         // No border needed, just the number of todos
         let todo_list_height = app.todos.len().min(10) as u16;
 
+        // Calculate queued-prompts indicator (rendered just above the input).
+        // Layout: 1-line header + up to 5 prompts + optional "…and N more" line.
+        const QUEUE_MAX_VISIBLE: usize = 5;
+        let queue_len = app.queued_prompts.len();
+        let queued_prompts_visible = queue_len > 0;
+        let queued_prompts_height = if queue_len == 0 {
+            0
+        } else {
+            let visible = queue_len.min(QUEUE_MAX_VISIBLE) as u16;
+            let overflow = if queue_len > QUEUE_MAX_VISIBLE { 1 } else { 0 };
+            1 + visible + overflow
+        };
+
         // Calculate input field height based on wrapped lines using actual terminal width
         // The input has TOP and BOTTOM borders (no left/right), so width stays the same
         // The text area width is terminal_width - 2 (only the prompt)
@@ -83,6 +96,7 @@ impl AppLayout for Layout<AppState> {
             )
             .status_bar()
             .todo_list(todo_list_height, todo_list_visible)
+            .queued_prompts(queued_prompts_height, queued_prompts_visible)
             .input_field(input_height)
             .mode_indicator(!has_overlay);
 

@@ -43,21 +43,13 @@ impl InputHandler for SubmitHandler {
 
         if agent_task_active {
             // Queue the prompt for delivery after the current turn finishes.
-            // Slash commands are queued the same way — they'll fire when idle.
+            // The QueuedPromptsComponent above the input bar surfaces the
+            // queue visually — no need to dump status lines into the
+            // conversation buffer.
             app.prompt_history.add(expanded_input.clone());
             app.clear_input();
             app.clear_attachments();
-            app.queued_prompts.push_back(expanded_input.clone());
-            let preview: String = expanded_input.chars().take(60).collect();
-            let suffix = if expanded_input.chars().count() > 60 {
-                "…"
-            } else {
-                ""
-            };
-            app.add_status_message(&format!(
-                "Queued ({} pending): {preview}{suffix}\n",
-                app.queued_prompts.len()
-            ));
+            app.queued_prompts.push_back(expanded_input);
             return KeyHandlerResult::Handled;
         }
 
