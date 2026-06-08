@@ -34,7 +34,10 @@ pub struct ToolExecutor {
     approval_sender: Option<mpsc::UnboundedSender<AgentEvent>>,
     approval_receiver:
         Option<Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<crate::agent::ApprovalResponse>>>>,
+    max_parallel_tool_calls: usize,
 }
+
+const DEFAULT_MAX_PARALLEL_TOOL_CALLS: usize = 8;
 
 impl ToolExecutor {
     pub fn new(
@@ -48,7 +51,13 @@ impl ToolExecutor {
             autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             approval_sender: None,
             approval_receiver: None,
+            max_parallel_tool_calls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
         }
+    }
+
+    pub fn with_max_parallel_tool_calls(mut self, max: usize) -> Self {
+        self.max_parallel_tool_calls = max.max(1);
+        self
     }
 
     pub fn with_event_sender(mut self, sender: mpsc::UnboundedSender<AgentEvent>) -> Self {
@@ -284,19 +293,39 @@ impl ToolExecutor {
         tool_calls: &[ToolCall],
         conversation_id: Option<&str>,
     ) -> Vec<ToolCallResponse> {
-        let mut results = Vec::new();
+        // Run independent tool calls concurrently while keeping conversation
+        // order stable. The Semaphore caps simultaneous executions so a runaway
+        // batch can't spawn dozens of bash processes. Permission/approval
+        // prompts serialize naturally — see request_approval and
+        // ask_user_tool_permission — so the UI still sees one dialog at a time.
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.max_parallel_tool_calls));
 
-        for tool_call in tool_calls {
-            let result = self.execute_tool_call(tool_call, conversation_id).await;
-            results.push(result);
-        }
+        let futures = tool_calls.iter().map(|tool_call| {
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("tool-call semaphore closed");
+                self.execute_tool_call(tool_call, conversation_id).await
+            }
+        });
 
-        results
+        futures::future::join_all(futures).await
     }
 
     async fn request_approval(&self, tool_call_id: &str, tool_name: &str) -> ToolResult<()> {
-        // Send approval request event
-        if let Some(sender) = &self.approval_sender {
+        let Some(sender) = &self.approval_sender else {
+            // No approval system configured, auto-approve.
+            return Ok(());
+        };
+
+        // Lock the approval receiver BEFORE emitting the request event so concurrent
+        // tool calls serialize their approval prompts end-to-end. Without this,
+        // parallel calls could race and pull each other's responses.
+        if let Some(receiver) = &self.approval_receiver {
+            let mut rx = receiver.lock().await;
+
             let event = AgentEvent::ApprovalRequest {
                 tool_call_id: tool_call_id.to_string(),
                 tool_name: tool_name.to_string(),
@@ -304,14 +333,6 @@ impl ToolExecutor {
             sender.send(event).map_err(|e| {
                 ToolError::execution_failed(format!("Failed to send approval request event: {}", e))
             })?;
-        } else {
-            // No approval system configured, auto-approve
-            return Ok(());
-        }
-
-        // Wait for response
-        if let Some(receiver) = &self.approval_receiver {
-            let mut rx = receiver.lock().await;
 
             let response = rx
                 .recv()
@@ -412,6 +433,86 @@ mod tests {
         let result = executor.execute_tool_call(&tool_call, None).await;
         assert!(result.result.is_ok());
         assert!(result.result.unwrap().contains("Hello, World!"));
+    }
+
+    #[tokio::test]
+    async fn execute_tool_calls_runs_in_parallel() {
+        use crate::ToolPermissionBuilder;
+        use crate::tools::{Tool, ToolExecutionContext};
+        use async_trait::async_trait;
+        use std::time::{Duration, Instant};
+
+        struct SleepTool;
+        #[async_trait]
+        impl Tool for SleepTool {
+            fn name(&self) -> &'static str {
+                "sleep_tool"
+            }
+            fn display_name(&self) -> &'static str {
+                "sleep"
+            }
+            fn description(&self) -> &'static str {
+                "test sleep"
+            }
+            fn parameter_schema(&self) -> Value {
+                json!({"type": "object", "properties": {}, "required": []})
+            }
+            async fn execute(
+                &self,
+                _args: &Value,
+                _ctx: &ToolExecutionContext,
+            ) -> ToolResult<String> {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok("done".to_string())
+            }
+            fn describe_permission(&self, target: Option<&str>) -> crate::ToolPermissionDescriptor {
+                ToolPermissionBuilder::new(self, target.unwrap_or("*"))
+                    .into_read_only()
+                    .build()
+                    .unwrap()
+            }
+        }
+
+        let mut registry = ToolRegistry::new();
+        registry.register_tool(Arc::new(SleepTool)).unwrap();
+        let tool_registry = Arc::new(registry);
+
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let (_, response_rx) = mpsc::unbounded_channel();
+        let permission_manager =
+            Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
+        let executor = ToolExecutor::new(tool_registry, permission_manager);
+
+        let calls: Vec<ToolCall> = (0..4)
+            .map(|i| ToolCall {
+                id: format!("call_{}", i),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: "sleep_tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            })
+            .collect();
+
+        let start = Instant::now();
+        let results = executor.execute_tool_calls(&calls, None).await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(results.len(), 4);
+        for r in &results {
+            assert!(r.result.is_ok());
+        }
+        // Serial would be 200ms; parallel should finish well under 150ms.
+        assert!(
+            elapsed < Duration::from_millis(150),
+            "expected parallel execution, took {:?}",
+            elapsed
+        );
+
+        // Results preserve input ordering.
+        for (i, r) in results.iter().enumerate() {
+            assert_eq!(r.tool_call_id, format!("call_{}", i));
+        }
     }
 
     #[tokio::test]

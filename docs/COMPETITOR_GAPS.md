@@ -76,6 +76,7 @@ Suggest shipping in tier order. Tier 1 is 1-2 days total; gets immediate user-vi
 
 ## Progress (newest first)
 
+- **3.2 Parallel tool calls** — shipped this session. `ToolExecutor::execute_tool_calls` now runs concurrently via `futures::join_all` gated by a `tokio::Semaphore` (cap 8, configurable via `with_max_parallel_tool_calls`). Result order preserved. Permission/approval prompts serialize end-to-end by locking the response receiver **before** emitting the request event (`permissions::ask_user_tool_permission`, `tool_executor::request_approval`) — fixes a race where the TUI dialog (`Option<...>`) would otherwise be overwritten by a second concurrent request. Cancellation of in-flight batches still deferred (token only checked at agent-loop boundaries). Also: in-flight tool indicator now sweeps left-to-right with a full-height braille bar (`⡇⣿⢸` through 3 cells, 8 frames), and Completed/Error use `●` green/red instead of `✓`/`✗` to match the dot family
 - **2.5 Queue messages mid-flight** — shipped `fce6ae8`; queue indicator above input shipped `2db95e6`; emoji purge `54363d3`
 - **2.2 Tool-call recovery on crash** — shipped `fce6ae8`. `Conversation::sanitize_orphan_tool_calls` drops orphans instead of synthesising fake results; storage rewrite via `ConversationStorage::rewrite_messages` makes drops survive reload
 - **2.1 Permission leaks + read-only-network class** — shipped `f550eda`. `NetworkReadPattern` (`net:read`), `cd:outside` detection in `BashTool::describe_permission`, `SubshellPattern` no longer offers project-wide trust (`allow_project_wide_trust` flag propagated through `CommandPatternResult` → `ToolPermissionDescriptor` → dialog)
@@ -89,7 +90,6 @@ Suggest shipping in tier order. Tier 1 is 1-2 days total; gets immediate user-vi
 - **2.3 Cancel-midflight UX polish** — partial spinner/cursor cleanup. Small (~1-2h). Probably the next pick.
 - **2.4 Warm-up / pre-approve at session start** — pairs naturally with 3.1 plan-mode; defer until plan-mode design is firmer.
 - **3.1 Plan → autopilot toggle** — the wedge. Bundle with 2.4.
-- **3.2 Parallel tool calls** — biggest perceived-speed win; bigger lift (permission serialization, output ordering, half-batch cancel, resource caps).
 - **3.3 Image input / screenshot support** — highest "wait it can't do that?" moment for new users.
 
 ---
@@ -106,9 +106,11 @@ You're continuing work on `docs/COMPETITOR_GAPS.md`. The user explicitly chose t
 6. **Slash commands**: only fire when input is empty (start of prompt). Implemented via `Completer::should_trigger`.
 7. **The three event loops** (`app_loop.rs`, `app_loop_inline.rs`, `app_loop_fullview.rs`) duplicate a lot — every change to one needs the same in the other two. Helpers go in `app_loop.rs` as `pub(crate)`, called from siblings.
 
-**Where the user is likely to want to start**: Tier 2.3 (cancel UX polish) — it's small and they've mentioned the cancel state feels rough. Or jump to 3.2 (parallel tool calls) for impact. Ask before assuming.
+**Where the user is likely to want to start**: Tier 2.3 (cancel UX polish) — small and the cancel state still feels rough. Or 3.3 (image input) for impact. Ask before assuming.
 
 **Key files for the most likely next item (2.3)**: `src/tui/handlers/quit_handler.rs`, `src/tui/app_loop.rs` (the `ShouldCancelTask` branch — there are three copies across the loops), `src/agent/core.rs` (where streaming lives — find what doesn't shut down cleanly on cancel).
+
+**3.2 follow-ups (deferred, worth picking up later)**: in-flight tool cancellation (pass the cancellation token through `ToolExecutionContext` so bash and other long-running tools can abort mid-execution), and exposing `max_parallel_tool_calls` as an `AppConfig` knob.
 
 **Threat model reminder** from `CLAUDE.md`: hoosh isn't sandboxed at the OS level. Permission system is for "confused agent," not malicious input. Don't add defenses that pretend otherwise.
 

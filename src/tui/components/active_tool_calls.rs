@@ -11,6 +11,13 @@ use ratatui::{
 
 pub struct ActiveToolCallsComponent;
 
+// Full-height braille bar sweeping left-to-right across three cells. Each
+// transition between cells passes through a full-cell frame (⣿) so the bar
+// flows rather than hopping. Driven by AppState::animation_frame (~100ms tick).
+const EXECUTING_SWEEP: &[&str] = &[
+    "⡇  ", "⣿  ", "⢸⡇ ", " ⣿ ", " ⢸⡇", "  ⣿", "  ⢸", "   ",
+];
+
 impl Component for ActiveToolCallsComponent {
     type State = AppState;
 
@@ -22,21 +29,24 @@ impl Component for ActiveToolCallsComponent {
         let mut lines = Vec::new();
 
         for tool_call in &state.active_tool_calls {
+            // Static glyphs are padded to three cells so the tool-name column
+            // stays aligned with the animated executing rows.
             let status_indicator = match &tool_call.status {
                 ToolCallStatus::Starting => {
-                    Span::styled("○", Style::default().fg(palette::TOOL_STATUS_STARTING))
+                    Span::styled(" ○ ", Style::default().fg(palette::TOOL_STATUS_STARTING))
                 }
                 ToolCallStatus::AwaitingApproval => {
-                    Span::styled("◎", Style::default().fg(palette::TOOL_STATUS_RUNNING))
+                    Span::styled(" ◎ ", Style::default().fg(palette::TOOL_STATUS_RUNNING))
                 }
                 ToolCallStatus::Executing => {
-                    Span::styled("●", Style::default().fg(palette::TOOL_STATUS_EXECUTING))
+                    let frame = EXECUTING_SWEEP[state.animation_frame % EXECUTING_SWEEP.len()];
+                    Span::styled(frame, Style::default().fg(palette::TOOL_STATUS_EXECUTING))
                 }
                 ToolCallStatus::Completed => {
-                    Span::styled("✓", Style::default().fg(palette::TOOL_STATUS_COMPLETED))
+                    Span::styled(" ● ", Style::default().fg(palette::TOOL_STATUS_COMPLETED))
                 }
                 ToolCallStatus::Error(_) => {
-                    Span::styled("✗", Style::default().fg(palette::TOOL_STATUS_ERROR))
+                    Span::styled(" ● ", Style::default().fg(palette::TOOL_STATUS_ERROR))
                 }
             };
 

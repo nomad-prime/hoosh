@@ -257,6 +257,14 @@ impl PermissionManager {
             .fetch_add(1, Ordering::SeqCst)
             .to_string();
 
+        // Acquire the response-receiver lock BEFORE sending the request event so
+        // that concurrent permission requests are serialized end-to-end. Without
+        // this, two parallel tool calls could race: both emit ToolPermissionRequest
+        // events, the TUI dialog overwrites itself, and the response IDs land in
+        // the wrong tasks. Holding the mutex across emit+recv guarantees one
+        // dialog at a time.
+        let mut receiver = self.response_receiver.lock().await;
+
         let event = crate::agent::AgentEvent::ToolPermissionRequest {
             descriptor: descriptor.clone(),
             request_id: request_id.clone(),
@@ -264,8 +272,6 @@ impl PermissionManager {
         self.event_sender
             .send(event)
             .context("Failed to send tool permission request event")?;
-
-        let mut receiver = self.response_receiver.lock().await;
 
         let response = receiver
             .recv()
