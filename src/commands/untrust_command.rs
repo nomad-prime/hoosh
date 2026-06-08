@@ -36,11 +36,11 @@ impl Command for UntrustCommand {
         if perms_info.allow_count > 0 || perms_info.deny_count > 0 {
             permission_manager.clear_all_permissions()?;
             Ok(CommandResult::Success(
-                "🔒 All permissions cleared. Permission dialogs will be shown again.".to_string(),
+                "All permissions cleared. Permission dialogs will be shown again.".to_string(),
             ))
         } else {
             Ok(CommandResult::Success(
-                "ℹ️ No permissions are currently saved.".to_string(),
+                "No permissions are currently saved.".to_string(),
             ))
         }
     }

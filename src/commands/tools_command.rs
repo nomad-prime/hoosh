@@ -30,7 +30,7 @@ impl Command for ToolsCommand {
     ) -> Result<CommandResult> {
         if let Some(tool_registry) = &context.tool_registry {
             let tools = tool_registry.list_tools();
-            let mut output = String::from("🛠️  Available Tools:\n\n");
+            let mut output = String::from("Available Tools:\n\n");
 
             for (name, description) in tools {
                 let first_line = description.lines().next().unwrap_or("");

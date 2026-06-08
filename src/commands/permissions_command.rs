@@ -46,7 +46,9 @@ impl Command for PermissionsCommand {
                 }
 
                 if permission_manager.skip_permissions() {
-                    output.push_str("\n⚠️  Permission checks are disabled (--skip-permissions)\n");
+                    output.push_str(
+                        "\nWARNING: Permission checks are disabled (--skip-permissions)\n",
+                    );
                 }
 
                 Ok(CommandResult::Success(output))

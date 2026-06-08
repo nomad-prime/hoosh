@@ -28,9 +28,9 @@ impl Component for QueuedPromptsComponent {
         let visible = total.min(MAX_VISIBLE);
         let mut lines: Vec<Line> = Vec::with_capacity(visible + 1);
 
-        // Header: total count.
+        // Header: total count. Plain text only — no emoji anywhere in hoosh UI.
         lines.push(Line::from(vec![Span::styled(
-            format!("⏳ {total} queued"),
+            format!("Queued ({total})"),
             Style::default().fg(palette::SECONDARY_TEXT),
         )]));
 
