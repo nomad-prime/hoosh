@@ -43,10 +43,14 @@ impl InputHandler for SubmitHandler {
             app.prompt_history.add(expanded_input.clone());
             app.clear_input();
             app.clear_attachments();
+            app.quit_armed = false;
 
             if expanded_input.trim().starts_with('/') {
+                // Slash commands are synchronous; no agent turn to restore.
+                app.last_submitted_input = None;
                 KeyHandlerResult::StartCommand(expanded_input)
             } else {
+                app.last_submitted_input = Some(expanded_input.clone());
                 KeyHandlerResult::StartConversation(expanded_input)
             }
         } else {

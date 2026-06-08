@@ -9,10 +9,22 @@ use hoosh::{
     cli::{Cli, Commands},
     config::{AppConfig, ConfigError, set_config_path_override, set_data_dir_override},
     console::{VerbosityLevel, init_console},
+    logging::init_logging,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Guard must live for the whole program — dropping it stops the async log
+    // worker and we'd lose pending writes on exit.
+    let _log_guard = match init_logging() {
+        Ok(guard) => Some(guard),
+        Err(e) => {
+            eprintln!("Warning: failed to initialise logging: {e}");
+            None
+        }
+    };
+    tracing::info!("hoosh starting (version {})", env!("CARGO_PKG_VERSION"));
+
     // Cleanup stale session files on startup (>7 days old)
     // This runs silently in the background - failures are non-fatal
     let _ = cleanup_stale_sessions();

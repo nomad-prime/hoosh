@@ -178,6 +178,31 @@ fn app_state_default_creates_new() {
 }
 
 #[test]
+fn app_state_new_has_no_cancelled_prompt_and_quit_disarmed() {
+    let state = AppState::new();
+    assert!(state.last_submitted_input.is_none());
+    assert!(!state.quit_armed);
+}
+
+#[test]
+fn set_input_text_replaces_buffer_and_preserves_newlines() {
+    let mut state = AppState::new();
+    state.set_input_text("hello\nworld");
+    assert_eq!(state.get_input_text(), "hello\nworld");
+
+    state.set_input_text("replaced");
+    assert_eq!(state.get_input_text(), "replaced");
+}
+
+#[test]
+fn set_input_text_with_empty_clears_input() {
+    let mut state = AppState::new();
+    state.set_input_text("something");
+    state.set_input_text("");
+    assert_eq!(state.get_input_text(), "");
+}
+
+#[test]
 fn app_state_tick_animation_increments() {
     let mut state = AppState::new();
     let initial = state.animation_frame;

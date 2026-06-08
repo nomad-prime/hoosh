@@ -28,7 +28,7 @@ pub async fn run_event_loop(
 
         process_agent_events(app, &mut context).await;
 
-        cleanup_finished_task(&mut agent_task);
+        cleanup_finished_task(&mut agent_task, app);
 
         app.tick_animation();
 
@@ -145,6 +145,7 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
             clear_conversation(app, context).await;
         }
         AgentEvent::DebugMessage(msg) => {
+            tracing::debug!(target: "hoosh::agent", "{}", msg);
             if console().verbosity() >= VerbosityLevel::Debug {
                 app.add_debug_message(msg);
             }
@@ -202,7 +203,8 @@ fn process_handler_result(
                 app.hide_approval_dialog();
                 app.hide_tool_permission_dialog();
                 app.clear_active_tool_calls();
-                app.add_status_message("Task cancelled by user (press Ctrl+C again to quit)\n");
+                app.add_status_message("Task cancelled by user\n");
+                super::app_loop::restore_cancelled_prompt(app);
             }
             app.should_cancel_task = false;
             true
@@ -232,10 +234,11 @@ async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) 
     app.add_status_message("Conversation cleared.");
 }
 
-fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>) {
+fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>, app: &mut AppState) {
     if let Some(task) = agent_task
         && task.is_finished()
     {
         *agent_task = None;
+        app.last_submitted_input = None;
     }
 }

@@ -85,7 +85,7 @@ pub async fn run_event_loop(
 
         process_agent_events(app, &mut context).await;
 
-        cleanup_finished_task(&mut agent_task);
+        cleanup_finished_task(&mut agent_task, app);
 
         app.tick_animation();
 
@@ -153,6 +153,7 @@ async fn handle_agent_event(app: &mut AppState, event: AgentEvent, context: &mut
             clear_conversation(app, context).await;
         }
         AgentEvent::DebugMessage(msg) => {
+            tracing::debug!(target: "hoosh::agent", "{}", msg);
             if console().verbosity() >= VerbosityLevel::Debug {
                 app.add_debug_message(msg);
             }
@@ -210,7 +211,8 @@ fn process_handler_result(
                 app.hide_approval_dialog();
                 app.hide_tool_permission_dialog();
                 app.clear_active_tool_calls();
-                app.add_status_message("Task cancelled by user (press Ctrl+C again to quit)\n");
+                app.add_status_message("Task cancelled by user\n");
+                restore_cancelled_prompt(app);
             }
             app.should_cancel_task = false;
             true
@@ -223,6 +225,16 @@ fn process_handler_result(
             *agent_task = Some(answer(input, context));
             true
         }
+    }
+}
+
+/// Put the prompt that started the cancelled turn back into the input buffer,
+/// but only if the user hasn't already started typing something new.
+pub(crate) fn restore_cancelled_prompt(app: &mut AppState) {
+    if let Some(prompt) = app.last_submitted_input.take()
+        && app.get_input_text().is_empty()
+    {
+        app.set_input_text(&prompt);
     }
 }
 
@@ -240,10 +252,49 @@ async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) 
     app.add_status_message("Conversation cleared.");
 }
 
-fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>) {
+fn cleanup_finished_task(agent_task: &mut Option<JoinHandle<()>>, app: &mut AppState) {
     if let Some(task) = agent_task
         && task.is_finished()
     {
         *agent_task = None;
+        // Turn ended naturally — drop the snapshot so a later idle Ctrl+C
+        // doesn't restore a prompt that already ran.
+        app.last_submitted_input = None;
+    }
+}
+
+#[cfg(test)]
+mod restore_tests {
+    use super::*;
+
+    #[test]
+    fn restore_puts_prompt_back_when_input_is_empty() {
+        let mut app = AppState::new();
+        app.last_submitted_input = Some("hello world".to_string());
+
+        restore_cancelled_prompt(&mut app);
+
+        assert_eq!(app.get_input_text(), "hello world");
+        assert!(app.last_submitted_input.is_none());
+    }
+
+    #[test]
+    fn restore_leaves_input_alone_when_user_already_typed() {
+        let mut app = AppState::new();
+        app.last_submitted_input = Some("original".to_string());
+        app.set_input_text("user is typing something new");
+
+        restore_cancelled_prompt(&mut app);
+
+        assert_eq!(app.get_input_text(), "user is typing something new");
+        // Snapshot is still consumed — we don't want it to leak into a later cancel.
+        assert!(app.last_submitted_input.is_none());
+    }
+
+    #[test]
+    fn restore_with_no_snapshot_is_noop() {
+        let mut app = AppState::new();
+        restore_cancelled_prompt(&mut app);
+        assert_eq!(app.get_input_text(), "");
     }
 }

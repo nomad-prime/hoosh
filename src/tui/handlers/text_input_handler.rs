@@ -30,6 +30,10 @@ impl InputHandler for TextInputHandler {
             return KeyHandlerResult::NotHandled;
         };
 
+        // Any input keypress means the user is back at work — disarm quit so
+        // a stray Ctrl+C after a cancel doesn't exit unexpectedly.
+        app.quit_armed = false;
+
         match key_event.code {
             KeyCode::BackTab => {
                 // Shift+Tab toggles autopilot mode

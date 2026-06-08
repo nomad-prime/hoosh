@@ -186,6 +186,13 @@ pub struct AppState {
     pub agent_state: AgentState,
     pub should_quit: bool,
     pub should_cancel_task: bool,
+    /// Snapshot of the prompt that started the current agent turn.
+    /// Restored into the input buffer if the turn is cancelled, so the user
+    /// doesn't have to retype. Cleared when the turn completes naturally.
+    pub last_submitted_input: Option<String>,
+    /// True after a cancel or an idle Ctrl+C with empty input — next Ctrl+C
+    /// exits the app even if input is non-empty. Cleared on any other keypress.
+    pub quit_armed: bool,
     pub max_messages: usize,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
@@ -232,6 +239,8 @@ impl AppState {
             agent_state: AgentState::Idle,
             should_quit: false,
             should_cancel_task: false,
+            last_submitted_input: None,
+            quit_armed: false,
             max_messages: 100_000,
             completion_state: None,
             completers: Vec::new(),
@@ -787,6 +796,19 @@ impl AppState {
             .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         // Remove the underline from the cursor line
         self.input.set_cursor_line_style(Style::default());
+    }
+
+    /// Replace the current input buffer with `text`, preserving line breaks
+    /// and leaving the cursor at the end. Used to restore a cancelled prompt.
+    pub fn set_input_text(&mut self, text: &str) {
+        self.clear_input();
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            self.input.insert_str(line);
+            if i < lines.len() - 1 {
+                self.input.insert_newline();
+            }
+        }
     }
 
     pub fn create_attachment(&mut self, content: String) -> Result<usize> {
