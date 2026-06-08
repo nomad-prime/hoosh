@@ -72,9 +72,43 @@ Two-track:
 
 Suggest shipping in tier order. Tier 1 is 1-2 days total; gets immediate user-visible improvement. Tier 2 is the trust + UX foundation needed before plan-mode is worth building. Tier 3 is where hoosh starts pulling ahead.
 
-## Progress
+---
 
-- **Tier 1.1** Ctrl+C / Esc cancel + prompt restore — shipped `bf1682f`
-- **Tier 1.2** File-based logging with rotation — shipped `bf1682f`
-- **Tier 1.3** Runtime `/backend` + `/model` switch + slash-only-at-start — shipped `d563c71`
-- **Tier 1.4** Folded into 2.1 (no separate tool needed)
+## Progress (newest first)
+
+- **2.5 Queue messages mid-flight** — shipped `fce6ae8`; queue indicator above input shipped `2db95e6`; emoji purge `54363d3`
+- **2.2 Tool-call recovery on crash** — shipped `fce6ae8`. `Conversation::sanitize_orphan_tool_calls` drops orphans instead of synthesising fake results; storage rewrite via `ConversationStorage::rewrite_messages` makes drops survive reload
+- **2.1 Permission leaks + read-only-network class** — shipped `f550eda`. `NetworkReadPattern` (`net:read`), `cd:outside` detection in `BashTool::describe_permission`, `SubshellPattern` no longer offers project-wide trust (`allow_project_wide_trust` flag propagated through `CommandPatternResult` → `ToolPermissionDescriptor` → dialog)
+- **1.4** Folded into 2.1 — no separate WebFetch tool
+- **1.3 Runtime `/backend` + `/model` switch** + slash-only-at-start — shipped `d563c71`
+- **1.2 File-based logging** with rotation — shipped `bf1682f`. `~/Library/Application Support/hoosh/logs/` on macOS, `~/.config/hoosh/logs/` on Linux. Level via `HOOSH_LOG`/`RUST_LOG`
+- **1.1 Ctrl+C / Esc cancel** + prompt restore — shipped `bf1682f`
+
+## Remaining must-ships
+
+- **2.3 Cancel-midflight UX polish** — partial spinner/cursor cleanup. Small (~1-2h). Probably the next pick.
+- **2.4 Warm-up / pre-approve at session start** — pairs naturally with 3.1 plan-mode; defer until plan-mode design is firmer.
+- **3.1 Plan → autopilot toggle** — the wedge. Bundle with 2.4.
+- **3.2 Parallel tool calls** — biggest perceived-speed win; bigger lift (permission serialization, output ordering, half-batch cancel, resource caps).
+- **3.3 Image input / screenshot support** — highest "wait it can't do that?" moment for new users.
+
+---
+
+## Resume prompt — read this if you're picking up cold
+
+You're continuing work on `docs/COMPETITOR_GAPS.md`. The user explicitly chose this roadmap and has been driving picks one item at a time. The pattern that's been working:
+
+1. **Understand existing code before touching it.** The user has corrected me twice for almost-redeveloping things that already exist. Before any new pattern/handler/component, grep for what's already there. Tier 2.1 was mostly tightening existing patterns, not new ones.
+2. **Reproducer tests first** when the user reports "X is broken." Several reported bugs turned out to already be fixed (e.g. pipe-to-file leak from ISSUES.md). Don't trust the bug report over the code.
+3. **No emojis in hoosh UI, ever.** Memory file: `feedback_no_emojis_in_hoosh_ui.md`. Use Unicode geometric shapes (○ ◐ ● ⎿) or plain text. Look at `TodoListComponent` for the right vocabulary.
+4. **Verify in tmux before commit.** The user explicitly asked for live verification and caught a hallucinated capability ("did you actually ask hoosh what model it sees?"). Don't claim things work without observing them.
+5. **Commit after user confirms.** Pipeline: `cargo fmt && cargo clippy --all-targets && cargo test`. All must be green. Push only after the user says "go ahead" or equivalent.
+6. **Slash commands**: only fire when input is empty (start of prompt). Implemented via `Completer::should_trigger`.
+7. **The three event loops** (`app_loop.rs`, `app_loop_inline.rs`, `app_loop_fullview.rs`) duplicate a lot — every change to one needs the same in the other two. Helpers go in `app_loop.rs` as `pub(crate)`, called from siblings.
+
+**Where the user is likely to want to start**: Tier 2.3 (cancel UX polish) — it's small and they've mentioned the cancel state feels rough. Or jump to 3.2 (parallel tool calls) for impact. Ask before assuming.
+
+**Key files for the most likely next item (2.3)**: `src/tui/handlers/quit_handler.rs`, `src/tui/app_loop.rs` (the `ShouldCancelTask` branch — there are three copies across the loops), `src/agent/core.rs` (where streaming lives — find what doesn't shut down cleanly on cancel).
+
+**Threat model reminder** from `CLAUDE.md`: hoosh isn't sandboxed at the OS level. Permission system is for "confused agent," not malicious input. Don't add defenses that pretend otherwise.
+
