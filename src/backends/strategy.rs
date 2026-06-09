@@ -4,6 +4,27 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
+/// Format a retry delay in a way that reads naturally in the TUI status line.
+/// Whole seconds render as `2s`; minute-scale waits as `2m 5s`; sub-second
+/// values as `500ms`.
+fn format_duration(d: Duration) -> String {
+    let total_ms = d.as_millis();
+    if total_ms < 1000 {
+        return format!("{}ms", total_ms);
+    }
+    let total_secs = d.as_secs();
+    if total_secs < 60 {
+        return format!("{}s", total_secs);
+    }
+    let m = total_secs / 60;
+    let s = total_secs % 60;
+    if s == 0 {
+        format!("{}m", m)
+    } else {
+        format!("{}m {}s", m, s)
+    }
+}
+
 pub struct RetryStrategy {
     pub max_attempts: u32,
     pub operation_name: String,
@@ -69,11 +90,14 @@ impl RetryStrategy {
                         delay
                     };
 
+                    // Display the number of the attempt we're about to make,
+                    // not the count of failures so far. With max_attempts=3 the
+                    // user now sees 2/3 → 3/3 with no apparent gap.
                     let retry_message = format!(
-                        "{}. Retrying in {:?}... (Attempt {}/{})",
+                        "{}. Retrying in {}... (Attempt {}/{})",
                         e.short_message(),
-                        actual_delay,
-                        attempts,
+                        format_duration(actual_delay),
+                        attempts + 1,
                         self.max_attempts
                     );
 
@@ -173,6 +197,56 @@ mod tests {
         }
         // No retry events should be sent for non-retryable errors on first attempt
         assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn format_duration_renders_natural_units() {
+        assert_eq!(format_duration(Duration::from_millis(250)), "250ms");
+        assert_eq!(format_duration(Duration::from_secs(1)), "1s");
+        assert_eq!(format_duration(Duration::from_secs(30)), "30s");
+        assert_eq!(format_duration(Duration::from_secs(60)), "1m");
+        assert_eq!(format_duration(Duration::from_secs(125)), "2m 5s");
+    }
+
+    #[tokio::test]
+    async fn retry_message_counts_the_upcoming_attempt() {
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let attempt_count = AtomicU32::new(0);
+
+        let strategy = RetryStrategy::new(3, "op".to_string(), Some(event_tx));
+        let _ = strategy
+            .execute(|| async {
+                attempt_count.fetch_add(1, Ordering::SeqCst);
+                Err::<String, _>(LlmError::RateLimit {
+                    retry_after: None,
+                    message: "rate limited".to_string(),
+                })
+            })
+            .await;
+
+        // 2 in-flight retry events (attempts 2/3 and 3/3) + 1 terminal failure
+        let mut msgs = Vec::new();
+        while let Ok(event) = event_rx.try_recv() {
+            if let AgentEvent::RetryEvent { message, .. } = event {
+                msgs.push(message);
+            }
+        }
+        assert_eq!(msgs.len(), 3, "got {msgs:?}");
+        assert!(
+            msgs[0].contains("Attempt 2/3"),
+            "first retry should announce upcoming attempt #2, got {:?}",
+            msgs[0]
+        );
+        assert!(
+            msgs[1].contains("Attempt 3/3"),
+            "second retry should announce upcoming attempt #3, got {:?}",
+            msgs[1]
+        );
+        assert!(
+            msgs[2].contains("failed after 3 attempts"),
+            "terminal message should report 3 attempts, got {:?}",
+            msgs[2]
+        );
     }
 
     #[tokio::test]

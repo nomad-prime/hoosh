@@ -29,3 +29,22 @@ impl TextAttachment {
         self.content = content;
     }
 }
+
+/// An image pasted from the clipboard, sitting in the input draft until the
+/// user submits it. PNG-encoded so backends can ship it directly.
+#[derive(Clone, Debug)]
+pub struct ImageAttachment {
+    pub id: usize,
+    pub media_type: String,
+    pub data: Vec<u8>,
+}
+
+impl ImageAttachment {
+    pub fn new(id: usize, media_type: String, data: Vec<u8>) -> Self {
+        Self {
+            id,
+            media_type,
+            data,
+        }
+    }
+}

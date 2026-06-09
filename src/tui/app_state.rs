@@ -1,6 +1,6 @@
 use super::clipboard::ClipboardManager;
 use super::events::AgentState;
-use super::input::{PasteDetector, TextArea, TextAttachment};
+use super::input::{ImageAttachment, PasteDetector, TextArea, TextAttachment};
 use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
@@ -220,6 +220,8 @@ pub struct AppState {
     pub vertical_scroll_viewport_length: usize,
     pub attachments: Vec<TextAttachment>,
     pub next_attachment_id: usize,
+    pub image_attachments: Vec<ImageAttachment>,
+    pub next_image_attachment_id: usize,
     pub input_mode: InputMode,
     pub attachment_view: Option<AttachmentViewState>,
     pub paste_detector: PasteDetector,
@@ -284,6 +286,8 @@ impl AppState {
             vertical_scroll_viewport_length: 0,
             attachments: Vec::new(),
             next_attachment_id: 1,
+            image_attachments: Vec::new(),
+            next_image_attachment_id: 1,
             input_mode: InputMode::Normal,
             attachment_view: None,
             paste_detector: PasteDetector::new(),
@@ -873,6 +877,34 @@ impl AppState {
     pub fn clear_attachments(&mut self) {
         self.attachments.clear();
         self.next_attachment_id = 1;
+        self.image_attachments.clear();
+        self.next_image_attachment_id = 1;
+    }
+
+    /// Park a pasted image on the draft. Returns the assigned id so the caller
+    /// can insert the matching `[pasted image-N]` marker into the input.
+    pub fn add_image_attachment(&mut self, data: Vec<u8>, media_type: String) -> usize {
+        let id = self.next_image_attachment_id;
+        self.next_image_attachment_id += 1;
+        self.image_attachments
+            .push(ImageAttachment::new(id, media_type, data));
+        id
+    }
+
+    /// Drain the image attachments queued by the user, converting them to
+    /// [`crate::agent::Attachment`] for the conversation.
+    pub fn drain_image_attachments(&mut self) -> Vec<crate::agent::Attachment> {
+        let out = self
+            .image_attachments
+            .drain(..)
+            .map(|att| crate::agent::Attachment {
+                kind: crate::agent::AttachmentKind::Image,
+                media_type: att.media_type,
+                data: att.data,
+            })
+            .collect();
+        self.next_image_attachment_id = 1;
+        out
     }
 
     pub fn get_attachment(&self, id: usize) -> Option<&TextAttachment> {
@@ -902,6 +934,46 @@ impl Default for AppState {
 #[cfg(test)]
 #[path = "app_state_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod image_attachment_tests {
+    use super::*;
+    use crate::agent::AttachmentKind;
+
+    #[test]
+    fn image_attachment_assigns_sequential_ids() {
+        let mut state = AppState::new();
+        let id1 = state.add_image_attachment(vec![1, 2, 3], "image/png".to_string());
+        let id2 = state.add_image_attachment(vec![4, 5, 6], "image/jpeg".to_string());
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        assert_eq!(state.image_attachments.len(), 2);
+    }
+
+    #[test]
+    fn drain_image_attachments_yields_conversation_attachments() {
+        let mut state = AppState::new();
+        state.add_image_attachment(vec![1, 2, 3], "image/png".to_string());
+        state.add_image_attachment(vec![4, 5], "image/jpeg".to_string());
+
+        let out = state.drain_image_attachments();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].kind, AttachmentKind::Image);
+        assert_eq!(out[0].media_type, "image/png");
+        assert_eq!(out[0].data, vec![1, 2, 3]);
+        assert!(state.image_attachments.is_empty());
+        assert_eq!(state.next_image_attachment_id, 1);
+    }
+
+    #[test]
+    fn clear_attachments_also_wipes_images() {
+        let mut state = AppState::new();
+        state.add_image_attachment(vec![1], "image/png".to_string());
+        state.clear_attachments();
+        assert!(state.image_attachments.is_empty());
+        assert_eq!(state.next_image_attachment_id, 1);
+    }
+}
 
 #[cfg(test)]
 mod attachment_tests {

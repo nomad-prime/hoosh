@@ -199,6 +199,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         });
 
         let pressure = manager.get_token_pressure(&conversation);
@@ -222,6 +223,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         });
 
         assert!(manager.should_warn_about_pressure(&conversation));
@@ -306,6 +308,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         });
 
         // Apply strategies
@@ -353,6 +356,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         });
 
         // Apply strategies

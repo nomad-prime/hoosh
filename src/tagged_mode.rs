@@ -130,13 +130,13 @@ pub async fn run_tagged_mode(
         return Ok(());
     }
 
-    // Expand message with parser
-    let expanded_input = event_loop_context
+    // Expand message with parser (text + image attachments)
+    let (expanded_input, attachments) = event_loop_context
         .system_resources
         .parser
-        .expand_message(&input)
+        .expand_message_with_attachments(&input)
         .await
-        .unwrap_or_else(|_| input.to_string());
+        .unwrap_or_else(|_| (input.to_string(), Vec::new()));
 
     let memory_manager = event_loop_context
         .runtime
@@ -168,7 +168,7 @@ pub async fn run_tagged_mode(
             conv.add_system_message(content);
         }
 
-        conv.add_user_message(expanded_input.clone());
+        conv.add_user_message_with_attachments(expanded_input.clone(), attachments);
     }
 
     // Create agent

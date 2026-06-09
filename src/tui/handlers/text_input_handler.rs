@@ -40,7 +40,13 @@ impl InputHandler for TextInputHandler {
                 app.toggle_autopilot();
             }
             KeyCode::Char('v') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                if let Ok(text) = app.clipboard.get_text() {
+                // Prefer image on the clipboard. Falls back to text when the
+                // clipboard has no image (the common case).
+                if let Ok((png, media_type)) = app.clipboard.get_image_png() {
+                    let id = app.add_image_attachment(png, media_type.to_string());
+                    let marker = format!("[pasted image-{}]", id);
+                    app.input.insert_str(&marker);
+                } else if let Ok(text) = app.clipboard.get_text() {
                     let lines: Vec<&str> = text.lines().collect();
                     for (i, line) in lines.iter().enumerate() {
                         app.input.insert_str(line);

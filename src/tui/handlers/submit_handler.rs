@@ -55,6 +55,11 @@ impl InputHandler for SubmitHandler {
 
         app.add_user_input(&expanded_input);
         app.prompt_history.add(expanded_input.clone());
+
+        // Drain any clipboard-pasted image attachments before clear_attachments
+        // wipes them. These travel with the prompt to the agent.
+        let image_attachments = app.drain_image_attachments();
+
         app.clear_input();
         app.clear_attachments();
         app.quit_armed = false;
@@ -65,7 +70,10 @@ impl InputHandler for SubmitHandler {
             KeyHandlerResult::StartCommand(expanded_input)
         } else {
             app.last_submitted_input = Some(expanded_input.clone());
-            KeyHandlerResult::StartConversation(expanded_input)
+            KeyHandlerResult::StartConversation {
+                input: expanded_input,
+                image_attachments,
+            }
         }
     }
 }
@@ -90,7 +98,10 @@ mod tests {
         app.set_input_text("hello world");
         let mut h = SubmitHandler::new();
         let r = h.handle_event(&enter_event(), &mut app, false).await;
-        assert!(matches!(r, KeyHandlerResult::StartConversation(ref s) if s == "hello world"));
+        assert!(matches!(
+            r,
+            KeyHandlerResult::StartConversation { ref input, .. } if input == "hello world"
+        ));
         assert_eq!(app.get_input_text(), "");
         assert!(app.queued_prompts.is_empty());
         assert_eq!(app.last_submitted_input.as_deref(), Some("hello world"));

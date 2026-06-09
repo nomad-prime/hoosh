@@ -35,6 +35,9 @@ pub async fn handle_agent(
         if resume.is_some() {
             anyhow::bail!("--no-session-persistence cannot be combined with --resume");
         }
+        if continue_last {
+            anyhow::bail!("--no-session-persistence cannot be combined with --continue");
+        }
         if name.is_some() {
             anyhow::bail!("--no-session-persistence cannot be combined with --name");
         }

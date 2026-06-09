@@ -74,6 +74,14 @@ pub trait LlmBackend: Send + Sync {
         None
     }
 
+    /// Whether the backend's currently configured model accepts image input.
+    /// Defaults to false — backends override when they can resolve the answer
+    /// from their own model catalogue (hardcoded for Anthropic, /models for
+    /// OpenAI-compatible/OpenRouter, /api/show for Ollama, etc.).
+    async fn supports_images(&self) -> bool {
+        false
+    }
+
     async fn send_message_with_events(
         &self,
         message: &str,

@@ -15,6 +15,38 @@ pub struct ConversationMessage {
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AttachmentKind {
+    Image,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Attachment {
+    pub kind: AttachmentKind,
+    /// IANA media type, e.g. "image/png", "image/jpeg".
+    pub media_type: String,
+    /// Raw bytes. Serialized as base64 in JSONL.
+    #[serde(with = "base64_bytes")]
+    pub data: Vec<u8>,
+}
+
+mod base64_bytes {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&STANDARD.encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let s = String::deserialize(d)?;
+        STANDARD.decode(s).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +127,7 @@ impl ToolCallResponse {
             tool_calls: None,
             tool_call_id: Some(self.tool_call_id.clone()),
             name: Some(self.tool_name.clone()),
+            attachments: Vec::new(),
         }
     }
 }
@@ -175,18 +208,28 @@ impl Conversation {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         };
         self.messages.push(message.clone());
         self.persist_message(&message);
     }
 
     pub fn add_user_message(&mut self, content: String) {
+        self.add_user_message_with_attachments(content, Vec::new());
+    }
+
+    pub fn add_user_message_with_attachments(
+        &mut self,
+        content: String,
+        attachments: Vec<Attachment>,
+    ) {
         let message = ConversationMessage {
             role: "user".to_string(),
             content: Some(content),
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments,
         };
         self.messages.push(message.clone());
         self.persist_message(&message);
@@ -203,6 +246,7 @@ impl Conversation {
             tool_calls,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         };
         self.messages.push(message.clone());
         self.persist_message(&message);
@@ -395,6 +439,7 @@ impl Conversation {
                         tool_calls: None,
                         tool_call_id: Some(id),
                         name: Some(name),
+                        attachments: Vec::new(),
                     };
                     self.messages.insert(insert_at, msg);
                     insert_at += 1;
@@ -998,6 +1043,7 @@ mod tests {
             }]),
             tool_call_id: None,
             name: Some("assistant_name".to_string()), // 14 bytes
+            attachments: Vec::new(),
         };
 
         conversation.messages.push(msg);

@@ -25,6 +25,7 @@ async fn test_token_pressure_reflects_conversation_size() {
         tool_calls: None,
         tool_call_id: None,
         name: None,
+        attachments: Vec::new(),
     });
 
     // Pressure should be ~25% (25K / 100K)
@@ -42,6 +43,7 @@ async fn test_token_pressure_reflects_conversation_size() {
         tool_calls: None,
         tool_call_id: None,
         name: None,
+        attachments: Vec::new(),
     });
 
     // Pressure should be ~75% (75K / 100K)
@@ -112,6 +114,7 @@ async fn test_strategy_execution_order() {
             }]),
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         });
 
         // Add tool result message with large content
@@ -125,6 +128,7 @@ async fn test_strategy_execution_order() {
             tool_calls: None,
             tool_call_id: Some(format!("call_{}", i)),
             name: Some("test_tool".to_string()),
+            attachments: Vec::new(),
         });
     }
 
@@ -211,6 +215,7 @@ async fn test_pressure_recalculation_after_compression() {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -291,6 +296,7 @@ fn test_token_estimation_with_tool_calls() {
         }]),
         tool_call_id: None,
         name: None,
+        attachments: Vec::new(),
     });
 
     let estimated_tokens = conversation.estimate_token();

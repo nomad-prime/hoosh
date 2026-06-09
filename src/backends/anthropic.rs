@@ -62,6 +62,9 @@ enum ContentBlock {
     Text {
         text: String,
     },
+    Image {
+        source: ImageSource,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -71,6 +74,14 @@ enum ContentBlock {
         tool_use_id: String,
         content: String,
     },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ImageSource {
+    #[serde(rename = "type")]
+    source_type: String,
+    media_type: String,
+    data: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,6 +180,33 @@ impl AnthropicBackend {
                         tool_use_id: tool_call_id.clone(),
                         content: msg.content.clone().unwrap_or_default(),
                     }];
+                    AnthropicContent::Blocks(blocks)
+                } else if !msg.attachments.is_empty() {
+                    // User message with image attachments: emit image blocks
+                    // alongside the text. Anthropic expects images to come
+                    // *before* the related text per their best-practice docs.
+                    let mut blocks: Vec<ContentBlock> = Vec::new();
+                    for att in &msg.attachments {
+                        match att.kind {
+                            crate::agent::AttachmentKind::Image => {
+                                blocks.push(ContentBlock::Image {
+                                    source: ImageSource {
+                                        source_type: "base64".to_string(),
+                                        media_type: att.media_type.clone(),
+                                        data: base64::Engine::encode(
+                                            &base64::engine::general_purpose::STANDARD,
+                                            &att.data,
+                                        ),
+                                    },
+                                });
+                            }
+                        }
+                    }
+                    if let Some(text) = &msg.content
+                        && !text.is_empty()
+                    {
+                        blocks.push(ContentBlock::Text { text: text.clone() });
+                    }
                     AnthropicContent::Blocks(blocks)
                 } else {
                     // Regular text message
@@ -505,5 +543,79 @@ impl LlmBackend for AnthropicBackend {
             _ => return None,
         };
         Some(pricing)
+    }
+
+    async fn supports_images(&self) -> bool {
+        // All Claude 3+ models accept image input. Earlier names (claude-2,
+        // claude-instant) do not.
+        let m = self.config.model.as_str();
+        m.starts_with("claude-3")
+            || m.starts_with("claude-sonnet-")
+            || m.starts_with("claude-opus-")
+            || m.starts_with("claude-haiku-")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::{Attachment, AttachmentKind};
+
+    fn backend() -> AnthropicBackend {
+        AnthropicBackend::new(AnthropicConfig::default()).expect("backend")
+    }
+
+    #[test]
+    fn user_message_with_image_emits_image_block() {
+        let msg = ConversationMessage {
+            role: "user".to_string(),
+            content: Some("what is this?".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            attachments: vec![Attachment {
+                kind: AttachmentKind::Image,
+                media_type: "image/png".to_string(),
+                data: vec![0x89, 0x50, 0x4e, 0x47],
+            }],
+        };
+        let (_, msgs) = backend().convert_messages(&[msg]);
+        assert_eq!(msgs.len(), 1);
+        let AnthropicContent::Blocks(blocks) = &msgs[0].content else {
+            panic!("expected Blocks variant");
+        };
+        // image before text per Anthropic best practice
+        assert!(matches!(blocks[0], ContentBlock::Image { .. }));
+        assert!(matches!(blocks[1], ContentBlock::Text { .. }));
+        if let ContentBlock::Image { source } = &blocks[0] {
+            assert_eq!(source.source_type, "base64");
+            assert_eq!(source.media_type, "image/png");
+            // base64("\x89PNG") = "iVBORw=="
+            assert_eq!(source.data, "iVBORw==");
+        }
+    }
+
+    #[tokio::test]
+    async fn supports_images_for_modern_claude() {
+        let cases = [
+            ("claude-sonnet-4-5", true),
+            ("claude-haiku-4-5", true),
+            ("claude-opus-4-1", true),
+            ("claude-3-5-sonnet-20241022", true),
+            ("claude-2.1", false),
+            ("claude-instant-1.2", false),
+        ];
+        for (model, expected) in cases {
+            let cfg = AnthropicConfig {
+                model: model.to_string(),
+                ..AnthropicConfig::default()
+            };
+            let b = AnthropicBackend::new(cfg).expect("backend");
+            assert_eq!(
+                b.supports_images().await,
+                expected,
+                "model {model} expected supports_images={expected}"
+            );
+        }
     }
 }

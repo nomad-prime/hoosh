@@ -72,7 +72,11 @@ pub fn execute_command(input: String, event_loop_context: &EventLoopContext) {
     });
 }
 
-pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandle<()> {
+pub fn answer(
+    input: String,
+    image_attachments: Vec<crate::agent::Attachment>,
+    event_loop_context: &EventLoopContext,
+) -> JoinHandle<()> {
     let parser = Arc::clone(&event_loop_context.system_resources.parser);
     let conversation = Arc::clone(&event_loop_context.conversation_state.conversation);
     let backend = Arc::clone(&event_loop_context.system_resources.backend);
@@ -89,7 +93,11 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
 
     tokio::spawn(async move {
         let turn_start = SystemTime::now();
-        let expanded_input = parser.expand_message(&input).await.unwrap_or(input);
+        let (expanded_input, mut attachments) = parser
+            .expand_message_with_attachments(&input)
+            .await
+            .unwrap_or_else(|_| (input, Vec::new()));
+        attachments.extend(image_attachments);
 
         let mut conv = conversation.lock().await;
 
@@ -112,7 +120,7 @@ pub fn answer(input: String, event_loop_context: &EventLoopContext) -> JoinHandl
             conv.add_system_message(content);
         }
 
-        conv.add_user_message(expanded_input.clone());
+        conv.add_user_message_with_attachments(expanded_input.clone(), attachments);
 
         let agent = Agent::new(backend, tool_registry, tool_executor)
             .with_event_sender(event_tx.clone())

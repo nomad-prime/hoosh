@@ -100,6 +100,7 @@ async fn backend_handles_rate_limit_error() {
         config,
         default_executor,
         cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+        cached_supports_images: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -129,6 +130,7 @@ async fn backend_handles_server_error() {
         config,
         default_executor,
         cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+        cached_supports_images: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -157,6 +159,7 @@ async fn backend_handles_authentication_error() {
         config,
         default_executor,
         cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+        cached_supports_images: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -405,6 +408,7 @@ async fn backend_handles_multiple_retries_on_rate_limit() {
         config,
         default_executor,
         cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+        cached_supports_images: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     };
 
     let result = backend.send_message("test").await;
@@ -466,6 +470,55 @@ async fn backend_configuration_with_custom_values() {
 
     assert_eq!(backend.backend_name(), "custom");
     assert_eq!(backend.model_name(), "custom-model");
+}
+
+#[tokio::test]
+async fn wire_message_emits_content_parts_for_attachments() {
+    use crate::agent::{Attachment, AttachmentKind, ConversationMessage};
+
+    let msgs = vec![ConversationMessage {
+        role: "user".to_string(),
+        content: Some("what is this?".to_string()),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+        attachments: vec![Attachment {
+            kind: AttachmentKind::Image,
+            media_type: "image/png".to_string(),
+            data: vec![0x89, 0x50, 0x4e, 0x47],
+        }],
+    }];
+    let wire = to_openai_wire(&msgs);
+    let serialized = serde_json::to_value(&wire).unwrap();
+    let content = &serialized[0]["content"];
+    assert!(
+        content.is_array(),
+        "content should be an array, got {content}"
+    );
+    let parts = content.as_array().unwrap();
+    assert_eq!(parts[0]["type"], "text");
+    assert_eq!(parts[0]["text"], "what is this?");
+    assert_eq!(parts[1]["type"], "image_url");
+    let url = parts[1]["image_url"]["url"].as_str().unwrap();
+    assert!(url.starts_with("data:image/png;base64,"));
+    assert!(url.ends_with("iVBORw=="));
+}
+
+#[tokio::test]
+async fn wire_message_keeps_string_content_when_no_attachments() {
+    use crate::agent::ConversationMessage;
+
+    let msgs = vec![ConversationMessage {
+        role: "user".to_string(),
+        content: Some("hello".to_string()),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+        attachments: Vec::new(),
+    }];
+    let wire = to_openai_wire(&msgs);
+    let serialized = serde_json::to_value(&wire).unwrap();
+    assert_eq!(serialized[0]["content"], "hello");
 }
 
 #[tokio::test]

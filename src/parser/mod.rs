@@ -1,7 +1,25 @@
+use crate::agent::{Attachment, AttachmentKind};
 use crate::tools::{Tool, file_ops::ReadFileTool};
 use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::{Path, PathBuf};
+
+/// Image extensions that get attached instead of inlined.
+const IMAGE_EXTENSIONS: &[(&str, &str)] = &[
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("gif", "image/gif"),
+    ("webp", "image/webp"),
+];
+
+fn image_media_type(path: &str) -> Option<&'static str> {
+    let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
+    IMAGE_EXTENSIONS
+        .iter()
+        .find(|(e, _)| *e == ext)
+        .map(|(_, m)| *m)
+}
 
 #[derive(Debug, Clone)]
 pub struct FileReference {
@@ -132,17 +150,54 @@ impl MessageParser {
     }
 
     pub async fn expand_message(&self, message: &str) -> Result<String> {
+        let (expanded, _) = self.expand_message_with_attachments(message).await?;
+        Ok(expanded)
+    }
+
+    /// Like [`Self::expand_message`], but image-extension `@` refs (`.png`,
+    /// `.jpg`, ...) are read as bytes and returned as attachments. The text
+    /// reference is replaced by an `[image #N]` marker so the model still has
+    /// a positional anchor.
+    pub async fn expand_message_with_attachments(
+        &self,
+        message: &str,
+    ) -> Result<(String, Vec<Attachment>)> {
         let file_references = self.find_file_references(message)?;
 
         if file_references.is_empty() {
-            return Ok(message.to_string());
+            return Ok((message.to_string(), Vec::new()));
         }
 
         let mut expanded_message = message.to_string();
         let mut file_contents = Vec::new();
+        let mut attachments: Vec<Attachment> = Vec::new();
 
-        // Read all referenced files
         for file_ref in &file_references {
+            if let Some(media_type) = image_media_type(&file_ref.file_path) {
+                match self.read_image_bytes(&file_ref.file_path) {
+                    Ok(data) => {
+                        attachments.push(Attachment {
+                            kind: AttachmentKind::Image,
+                            media_type: media_type.to_string(),
+                            data,
+                        });
+                        let marker = format!("[image #{}]", attachments.len());
+                        // Replace the first occurrence of this @ref with the marker.
+                        if let Some(pos) = expanded_message.find(&file_ref.original_text) {
+                            expanded_message
+                                .replace_range(pos..pos + file_ref.original_text.len(), &marker);
+                        }
+                    }
+                    Err(e) => {
+                        file_contents.push(format!(
+                            "\n\n--- Error reading image {}: {}",
+                            file_ref.file_path, e
+                        ));
+                    }
+                }
+                continue;
+            }
+
             match self.read_file_reference(file_ref).await {
                 Ok(content) => {
                     let line_info = if let Some((start, end)) = file_ref.line_range {
@@ -169,12 +224,22 @@ impl MessageParser {
             }
         }
 
-        // Append file contents to the message
         for content in file_contents {
             expanded_message.push_str(&content);
         }
 
-        Ok(expanded_message)
+        Ok((expanded_message, attachments))
+    }
+
+    fn read_image_bytes(&self, file_path: &str) -> Result<Vec<u8>> {
+        let path = Path::new(file_path);
+        let full_path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.working_directory.join(path)
+        };
+        std::fs::read(&full_path)
+            .with_context(|| format!("Failed to read image at {}", full_path.display()))
     }
 
     pub fn validate_file_path(&self, file_path: &str) -> Result<PathBuf> {
@@ -290,6 +355,43 @@ mod tests {
         let expanded = parser.expand_message(message).await.unwrap();
         assert!(expanded.contains("Hello, World!"));
         assert!(expanded.contains("Content of test.txt:"));
+    }
+
+    #[tokio::test]
+    async fn image_ref_produces_attachment_and_marker() {
+        let temp_dir = tempdir().unwrap();
+        let png = temp_dir.path().join("shot.png");
+        let bytes = b"\x89PNG\r\n\x1a\nFAKE";
+        fs::write(&png, bytes).await.unwrap();
+
+        let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
+        let (expanded, attachments) = parser
+            .expand_message_with_attachments("describe @shot.png please")
+            .await
+            .unwrap();
+
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].kind, AttachmentKind::Image);
+        assert_eq!(attachments[0].media_type, "image/png");
+        assert_eq!(attachments[0].data, bytes);
+        assert!(expanded.contains("[image #1]"));
+        assert!(!expanded.contains("@shot.png"));
+    }
+
+    #[tokio::test]
+    async fn non_image_ref_still_inlines() {
+        let temp_dir = tempdir().unwrap();
+        let txt = temp_dir.path().join("notes.txt");
+        fs::write(&txt, "hello").await.unwrap();
+
+        let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
+        let (expanded, attachments) = parser
+            .expand_message_with_attachments("see @notes.txt")
+            .await
+            .unwrap();
+
+        assert!(attachments.is_empty());
+        assert!(expanded.contains("hello"));
     }
 
     #[test]

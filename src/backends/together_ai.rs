@@ -331,6 +331,7 @@ impl TogetherAiBackend {
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
+                attachments: Vec::new(),
             }],
             max_tokens: Some(8192),
             temperature: Some(0.7),

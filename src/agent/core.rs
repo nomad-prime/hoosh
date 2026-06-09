@@ -128,6 +128,24 @@ impl Agent {
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(AgentEvent::Thinking);
 
+        // Hard-fail before any backend traffic if the conversation carries
+        // attachments and the current backend can't accept them. Avoids the
+        // model receiving a placeholder marker without the actual image.
+        let has_attachments = conversation
+            .get_messages_for_api()
+            .iter()
+            .any(|m| !m.attachments.is_empty());
+        if has_attachments && !self.backend.supports_images().await {
+            let err = format!(
+                "Backend '{}' / model '{}' does not accept image input. \
+                 Switch to a multimodal backend (e.g. /backend anthropic) and retry.",
+                self.backend.backend_name(),
+                self.backend.model_name()
+            );
+            self.send_event(AgentEvent::Error(err.clone()));
+            anyhow::bail!(err);
+        }
+
         // Drop any orphan tool_calls left by a crash or interruption so the
         // model isn't fed synthetic "result" messages it never produced.
         conversation.sanitize_orphan_tool_calls();

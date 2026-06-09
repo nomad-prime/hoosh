@@ -14,7 +14,7 @@ Authored 2026-06-06. Updated 2026-06-07 after Tier 1 + 2.1 + 2.3 landed.
 | 1.2 | `--resume <id\|name>` flag | ✅ done | `717ae7d` — `--resume` accepts id or name, `conflicts_with` `--continue` |
 | 2.1 | Named sessions (`-n`/`--name`, `/rename`) | ✅ done | `b5ed673` + `9e05129` — `src/commands/rename_command.rs`, name persisted on Conversation |
 | 2.3 | Storage tri-mode + auto-gitignore | ✅ done | `b5ed673` — `src/storage/mode.rs` (260 lines, with tests) |
-| 3.x | `--no-session-persistence` per-invocation override | ⏳ recommended next | small addition (~30 min) |
+| 3.1 | `--no-session-persistence` per-invocation override | ✅ done | `src/cli/agent.rs` — flips `conversation_storage` → `Off` for the invocation; mutually exclusive with `--resume`/`--continue`/`--name`; JSON output yields `session_id: null` |
 | 2.2 | Session picker (interactive TUI) | ❌ explicitly deferred | named sessions cover most discovery; `hoosh conversations list \| fzf` is one pipe away |
 | 2.4 | Session branching (`/branch`, `--fork-session`) | ❌ explicitly deferred | power-user feature; revisit if hoosh ships plan mode |
 | 3.x | `--from-pr <n>`, picker key-binds, plan-mode auto-name, `/export`, retention sweep | future | not on the parity-for-September path |
@@ -60,29 +60,9 @@ All three landed (above). What's left is polish.
 
 ---
 
-## Remaining easy win
+## Tier 3.1 — done
 
-### 3.1 `--no-session-persistence` flag
-
-**What:** Per-invocation override that forces `conversation_storage = Off` for the duration of that single call, ignoring whatever the resolved config says.
-
-**Why:**
-- Scripted one-shots that shouldn't pollute the conversation store, even if global config has storage enabled
-- Cron-style jobs ("daily prompt: summarize last 24h logs") where the conversation is intentionally throwaway
-- Matches Claude's `--no-session-persistence` flag exactly, smooths the bridge-swap parity contract
-
-**Acceptance:**
-- `hoosh --mode tagged --no-session-persistence "text"` runs the prompt without writing to `.hoosh/conversations/` or the central store
-- Output (including `--output-format json`) reports `session_id: null`
-- Flag is incompatible with `--resume` and `--continue` (no prior thread to load; error cleanly)
-- Default behavior unchanged when flag absent
-
-**Implementation hints:**
-- Add to `src/cli/mod.rs` as `#[arg(long)] pub no_session_persistence: bool`
-- In `src/session.rs`, the existing `storage_enabled` derivation becomes `storage_enabled = config.conversation_storage.is_some_and(|m| m.is_enabled()) && !cli.no_session_persistence`
-- For `--output-format json`, surface `session_id: None` instead of the conv_id
-
-**Effort:** ~30 min
+`--no-session-persistence` lands in `src/cli/agent.rs`: when set, it overrides the resolved config's `conversation_storage` to `Off` for the duration of that invocation. Mutually exclusive with `--resume`, `--continue`, and `--name` (each errors with a clear message rather than silently no-op'ing). JSON output already routes `session_id: null` when storage is disabled, so the new flag composes with `--output-format json` for free. Default behavior is unchanged when the flag is absent.
 
 ---
 

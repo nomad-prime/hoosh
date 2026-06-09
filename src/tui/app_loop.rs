@@ -286,8 +286,11 @@ async fn process_handler_result(
             execute_command(input, context);
             true
         }
-        KeyHandlerResult::StartConversation(input) => {
-            *agent_task = Some(answer(input, context));
+        KeyHandlerResult::StartConversation {
+            input,
+            image_attachments,
+        } => {
+            *agent_task = Some(answer(input, image_attachments, context));
             true
         }
     }
@@ -418,7 +421,9 @@ pub(crate) fn start_next_queued_prompt(
         execute_command(next, context);
     } else {
         app.last_submitted_input = Some(next.clone());
-        *agent_task = Some(answer(next, context));
+        // Queued prompts never carry image attachments — those flow through
+        // the inline submit path. v1: keep the queue text-only.
+        *agent_task = Some(answer(next, Vec::new(), context));
     }
 }
 

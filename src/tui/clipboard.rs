@@ -30,6 +30,33 @@ impl ClipboardManager {
             Err(anyhow::anyhow!("Clipboard not available"))
         }
     }
+
+    /// Read an image off the system clipboard and PNG-encode it. Returns
+    /// `(png_bytes, "image/png")`. Returns Err when there is no image on the
+    /// clipboard or the encoder fails.
+    pub fn get_image_png(&mut self) -> Result<(Vec<u8>, &'static str)> {
+        let clipboard = self
+            .clipboard
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Clipboard not available"))?;
+        let img = clipboard
+            .get_image()
+            .map_err(|e| anyhow::anyhow!("No image on clipboard: {}", e))?;
+
+        let mut out: Vec<u8> = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut out, img.width as u32, img.height as u32);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder
+                .write_header()
+                .map_err(|e| anyhow::anyhow!("png header: {}", e))?;
+            writer
+                .write_image_data(&img.bytes)
+                .map_err(|e| anyhow::anyhow!("png data: {}", e))?;
+        }
+        Ok((out, "image/png"))
+    }
 }
 
 impl Default for ClipboardManager {

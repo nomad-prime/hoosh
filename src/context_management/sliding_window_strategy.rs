@@ -560,6 +560,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 name: Some("read_file".to_string()),
+                attachments: Vec::new(),
             });
         conversation.add_assistant_message(Some("done".to_string()), None);
 
@@ -624,6 +625,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 name: Some("read_file".to_string()),
+                attachments: Vec::new(),
             });
         conversation
             .messages
@@ -633,6 +635,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_2".to_string()),
                 name: Some("read_file".to_string()),
+                attachments: Vec::new(),
             });
         conversation.add_assistant_message(Some("done".to_string()), None);
 
@@ -692,6 +695,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("old_call".to_string()),
                 name: Some("old_tool".to_string()),
+                attachments: Vec::new(),
             });
         conversation.add_assistant_message(Some("old done".to_string()), None);
 
@@ -937,6 +941,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("old_call_1".to_string()),
                 name: Some("old_tool".to_string()),
+                attachments: Vec::new(),
             });
 
         // Add many recent messages
@@ -996,6 +1001,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("kept_call".to_string()),
                 name: Some("my_tool".to_string()),
+                attachments: Vec::new(),
             });
         conversation.add_assistant_message(Some("processed".to_string()), None);
 
@@ -1054,6 +1060,7 @@ mod tests {
                     tool_calls: None,
                     tool_call_id: Some(format!("call_{}", round)),
                     name: Some("operation".to_string()),
+                    attachments: Vec::new(),
                 });
             conversation.add_assistant_message(Some(format!("response-{}", round)), None);
         }
@@ -1114,6 +1121,7 @@ mod tests {
                     tool_calls: None,
                     tool_call_id: Some(format!("strict_call_{}", round)),
                     name: Some("tool".to_string()),
+                    attachments: Vec::new(),
                 });
         }
 

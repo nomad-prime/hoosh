@@ -410,8 +410,11 @@ async fn process_handler_result(
             execute_command(input, context);
             true
         }
-        KeyHandlerResult::StartConversation(input) => {
-            *agent_task = Some(answer(input, context));
+        KeyHandlerResult::StartConversation {
+            input,
+            image_attachments,
+        } => {
+            *agent_task = Some(answer(input, image_attachments, context));
             true
         }
     }

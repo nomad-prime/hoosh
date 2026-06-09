@@ -37,12 +37,13 @@ pub struct OpenAICompatibleBackend {
     config: OpenAICompatibleConfig,
     default_executor: RequestExecutor,
     cached_pricing: std::sync::Arc<tokio::sync::RwLock<Option<crate::backends::TokenPricing>>>,
+    cached_supports_images: std::sync::Arc<tokio::sync::RwLock<Option<bool>>>,
 }
 
 #[derive(Debug, Serialize)]
 struct ChatCompletionRequest {
     model: String,
-    messages: Vec<ConversationMessage>,
+    messages: Vec<OpenAIWireMessage>,
     max_completion_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
@@ -50,6 +51,87 @@ struct ChatCompletionRequest {
     tools: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<String>,
+}
+
+/// Wire-format message for the OpenAI / OpenRouter chat completions API. Mirrors
+/// [`ConversationMessage`] but the `content` field can be either a single
+/// string (text-only) or an array of typed parts (used when images are
+/// attached). We keep [`ConversationMessage`] as the in-memory representation
+/// and convert at send time.
+#[derive(Debug, Serialize)]
+struct OpenAIWireMessage {
+    role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<OpenAIContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum OpenAIContent {
+    Text(String),
+    Parts(Vec<OpenAIContentPart>),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+enum OpenAIContentPart {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image_url")]
+    ImageUrl { image_url: OpenAIImageUrl },
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAIImageUrl {
+    /// `data:<media_type>;base64,<payload>` for inline attachments.
+    url: String,
+}
+
+fn to_openai_wire(messages: &[ConversationMessage]) -> Vec<OpenAIWireMessage> {
+    messages
+        .iter()
+        .map(|m| {
+            let content = if !m.attachments.is_empty() {
+                let mut parts: Vec<OpenAIContentPart> = Vec::new();
+                if let Some(text) = &m.content
+                    && !text.is_empty()
+                {
+                    parts.push(OpenAIContentPart::Text { text: text.clone() });
+                }
+                for att in &m.attachments {
+                    match att.kind {
+                        crate::agent::AttachmentKind::Image => {
+                            let b64 = base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &att.data,
+                            );
+                            let url = format!("data:{};base64,{}", att.media_type, b64);
+                            parts.push(OpenAIContentPart::ImageUrl {
+                                image_url: OpenAIImageUrl { url },
+                            });
+                        }
+                    }
+                }
+                Some(OpenAIContent::Parts(parts))
+            } else {
+                m.content.clone().map(OpenAIContent::Text)
+            };
+
+            OpenAIWireMessage {
+                role: m.role.clone(),
+                content,
+                tool_calls: m.tool_calls.clone(),
+                tool_call_id: m.tool_call_id.clone(),
+                name: m.name.clone(),
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -118,12 +200,20 @@ struct ModelsResponse {
 struct ModelInfo {
     id: String,
     pricing: Option<ModelPricing>,
+    #[serde(default)]
+    architecture: Option<ModelArchitecture>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ModelPricing {
     prompt: Option<String>,
     completion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelArchitecture {
+    #[serde(default)]
+    input_modalities: Vec<String>,
 }
 
 impl OpenAICompatibleBackend {
@@ -157,10 +247,11 @@ impl OpenAICompatibleBackend {
             config,
             default_executor,
             cached_pricing: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+            cached_supports_images: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
         })
     }
 
-    async fn fetch_and_cache_pricing(&self) -> Result<()> {
+    async fn fetch_and_cache_model_info(&self) -> Result<()> {
         // Only fetch if pricing endpoint is configured
         let pricing_endpoint = match &self.config.pricing_endpoint {
             Some(endpoint) => endpoint,
@@ -186,11 +277,15 @@ impl OpenAICompatibleBackend {
             .await
             .context("Failed to parse models response")?;
 
-        if let Some(model_info) = models_response
+        let Some(model_info) = models_response
             .data
             .iter()
             .find(|m| m.id == self.config.model)
-            && let Some(pricing) = &model_info.pricing
+        else {
+            return Ok(());
+        };
+
+        if let Some(pricing) = &model_info.pricing
             && let (Some(prompt_str), Some(completion_str)) = (&pricing.prompt, &pricing.completion)
             && let (Ok(input_per_token), Ok(output_per_token)) =
                 (prompt_str.parse::<f64>(), completion_str.parse::<f64>())
@@ -203,6 +298,12 @@ impl OpenAICompatibleBackend {
 
             let mut cached = self.cached_pricing.write().await;
             *cached = Some(pricing_data);
+        }
+
+        if let Some(arch) = &model_info.architecture {
+            let supports = arch.input_modalities.iter().any(|m| m == "image");
+            let mut cached = self.cached_supports_images.write().await;
+            *cached = Some(supports);
         }
 
         Ok(())
@@ -449,9 +550,9 @@ impl OpenAICompatibleBackend {
     fn create_request(&self, message: &str) -> ChatCompletionRequest {
         ChatCompletionRequest {
             model: self.config.model.clone(),
-            messages: vec![ConversationMessage {
+            messages: vec![OpenAIWireMessage {
                 role: "user".to_string(),
-                content: Some(message.to_string()),
+                content: Some(OpenAIContent::Text(message.to_string())),
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
@@ -473,7 +574,7 @@ impl OpenAICompatibleBackend {
 
         ChatCompletionRequest {
             model: self.config.model.clone(),
-            messages: conversation.get_messages_for_api().clone(),
+            messages: to_openai_wire(conversation.get_messages_for_api()),
             max_completion_tokens: 4096,
             temperature: self.config.temperature,
             tools: if has_tools { Some(tool_schemas) } else { None },
@@ -520,9 +621,15 @@ impl LlmBackend for OpenAICompatibleBackend {
     }
 
     async fn initialize(&self) -> Result<()> {
-        // Fetch pricing at initialization if endpoint is configured
-        self.fetch_and_cache_pricing().await?;
+        // Fetch pricing + capability info at initialization if endpoint is configured
+        self.fetch_and_cache_model_info().await?;
         Ok(())
+    }
+
+    async fn supports_images(&self) -> bool {
+        // Discovered from the /models endpoint (OpenRouter/etc); falls back to
+        // false when no endpoint is configured or the model isn't listed.
+        self.cached_supports_images.read().await.unwrap_or(false)
     }
 
     fn pricing(&self) -> Option<crate::backends::TokenPricing> {
