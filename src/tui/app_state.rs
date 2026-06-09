@@ -242,6 +242,10 @@ pub fn format_inline_status(message: &str) -> String {
     format!("  ⎿  [{}]", body)
 }
 
+pub fn format_tool_continuation(content: &str) -> String {
+    format!("  ⎿ {}", content)
+}
+
 impl AppState {
     pub fn new() -> Self {
         let mut input = TextArea::default();
@@ -537,8 +541,7 @@ impl AppState {
             self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
 
             if let Some(summary) = &tool_call.result_summary {
-                self.add_message(format!("  ⎿  {}", summary));
-                self.add_message("\n".to_string());
+                self.add_message(format_tool_continuation(summary));
             }
 
             // Preview is now displayed immediately when ToolPreview event is received,
@@ -585,13 +588,10 @@ impl AppState {
                         tokens_formatted,
                         tool_call.elapsed_time()
                     );
-                    self.add_message(format!("  ⎿ {}", completion_text));
-                    self.add_message("\n".to_string());
+                    self.add_message(format_tool_continuation(&completion_text));
                 }
             } else if let Some(summary) = &tool_call.result_summary {
-                // For regular tools, show the result summary
-                self.add_message(format!("  ⎿  {}", summary));
-                self.add_message("\n".to_string());
+                self.add_message(format_tool_continuation(summary));
             }
 
             if let ToolCallStatus::Error(err) = &tool_call.status {

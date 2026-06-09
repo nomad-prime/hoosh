@@ -40,10 +40,6 @@ auto scrolling when dialogs open up in custom terminal has a limitation, lets se
 ### Permission Dialog when exploring
 currently does not pause the timer -> we have the methods in execution budget we should pause the timer, when user is in control
 
-### Doubled blank line between consecutive tool calls
-
-`add_tool_completion_header` emits a leading blank, and `complete_*_tool_calls` now emits a trailing blank after the `⎿` summary. When two tool calls land back-to-back, that's two blank lines between them. Either drop the leading blank (rely on the previous tool's trailing) or only emit the trailing one when the tool block is the last thing before the assistant's reply.
-
 ### Collapse parallel tool calls into a summary line
 
 When the agent fires several reads/greps in parallel, hoosh currently prints one full header per call (each with its own glyph + name + summary). Claude Code instead collapses them into a single line like `Searching for 3 patterns, reading 1 file… (ctrl+o to expand)` and tucks the per-call detail behind an expand toggle. We should do the same when N>1 same-class tool calls land in the same batch — group them by tool family (Read/Grep/Glob → "Searching"), show counts, and keep the individual entries collapsible.
