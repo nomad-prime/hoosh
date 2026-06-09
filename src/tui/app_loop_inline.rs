@@ -178,7 +178,7 @@ async fn handle_user_input(
         let result = context.runtime.input_handlers[i]
             .handle_event(event, app, agent_task_active)
             .await;
-        if process_handler_result(result, app, agent_task, context) {
+        if process_handler_result(result, app, agent_task, context).await {
             break;
         }
     }
@@ -186,7 +186,7 @@ async fn handle_user_input(
     Ok(())
 }
 
-fn process_handler_result(
+async fn process_handler_result(
     result: super::handler_result::KeyHandlerResult,
     app: &mut AppState,
     agent_task: &mut Option<JoinHandle<()>>,
@@ -205,24 +205,7 @@ fn process_handler_result(
             true
         }
         KeyHandlerResult::ShouldCancelTask => {
-            if let Some(task) = agent_task.take() {
-                task.abort();
-                app.agent_state = super::events::AgentState::Idle;
-                app.hide_approval_dialog();
-                app.hide_tool_permission_dialog();
-                app.clear_active_tool_calls();
-                app.add_status_message("Task cancelled by user\n");
-                let dropped = app.queued_prompts.len();
-                if dropped > 0 {
-                    app.queued_prompts.clear();
-                    app.add_status_message(&format!(
-                        "Dropped {dropped} queued prompt{}\n",
-                        if dropped == 1 { "" } else { "s" }
-                    ));
-                }
-                super::app_loop::restore_cancelled_prompt(app);
-            }
-            app.should_cancel_task = false;
+            super::app_loop::handle_cancel_task(app, agent_task, context).await;
             true
         }
         KeyHandlerResult::StartCommand(input) => {

@@ -225,6 +225,21 @@ pub struct AppState {
     pub paste_detector: PasteDetector,
 }
 
+/// Format a short status/error string as a `  ⎿  [lowercased message]` line.
+///
+/// Trims trailing punctuation/whitespace and lowercases the first character.
+/// Used by `add_status_message`, `add_error`, and friends so every `⎿` line
+/// shares the same shape.
+pub fn format_inline_status(message: &str) -> String {
+    let trimmed = message.trim().trim_end_matches(['.', '!', '\n']);
+    let mut chars = trimmed.chars();
+    let body = match chars.next() {
+        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    };
+    format!("  ⎿  [{}]", body)
+}
+
 impl AppState {
     pub fn new() -> Self {
         let mut input = TextArea::default();
@@ -760,12 +775,12 @@ impl AppState {
     }
 
     pub fn add_status_message(&mut self, message: &str) {
-        self.add_message(format!("  ⎿  {}", message));
+        self.add_message(format_inline_status(message));
     }
 
     pub fn add_error(&mut self, error: &str) {
         let styled_line = Line::from(Span::styled(
-            format!("  ⎿  {}", error),
+            format_inline_status(error),
             Style::default()
                 .fg(palette::DESTRUCTIVE)
                 .add_modifier(Modifier::ITALIC),
@@ -791,7 +806,7 @@ impl AppState {
 
     pub fn add_retry_failure(&mut self, message: &str) {
         let styled_line = Line::from(Span::styled(
-            format!("  ⎿  {}", message),
+            format_inline_status(message),
             Style::default()
                 .fg(palette::DESTRUCTIVE)
                 .add_modifier(Modifier::ITALIC),

@@ -105,6 +105,18 @@ pub struct Conversation {
     storage: Option<Arc<ConversationStorage>>,
 }
 
+/// Outcome of [`Conversation::cancel_in_flight_turn`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CancelKind {
+    /// Tools had already fired this turn. Synthetic `[cancelled by user]`
+    /// results were injected for each `orphan_ids` entry. The turn stays in
+    /// history.
+    Tool { orphan_ids: Vec<String> },
+    /// No tools fired — the trailing user message and any partial assistant
+    /// content were popped. The model never saw this turn.
+    Thinking,
+}
+
 impl Conversation {
     /// Create a new in-memory conversation without persistence
     /// Useful for testing or temporary conversations
@@ -319,6 +331,89 @@ impl Conversation {
         }
 
         None
+    }
+
+    /// Cancel the in-flight turn at user request.
+    ///
+    /// Two cases, distinguished by whether any tool calls have already fired
+    /// since the last user message:
+    ///
+    ///   - **Tool**: at least one assistant tool_calls message has been emitted.
+    ///     Tools have side effects; the turn stays in history. For every
+    ///     tool_call whose result hasn't arrived, inject a synthetic
+    ///     `[cancelled by user]` tool result so the next turn the model
+    ///     understands why those calls have no real output.
+    ///   - **Thinking**: no tools fired yet — the model was still thinking or
+    ///     streaming a plain reply. Pop everything after (and including) the
+    ///     last user message so the turn never happened from the model's POV.
+    ///
+    /// If the conversation has on-disk storage, the file is rewritten so the
+    /// change survives a reload.
+    pub fn cancel_in_flight_turn(&mut self) -> CancelKind {
+        let Some(user_idx) = self.messages.iter().rposition(|m| m.role == "user") else {
+            return CancelKind::Thinking;
+        };
+
+        let any_tools_fired = self.messages[user_idx + 1..]
+            .iter()
+            .any(|m| m.role == "assistant" && m.tool_calls.is_some());
+
+        let kind = if any_tools_fired {
+            let mut orphan_ids = Vec::new();
+            let assistant_indices: Vec<usize> = (user_idx + 1..self.messages.len())
+                .filter(|&i| {
+                    self.messages[i].role == "assistant" && self.messages[i].tool_calls.is_some()
+                })
+                .collect();
+
+            for asst_idx in assistant_indices.into_iter().rev() {
+                let expected: Vec<(String, String)> = self.messages[asst_idx]
+                    .tool_calls
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|tc| (tc.id.clone(), tc.function.name.clone()))
+                    .collect();
+
+                let mut found = std::collections::HashSet::new();
+                let mut insert_at = asst_idx + 1;
+                while insert_at < self.messages.len() && self.messages[insert_at].role == "tool" {
+                    if let Some(id) = &self.messages[insert_at].tool_call_id {
+                        found.insert(id.clone());
+                    }
+                    insert_at += 1;
+                }
+
+                for (id, name) in expected {
+                    if found.contains(&id) {
+                        continue;
+                    }
+                    orphan_ids.push(id.clone());
+                    let msg = ConversationMessage {
+                        role: "tool".to_string(),
+                        content: Some("[cancelled by user]".to_string()),
+                        tool_calls: None,
+                        tool_call_id: Some(id),
+                        name: Some(name),
+                    };
+                    self.messages.insert(insert_at, msg);
+                    insert_at += 1;
+                }
+            }
+            CancelKind::Tool { orphan_ids }
+        } else {
+            self.messages.truncate(user_idx);
+            CancelKind::Thinking
+        };
+
+        if let Some(storage) = &self.storage
+            && let Err(e) = storage.rewrite_messages(&self.metadata.id, &self.messages)
+        {
+            eprintln!("Warning: failed to rewrite cancelled conversation log: {e}");
+        }
+        self.metadata.message_count = self.messages.len();
+
+        kind
     }
 
     /// Sanitize orphan tool_calls left by a crash or interruption.
@@ -963,5 +1058,99 @@ mod tests {
         conversation.add_system_message("only one".to_string());
         conversation.clear_turn_history();
         assert_eq!(conversation.messages.len(), 1);
+    }
+
+    fn tc(id: &str, name: &str) -> ToolCall {
+        ToolCall {
+            id: id.to_string(),
+            r#type: "function".to_string(),
+            function: ToolFunction {
+                name: name.to_string(),
+                arguments: "{}".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn cancel_thinking_pops_trailing_user_when_no_tools_fired() {
+        let mut conv = Conversation::new();
+        conv.add_system_message("sys".to_string());
+        conv.add_user_message("first".to_string());
+        conv.add_assistant_message(Some("done".to_string()), None);
+        conv.add_user_message("second".to_string());
+
+        let kind = conv.cancel_in_flight_turn();
+        assert_eq!(kind, CancelKind::Thinking);
+        assert_eq!(conv.messages.len(), 3);
+        assert_eq!(conv.messages[2].role, "assistant");
+    }
+
+    #[test]
+    fn cancel_thinking_drops_partial_assistant_thoughts() {
+        let mut conv = Conversation::new();
+        conv.add_user_message("hello".to_string());
+        conv.add_assistant_message(Some("partial...".to_string()), None);
+
+        let kind = conv.cancel_in_flight_turn();
+        assert_eq!(kind, CancelKind::Thinking);
+        assert!(conv.messages.is_empty());
+    }
+
+    #[test]
+    fn cancel_tool_injects_synthetic_result_for_orphan() {
+        let mut conv = Conversation::new();
+        conv.add_user_message("run it".to_string());
+        conv.add_assistant_message(None, Some(vec![tc("call_1", "bash")]));
+
+        let kind = conv.cancel_in_flight_turn();
+        match kind {
+            CancelKind::Tool { orphan_ids } => {
+                assert_eq!(orphan_ids, vec!["call_1".to_string()]);
+            }
+            _ => panic!("expected Tool, got {kind:?}"),
+        }
+        assert_eq!(conv.messages.len(), 3);
+        let result = &conv.messages[2];
+        assert_eq!(result.role, "tool");
+        assert_eq!(result.tool_call_id.as_deref(), Some("call_1"));
+        assert_eq!(result.content.as_deref(), Some("[cancelled by user]"));
+    }
+
+    #[test]
+    fn cancel_tool_leaves_completed_results_alone() {
+        let mut conv = Conversation::new();
+        conv.add_user_message("run two".to_string());
+        conv.add_assistant_message(None, Some(vec![tc("call_1", "bash"), tc("call_2", "bash")]));
+        conv.add_tool_result(ToolCallResponse::success(
+            "call_1".to_string(),
+            "bash".to_string(),
+            "Bash".to_string(),
+            "ok".to_string(),
+        ));
+
+        let kind = conv.cancel_in_flight_turn();
+        match kind {
+            CancelKind::Tool { orphan_ids } => {
+                assert_eq!(orphan_ids, vec!["call_2".to_string()]);
+            }
+            _ => panic!("expected Tool"),
+        }
+        // user, assistant, tool(call_1=ok), tool(call_2=cancelled)
+        assert_eq!(conv.messages.len(), 4);
+        assert_eq!(conv.messages[2].content.as_deref(), Some("ok"));
+        assert_eq!(
+            conv.messages[3].content.as_deref(),
+            Some("[cancelled by user]")
+        );
+        assert_eq!(conv.messages[3].tool_call_id.as_deref(), Some("call_2"));
+    }
+
+    #[test]
+    fn cancel_with_no_user_message_is_thinking_noop() {
+        let mut conv = Conversation::new();
+        conv.add_system_message("sys".to_string());
+        let kind = conv.cancel_in_flight_turn();
+        assert_eq!(kind, CancelKind::Thinking);
+        assert_eq!(conv.messages.len(), 1);
     }
 }

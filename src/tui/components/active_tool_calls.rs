@@ -14,9 +14,7 @@ pub struct ActiveToolCallsComponent;
 // Full-height braille bar sweeping left-to-right across three cells. Each
 // transition between cells passes through a full-cell frame (⣿) so the bar
 // flows rather than hopping. Driven by AppState::animation_frame (~100ms tick).
-const EXECUTING_SWEEP: &[&str] = &[
-    "⡇  ", "⣿  ", "⢸⡇ ", " ⣿ ", " ⢸⡇", "  ⣿", "  ⢸", "   ",
-];
+const EXECUTING_SWEEP: &[&str] = &["⡇  ", "⣿  ", "⢸⡇ ", " ⣿ ", " ⢸⡇", "  ⣿", "  ⢸", "   "];
 
 impl Component for ActiveToolCallsComponent {
     type State = AppState;

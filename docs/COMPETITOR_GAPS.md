@@ -76,6 +76,11 @@ Suggest shipping in tier order. Tier 1 is 1-2 days total; gets immediate user-vi
 
 ## Progress (newest first)
 
+- **2.3 Cancel-midflight UX** — shipped this session. Two-mode cancel based on whether tools fired this turn:
+  - **Tool-cancel**: `Conversation::cancel_in_flight_turn` returns `CancelKind::Tool { orphan_ids }`, injects synthetic `[cancelled by user]` tool results for each orphan tool_call so the next turn the model knows what happened (fixes the "I didn't actually run them" hallucination). UI renders each in-flight tool as `● {name}` (red `DESTRUCTIVE` bullet) + `⎿  [cancelled by user]`. Prompt is **not** restored — the turn is consumed in history.
+  - **Thinking-cancel**: `CancelKind::Thinking` pops the trailing user message + any partial assistant content from the conversation (Claude-style "take back the turn"). UI shows `⎿  [retracted, not sent to agent]` in dimmed italic, prompt restored to input.
+  - Shared `pub(crate) async fn handle_cancel_task` in `app_loop.rs`; the three loop variants delegate via `process_handler_result` (now async).
+  - New `format_inline_status(msg)` helper produces `  ⎿  [lowercased msg]` — used by `add_status_message`, `add_error`, `add_retry_failure`, and the cancel-thinking site. All `⎿` lines now share one shape.
 - **3.2 Parallel tool calls** — shipped this session. `ToolExecutor::execute_tool_calls` now runs concurrently via `futures::join_all` gated by a `tokio::Semaphore` (cap 8, configurable via `with_max_parallel_tool_calls`). Result order preserved. Permission/approval prompts serialize end-to-end by locking the response receiver **before** emitting the request event (`permissions::ask_user_tool_permission`, `tool_executor::request_approval`) — fixes a race where the TUI dialog (`Option<...>`) would otherwise be overwritten by a second concurrent request. Cancellation of in-flight batches still deferred (token only checked at agent-loop boundaries). Also: in-flight tool indicator now sweeps left-to-right with a full-height braille bar (`⡇⣿⢸` through 3 cells, 8 frames), and Completed/Error use `●` green/red instead of `✓`/`✗` to match the dot family
 - **2.5 Queue messages mid-flight** — shipped `fce6ae8`; queue indicator above input shipped `2db95e6`; emoji purge `54363d3`
 - **2.2 Tool-call recovery on crash** — shipped `fce6ae8`. `Conversation::sanitize_orphan_tool_calls` drops orphans instead of synthesising fake results; storage rewrite via `ConversationStorage::rewrite_messages` makes drops survive reload
@@ -87,7 +92,6 @@ Suggest shipping in tier order. Tier 1 is 1-2 days total; gets immediate user-vi
 
 ## Remaining must-ships
 
-- **2.3 Cancel-midflight UX polish** — partial spinner/cursor cleanup. Small (~1-2h). Probably the next pick.
 - **2.4 Warm-up / pre-approve at session start** — pairs naturally with 3.1 plan-mode; defer until plan-mode design is firmer.
 - **3.1 Plan → autopilot toggle** — the wedge. Bundle with 2.4.
 - **3.3 Image input / screenshot support** — highest "wait it can't do that?" moment for new users.

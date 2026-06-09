@@ -4,7 +4,7 @@ mod core;
 
 pub use agent_events::AgentEvent;
 pub use conversation::{
-    Conversation, ConversationMessage, ToolCall, ToolCallResponse, ToolExecutionContext,
-    ToolFunction,
+    CancelKind, Conversation, ConversationMessage, ToolCall, ToolCallResponse,
+    ToolExecutionContext, ToolFunction,
 };
 pub use core::{Agent, ApprovalResponse, PermissionResponse};

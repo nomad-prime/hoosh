@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 use super::app_state::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
-use crate::agent::{AgentEvent, Conversation};
+use crate::agent::{AgentEvent, CancelKind, Conversation};
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
 use crate::commands::CommandRegistry;
@@ -252,7 +252,7 @@ async fn handle_user_input(
         let result = context.runtime.input_handlers[i]
             .handle_event(event, app, agent_task_active)
             .await;
-        if process_handler_result(result, app, agent_task, context) {
+        if process_handler_result(result, app, agent_task, context).await {
             break;
         }
     }
@@ -260,7 +260,7 @@ async fn handle_user_input(
     Ok(())
 }
 
-fn process_handler_result(
+async fn process_handler_result(
     result: super::handler_result::KeyHandlerResult,
     app: &mut AppState,
     agent_task: &mut Option<JoinHandle<()>>,
@@ -279,24 +279,7 @@ fn process_handler_result(
             true
         }
         KeyHandlerResult::ShouldCancelTask => {
-            if let Some(task) = agent_task.take() {
-                task.abort();
-                app.agent_state = super::events::AgentState::Idle;
-                app.hide_approval_dialog();
-                app.hide_tool_permission_dialog();
-                app.clear_active_tool_calls();
-                app.add_status_message("Task cancelled by user\n");
-                let dropped = app.queued_prompts.len();
-                if dropped > 0 {
-                    app.queued_prompts.clear();
-                    app.add_status_message(&format!(
-                        "Dropped {dropped} queued prompt{}\n",
-                        if dropped == 1 { "" } else { "s" }
-                    ));
-                }
-                restore_cancelled_prompt(app);
-            }
-            app.should_cancel_task = false;
+            handle_cancel_task(app, agent_task, context).await;
             true
         }
         KeyHandlerResult::StartCommand(input) => {
@@ -308,6 +291,76 @@ fn process_handler_result(
             true
         }
     }
+}
+
+/// Shared cancel implementation for all three event-loop variants.
+///
+/// Splits behaviour by whether any tool calls fired this turn:
+///   - **Tool-cancel**: render an `[cancelled by user]` marker under each
+///     in-flight tool card, inject synthetic tool results into the
+///     conversation so the next turn the model knows, and keep the
+///     submitted prompt out of the input (turn is consumed in history).
+///   - **Thinking-cancel**: drop the turn from history, restore the prompt
+///     to the input, show a single "Task cancelled by user" status line.
+pub(crate) async fn handle_cancel_task(
+    app: &mut AppState,
+    agent_task: &mut Option<JoinHandle<()>>,
+    context: &EventLoopContext,
+) {
+    if let Some(task) = agent_task.take() {
+        task.abort();
+        app.agent_state = super::events::AgentState::Idle;
+        app.hide_approval_dialog();
+        app.hide_tool_permission_dialog();
+
+        let kind = {
+            let mut conv = context.conversation_state.conversation.lock().await;
+            conv.cancel_in_flight_turn()
+        };
+
+        match kind {
+            CancelKind::Tool { .. } => {
+                use ratatui::style::Style;
+                use ratatui::text::{Line, Span};
+                let cancelled = std::mem::take(&mut app.active_tool_calls);
+                for tc in &cancelled {
+                    app.add_message("".to_string());
+                    app.add_styled_line(Line::from(vec![
+                        Span::styled(
+                            "● ",
+                            Style::default().fg(super::colors::palette::DESTRUCTIVE),
+                        ),
+                        Span::raw(tc.display_name.clone()),
+                    ]));
+                    app.add_status_message("cancelled by user");
+                }
+                app.last_submitted_input = None;
+            }
+            CancelKind::Thinking => {
+                use ratatui::style::{Modifier, Style};
+                use ratatui::text::{Line, Span};
+                app.clear_active_tool_calls();
+                app.add_styled_line(Line::from(Span::styled(
+                    super::app_state::format_inline_status("retracted, not sent to agent"),
+                    Style::default()
+                        .fg(super::colors::palette::DIMMED_TEXT)
+                        .add_modifier(Modifier::ITALIC),
+                )));
+                app.add_message("".to_string());
+                restore_cancelled_prompt(app);
+            }
+        }
+
+        let dropped = app.queued_prompts.len();
+        if dropped > 0 {
+            app.queued_prompts.clear();
+            app.add_status_message(&format!(
+                "Dropped {dropped} queued prompt{}\n",
+                if dropped == 1 { "" } else { "s" }
+            ));
+        }
+    }
+    app.should_cancel_task = false;
 }
 
 /// Put the prompt that started the cancelled turn back into the input buffer,
