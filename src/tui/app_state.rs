@@ -457,8 +457,8 @@ impl AppState {
         } else {
             palette::TOOL_STATUS_COMPLETED
         };
+        self.add_message("\n".to_string());
         let line = Line::from(vec![
-            Span::raw("\n"),
             Span::styled(glyph.to_string(), Style::default().fg(glyph_color)),
             Span::raw(format!(" {}", name)),
         ]);
@@ -538,6 +538,7 @@ impl AppState {
 
             if let Some(summary) = &tool_call.result_summary {
                 self.add_message(format!("  ⎿  {}", summary));
+                self.add_message("\n".to_string());
             }
 
             // Preview is now displayed immediately when ToolPreview event is received,
@@ -585,10 +586,12 @@ impl AppState {
                         tool_call.elapsed_time()
                     );
                     self.add_message(format!("  ⎿ {}", completion_text));
+                    self.add_message("\n".to_string());
                 }
             } else if let Some(summary) = &tool_call.result_summary {
                 // For regular tools, show the result summary
                 self.add_message(format!("  ⎿  {}", summary));
+                self.add_message("\n".to_string());
             }
 
             if let ToolCallStatus::Error(err) = &tool_call.status {
