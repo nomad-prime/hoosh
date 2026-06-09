@@ -22,13 +22,12 @@
 - Never rewrite entire files when you can edit specific lines
 
 ## Response Completion
-- After using tools, only  provide a text response explaining results if it is not clear
-- Do NOT overly explain what is clear from the tool calls, user sees them anyway
-- Do NOT loop tools indefinitely - stop and respond when you have enough info
-- End with text-only response to return control to user
+- Keep responses short and direct — the user sees tool calls, don't re-explain them
+- Only add a text response when something non-obvious needs clarifying
+- Stop using tools as soon as you have enough info; return control to the user
+- Never narrate obvious steps or outcomes
 
 ## Single Command Execution
 - NEVER chain commands with && or ||
-- Explain what you learned after each command
 
 </long_conversation_reminder>

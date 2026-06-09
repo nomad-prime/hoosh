@@ -7,15 +7,11 @@ use super::Completer;
 
 pub struct FileCompleter {
     working_directory: PathBuf,
-    cache: std::sync::Arc<tokio::sync::RwLock<Vec<PathBuf>>>,
 }
 
 impl FileCompleter {
     pub fn new(working_directory: PathBuf) -> Self {
-        Self {
-            working_directory,
-            cache: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
-        }
+        Self { working_directory }
     }
 
     async fn scan_directory(&self, dir: &Path, max_depth: usize) -> Result<Vec<PathBuf>> {
@@ -71,13 +67,6 @@ impl FileCompleter {
 
             Ok(())
         })
-    }
-
-    async fn refresh_cache(&self) -> Result<()> {
-        let files = self.scan_directory(&self.working_directory, 5).await?;
-        let mut cache = self.cache.write().await;
-        *cache = files;
-        Ok(())
     }
 
     fn fuzzy_match(pattern: &str, target: &str) -> bool {
@@ -143,18 +132,9 @@ impl Completer for FileCompleter {
     }
 
     async fn get_completions(&self, query: &str) -> Result<Vec<String>> {
-        // Refresh cache on first use or if empty
-        {
-            let cache = self.cache.read().await;
-            if cache.is_empty() {
-                drop(cache);
-                let _ = self.refresh_cache().await;
-            }
-        }
+        let files = self.scan_directory(&self.working_directory, 5).await?;
 
-        let cache = self.cache.read().await;
-
-        let mut matches: Vec<(String, i32)> = cache
+        let mut matches: Vec<(String, i32)> = files
             .iter()
             .filter_map(|path| {
                 let path_str = path.to_string_lossy().to_string();

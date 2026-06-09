@@ -344,7 +344,7 @@ pub(crate) async fn handle_cancel_task(
                 use ratatui::text::{Line, Span};
                 app.clear_active_tool_calls();
                 app.add_styled_line(Line::from(Span::styled(
-                    super::app_state::format_inline_status("retracted, not sent to agent"),
+                    super::app_state::format_inline_status("retracted, hoosh did not see this"),
                     Style::default()
                         .fg(super::colors::palette::DIMMED_TEXT)
                         .add_modifier(Modifier::ITALIC),
