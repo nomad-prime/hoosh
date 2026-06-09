@@ -511,7 +511,12 @@ impl AppState {
         let tool_calls = self.active_tool_calls.clone();
 
         for tool_call in &tool_calls {
-            self.add_message(format!("\n● {}", tool_call.display_name));
+            let glyph = if matches!(tool_call.status, ToolCallStatus::Error(_)) {
+                "⢾⣋⡷"
+            } else {
+                "⠶⠶⠶"
+            };
+            self.add_message(format!("\n{} {}", glyph, tool_call.display_name));
 
             if let Some(summary) = &tool_call.result_summary {
                 self.add_message(format!("  ⎿  {}", summary));
@@ -536,7 +541,12 @@ impl AppState {
         {
             let tool_call = self.active_tool_calls.remove(index);
 
-            self.add_message(format!("\n● {}", tool_call.display_name));
+            let glyph = if matches!(tool_call.status, ToolCallStatus::Error(_)) {
+                "⢾⣋⡷"
+            } else {
+                "⠶⠶⠶"
+            };
+            self.add_message(format!("\n{} {}", glyph, tool_call.display_name));
 
             // For subagent tasks, show completion stats
             if tool_call.is_subagent_task {
@@ -775,7 +785,7 @@ impl AppState {
     }
 
     pub fn add_tool_call(&mut self, name: &str) {
-        self.add_message(format!("\n● {}", name));
+        self.add_message(format!("\n⢾⣋⡷ {}", name));
     }
 
     pub fn add_status_message(&mut self, message: &str) {

@@ -330,7 +330,7 @@ pub(crate) async fn handle_cancel_task(
                     app.add_message("".to_string());
                     app.add_styled_line(Line::from(vec![
                         Span::styled(
-                            "● ",
+                            "⢾⣋⡷ ",
                             Style::default().fg(super::colors::palette::DESTRUCTIVE),
                         ),
                         Span::raw(tc.display_name.clone()),
