@@ -1,6 +1,6 @@
 use crate::tui::app_state::{AppState, ToolCallStatus};
 use crate::tui::component::Component;
-use crate::tui::palette;
+use crate::tui::{glyphs, palette};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -10,10 +10,6 @@ use ratatui::{
 };
 
 pub struct ActiveToolCallsComponent;
-
-// Thin middle-band braille sweep across three cells. Settles into ⠶⠶⠶ for the
-// completed state so the transition reads as the bar filling in.
-const EXECUTING_SWEEP: &[&str] = &["⠆  ", "⠶  ", "⠰⠆ ", " ⠶ ", " ⠰⠆", "  ⠶", "  ⠰", "   "];
 
 impl Component for ActiveToolCallsComponent {
     type State = AppState;
@@ -29,22 +25,27 @@ impl Component for ActiveToolCallsComponent {
             // Static glyphs are padded to three cells so the tool-name column
             // stays aligned with the animated executing rows.
             let status_indicator = match &tool_call.status {
-                ToolCallStatus::Starting => {
-                    Span::styled("⠂⠂⠂", Style::default().fg(palette::TOOL_STATUS_STARTING))
-                }
-                ToolCallStatus::AwaitingApproval => {
-                    Span::styled("⠿⠿⠿", Style::default().fg(palette::TOOL_STATUS_RUNNING))
-                }
+                ToolCallStatus::Starting => Span::styled(
+                    glyphs::TOOL_STARTING,
+                    Style::default().fg(palette::TOOL_STATUS_STARTING),
+                ),
+                ToolCallStatus::AwaitingApproval => Span::styled(
+                    glyphs::TOOL_AWAITING,
+                    Style::default().fg(palette::TOOL_STATUS_RUNNING),
+                ),
                 ToolCallStatus::Executing => {
-                    let frame = EXECUTING_SWEEP[state.animation_frame % EXECUTING_SWEEP.len()];
+                    let sweep = glyphs::TOOL_EXECUTING_SWEEP;
+                    let frame = sweep[state.animation_frame % sweep.len()];
                     Span::styled(frame, Style::default().fg(palette::TOOL_STATUS_EXECUTING))
                 }
-                ToolCallStatus::Completed => {
-                    Span::styled("⠶⠶⠶", Style::default().fg(palette::TOOL_STATUS_COMPLETED))
-                }
-                ToolCallStatus::Error(_) => {
-                    Span::styled("⢾⣋⡷", Style::default().fg(palette::TOOL_STATUS_ERROR))
-                }
+                ToolCallStatus::Completed => Span::styled(
+                    glyphs::TOOL_COMPLETED,
+                    Style::default().fg(palette::TOOL_STATUS_COMPLETED),
+                ),
+                ToolCallStatus::Error(_) => Span::styled(
+                    glyphs::TOOL_ERROR,
+                    Style::default().fg(palette::TOOL_STATUS_ERROR),
+                ),
             };
 
             let timer = tool_call.elapsed_time();

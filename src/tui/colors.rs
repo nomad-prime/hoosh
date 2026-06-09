@@ -53,3 +53,27 @@ pub mod palette {
 
     pub const PLACEHOLDER: Color = Color::Gray;
 }
+
+/// Centralized braille glyphs used to indicate tool-call status. Keeping them
+/// here (alongside their color counterparts in `palette`) means symbol and
+/// color can be adjusted in a single place.
+pub mod glyphs {
+    /// Shown while a tool call is being set up.
+    pub const TOOL_STARTING: &str = "⠂⠂⠂";
+    /// Shown while a tool call awaits user approval.
+    pub const TOOL_AWAITING: &str = "⠿⠿⠿";
+    /// Shown when a tool call has completed successfully.
+    pub const TOOL_COMPLETED: &str = "⠶⠶⠶";
+    /// Shown when a tool call errored at runtime. Scrambled/asymmetric so it
+    /// reads as broken even before the color is taken in.
+    pub const TOOL_ERROR: &str = "⢾⣋⡷";
+    /// Shown when a tool call was rejected or denied (by the user or by the
+    /// permission system) before it ever ran. Distinct from `TOOL_ERROR` because
+    /// nothing actually went wrong — the call was simply stopped.
+    pub const TOOL_REJECTED: &str = "⠭⠭⠭";
+    /// Animation frames for the executing state. Each frame is padded to three
+    /// cells so the tool-name column stays aligned, settling into
+    /// `TOOL_COMPLETED` as the bar fills in.
+    pub const TOOL_EXECUTING_SWEEP: &[&str] =
+        &["⠆  ", "⠶  ", "⠰⠆ ", " ⠶ ", " ⠰⠆", "  ⠶", "  ⠰", "   "];
+}

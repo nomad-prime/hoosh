@@ -39,3 +39,7 @@ auto scrolling when dialogs open up in custom terminal has a limitation, lets se
 
 ### Permission Dialog when exploring
 currently does not pause the timer -> we have the methods in execution budget we should pause the timer, when user is in control
+
+### Agent output noisiness
+
+hoosh tends to over-narrate: redundant pre/post summaries, tables when a sentence would do, repeating the diff in prose right after the diff was shown. Likely a system-prompt issue — tighten the default tone (terse updates, no recap of what the diff already shows, no decorative tables unless asked).

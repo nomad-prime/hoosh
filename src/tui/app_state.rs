@@ -6,7 +6,7 @@ use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
 use crate::tools::todo_write::{TodoItem, TodoStatus};
-use crate::tui::palette;
+use crate::tui::{glyphs, palette};
 use anyhow::Result;
 use rand::Rng;
 use ratatui::style::{Modifier, Style};
@@ -448,6 +448,23 @@ impl AppState {
         self.add_message_line(msg_line);
     }
 
+    /// Emits a completed tool-call header line where the leading status glyph
+    /// is colored (green for success, red for errors) while the tool name stays
+    /// in the default foreground.
+    fn add_tool_completion_header(&mut self, glyph: &str, name: &str, is_error: bool) {
+        let glyph_color = if is_error {
+            palette::TOOL_STATUS_ERROR
+        } else {
+            palette::TOOL_STATUS_COMPLETED
+        };
+        let line = Line::from(vec![
+            Span::raw("\n"),
+            Span::styled(glyph.to_string(), Style::default().fg(glyph_color)),
+            Span::raw(format!(" {}", name)),
+        ]);
+        self.add_styled_line(line);
+    }
+
     pub fn add_debug_message(&mut self, message: String) {
         let styled_line = Line::from(Span::styled(
             format!("  [DEBUG] {}", message),
@@ -511,12 +528,13 @@ impl AppState {
         let tool_calls = self.active_tool_calls.clone();
 
         for tool_call in &tool_calls {
-            let glyph = if matches!(tool_call.status, ToolCallStatus::Error(_)) {
-                "⢾⣋⡷"
+            let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
+            let glyph = if is_error {
+                glyphs::TOOL_ERROR
             } else {
-                "⠶⠶⠶"
+                glyphs::TOOL_COMPLETED
             };
-            self.add_message(format!("\n{} {}", glyph, tool_call.display_name));
+            self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
 
             if let Some(summary) = &tool_call.result_summary {
                 self.add_message(format!("  ⎿  {}", summary));
@@ -541,12 +559,13 @@ impl AppState {
         {
             let tool_call = self.active_tool_calls.remove(index);
 
-            let glyph = if matches!(tool_call.status, ToolCallStatus::Error(_)) {
-                "⢾⣋⡷"
+            let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
+            let glyph = if is_error {
+                glyphs::TOOL_ERROR
             } else {
-                "⠶⠶⠶"
+                glyphs::TOOL_COMPLETED
             };
-            self.add_message(format!("\n{} {}", glyph, tool_call.display_name));
+            self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
 
             // For subagent tasks, show completion stats
             if tool_call.is_subagent_task {
@@ -785,7 +804,7 @@ impl AppState {
     }
 
     pub fn add_tool_call(&mut self, name: &str) {
-        self.add_message(format!("\n⢾⣋⡷ {}", name));
+        self.add_message(format!("\n{} {}", glyphs::TOOL_REJECTED, name));
     }
 
     pub fn add_status_message(&mut self, message: &str) {

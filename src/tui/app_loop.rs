@@ -330,10 +330,10 @@ pub(crate) async fn handle_cancel_task(
                     app.add_message("".to_string());
                     app.add_styled_line(Line::from(vec![
                         Span::styled(
-                            "⢾⣋⡷ ",
+                            super::glyphs::TOOL_ERROR,
                             Style::default().fg(super::colors::palette::DESTRUCTIVE),
                         ),
-                        Span::raw(tc.display_name.clone()),
+                        Span::raw(format!(" {}", tc.display_name)),
                     ]));
                     app.add_status_message("cancelled by user");
                 }

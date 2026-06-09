@@ -32,5 +32,6 @@ mod text_utils;
 pub use app_main::run_with_session;
 pub use app_main_fullview::run_with_session_fullview;
 pub use app_main_inline::run_with_session_inline;
+pub use colors::glyphs;
 pub use colors::palette;
 pub use message_renderer::MessageRenderer;
