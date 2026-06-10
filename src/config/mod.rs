@@ -39,6 +39,10 @@ pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
         include_str!("../prompts/hoosh_reviewer.txt"),
     ),
     (
+        "hoosh_explore.txt",
+        include_str!("../prompts/hoosh_explore.txt"),
+    ),
+    (
         "hoosh_troubleshooter.txt",
         include_str!("../prompts/hoosh_troubleshooter.txt"),
     ),

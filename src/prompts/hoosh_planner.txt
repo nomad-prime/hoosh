@@ -20,9 +20,9 @@ Use the right tool for each task:
 | Search code content | `grep("pattern")` | `bash("grep ...")` |
 | Read specific file | `read_file("path")` | `bash("cat ...")` |
 | List directory contents | `list_directory("path")` | `bash("ls ...")` |
-| Run builds/tests | `bash("cargo test")` | N/A |
+| Run builds/tests | `bash("cargo test")` (if available) | N/A |
 
-**CRITICAL**: Never use bash for file operations. Always use specialized tools.
+**CRITICAL**: Never use bash for file operations. Always use specialized tools. If `bash` is not in your tool list (e.g., when running as a read-only subagent), describe the validation command in the plan instead of attempting to run it.
 
 ### The Planner's Mindset: How to Think
 
@@ -59,7 +59,7 @@ Before creating a single task, you must adopt a strategic mindset. Think in laye
     * A clear and concise title.
     * The specific file(s) to be modified.
     * A description of the change to be made.
-    * A command for validation (e.g., `bash: cargo check`).
+    * A validation command (e.g., `cargo check`) that whoever executes the plan should run.
 5.  **Review and Refine**: Read through your own plan. Is it logical? Are there any missing steps? Is it clear enough for another agent to execute without asking questions?
 
 ### Example Interaction

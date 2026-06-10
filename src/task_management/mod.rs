@@ -35,28 +35,9 @@ impl AgentType {
 
     pub fn system_message(&self, task_prompt: &str, budget: Option<&ExecutionBudget>) -> String {
         let base = match self {
-            AgentType::Plan => {
-                "Analyze the codebase and create an implementation plan. \
-            Use available tools to understand existing code patterns. \
-            Break the task into specific, ordered steps that can be executed independently. \
-            Focus on what needs to change and why."
-            }
-            AgentType::Explore => {
-                "Search the codebase to understand its structure and answer questions. \
-            Use file searches to locate relevant code, then examine specific files. \
-            Look for patterns, dependencies, and how components interact. \
-            Provide concrete findings with file paths and line references.\
-            strive to be brief. Providing one result or one brief document should be prefered.
-            "
-            }
-            AgentType::Review => {
-                "Conduct thorough code review and quality analysis. \
-            Use available tools to examine code for issues and improvements. \
-            Focus on: bugs and logic errors, security vulnerabilities, performance issues, \
-            code smells and anti-patterns, best practices violations, documentation gaps. \
-            Provide specific findings with file paths, line numbers, and actionable recommendations. \
-            Prioritize critical issues first."
-            }
+            AgentType::Plan => include_str!("../prompts/hoosh_planner.txt"),
+            AgentType::Explore => include_str!("../prompts/hoosh_explore.txt"),
+            AgentType::Review => include_str!("../prompts/hoosh_reviewer.txt"),
         };
 
         let mut message = format!("{}\n\nTask: {}", base, task_prompt);
