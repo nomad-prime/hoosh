@@ -128,6 +128,11 @@ pub struct BackendConfig {
     pub chat_api: Option<String>,
     pub temperature: Option<f32>,
     pub pricing_endpoint: Option<String>,
+    /// Anthropic extended thinking budget in tokens. When set, the backend
+    /// enables `thinking` in the request and forces temperature to 1.0 (an
+    /// Anthropic API requirement). Ignored by non-Anthropic backends.
+    #[serde(default)]
+    pub thinking_budget: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -376,6 +381,7 @@ impl AppConfig {
                 chat_api: None,
                 temperature: None,
                 pricing_endpoint: None,
+                thinking_budget: None,
             });
 
         match key {

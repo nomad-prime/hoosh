@@ -175,6 +175,7 @@ mod tests {
                 chat_api: None,
                 temperature: None,
                 pricing_endpoint: None,
+                thinking_budget: None,
             },
         );
         let mut ctx = CommandContext::new().with_config(config);
@@ -206,6 +207,7 @@ mod tests {
                 chat_api: None,
                 temperature: None,
                 pricing_endpoint: None,
+                thinking_budget: None,
             },
         );
         config.backends.insert(
@@ -217,6 +219,7 @@ mod tests {
                 chat_api: None,
                 temperature: None,
                 pricing_endpoint: None,
+                thinking_budget: None,
             },
         );
         let mut ctx = CommandContext::new().with_config(config);

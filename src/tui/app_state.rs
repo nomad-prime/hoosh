@@ -469,6 +469,14 @@ impl AppState {
         self.add_styled_line(line);
     }
 
+    fn add_tool_continuation(&mut self, content: &str) {
+        let line = Line::from(Span::styled(
+            format_tool_continuation(content),
+            Style::default().fg(palette::SUBDUED_TEXT),
+        ));
+        self.add_styled_line(line);
+    }
+
     pub fn add_debug_message(&mut self, message: String) {
         let styled_line = Line::from(Span::styled(
             format!("  [DEBUG] {}", message),
@@ -541,7 +549,7 @@ impl AppState {
             self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
 
             if let Some(summary) = &tool_call.result_summary {
-                self.add_message(format_tool_continuation(summary));
+                self.add_tool_continuation(summary);
             }
 
             // Preview is now displayed immediately when ToolPreview event is received,
@@ -588,10 +596,10 @@ impl AppState {
                         tokens_formatted,
                         tool_call.elapsed_time()
                     );
-                    self.add_message(format_tool_continuation(&completion_text));
+                    self.add_tool_continuation(&completion_text);
                 }
             } else if let Some(summary) = &tool_call.result_summary {
-                self.add_message(format_tool_continuation(summary));
+                self.add_tool_continuation(summary);
             }
 
             if let ToolCallStatus::Error(err) = &tool_call.status {
