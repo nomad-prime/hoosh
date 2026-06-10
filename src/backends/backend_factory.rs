@@ -48,6 +48,7 @@ impl BackendFactory for AnthropicBackend {
             api_key,
             model,
             base_url,
+            thinking_budget: config.thinking_budget,
         };
 
         Ok(Box::new(AnthropicBackend::new(anthropic_config)?))

@@ -12,6 +12,11 @@ pub struct AnthropicConfig {
     pub api_key: String,
     pub model: String,
     pub base_url: String,
+    /// Extended thinking budget in tokens. When `Some(n)`, the request
+    /// includes `thinking: { type: "enabled", budget_tokens: n }`, forces
+    /// `temperature: 1.0` (Anthropic API requirement), and grows `max_tokens`
+    /// to leave headroom for both the thinking and the visible response.
+    pub thinking_budget: Option<u32>,
 }
 
 impl Default for AnthropicConfig {
@@ -20,8 +25,17 @@ impl Default for AnthropicConfig {
             api_key: String::new(),
             model: "claude-sonnet-4.5".to_string(),
             base_url: "https://api.anthropic.com/v1".to_string(),
+            thinking_budget: None,
         }
     }
+}
+
+/// Anthropic extended-thinking request block. Serialized only when set.
+#[derive(Debug, Serialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    budget_tokens: u32,
 }
 
 pub struct AnthropicBackend {
@@ -41,6 +55,8 @@ struct MessagesRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -73,6 +89,16 @@ enum ContentBlock {
     ToolResult {
         tool_use_id: String,
         content: String,
+    },
+    /// Extended-thinking response block. Emitted by the model when
+    /// `thinking` is enabled in the request. We deserialize it so the
+    /// response parses cleanly but do not surface it — the visible answer
+    /// arrives in following `Text` blocks.
+    Thinking {
+        #[serde(default)]
+        thinking: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
     },
 }
 
@@ -244,16 +270,44 @@ impl AnthropicBackend {
     }
 
     fn create_request(&self, message: &str) -> MessagesRequest {
+        let (max_tokens, temperature, thinking) = self.thinking_request_overrides(8092, Some(0.7));
         MessagesRequest {
             model: self.config.model.clone(),
             messages: vec![AnthropicMessage {
                 role: "user".to_string(),
                 content: AnthropicContent::Text(message.to_string()),
             }],
-            max_tokens: 8092,
+            max_tokens,
             system: None,
-            temperature: Some(0.7),
+            temperature,
             tools: None,
+            thinking,
+        }
+    }
+
+    /// Resolve the thinking block, temperature override, and effective
+    /// max_tokens for a request. When thinking is enabled, Anthropic
+    /// requires `temperature: 1.0` and `max_tokens > budget_tokens`; we
+    /// add 4096 tokens of visible-response headroom on top of the budget.
+    fn thinking_request_overrides(
+        &self,
+        base_max_tokens: u32,
+        base_temperature: Option<f32>,
+    ) -> (u32, Option<f32>, Option<ThinkingConfig>) {
+        match self.config.thinking_budget {
+            Some(budget) if budget > 0 => {
+                let needed = budget.saturating_add(4096);
+                let max_tokens = base_max_tokens.max(needed);
+                (
+                    max_tokens,
+                    Some(1.0),
+                    Some(ThinkingConfig {
+                        kind: "enabled",
+                        budget_tokens: budget,
+                    }),
+                )
+            }
+            _ => (base_max_tokens, base_temperature, None),
         }
     }
 
@@ -287,13 +341,15 @@ impl AnthropicBackend {
         let tool_schemas = self.convert_tool_schemas(tools.get_tool_schemas());
         let has_tools = !tool_schemas.is_empty();
 
+        let (max_tokens, temperature, thinking) = self.thinking_request_overrides(8092, Some(0.7));
         MessagesRequest {
             model: self.config.model.clone(),
             messages,
-            max_tokens: 8092,
+            max_tokens,
             system: system_prompt,
-            temperature: Some(0.7),
+            temperature,
             tools: if has_tools { Some(tool_schemas) } else { None },
+            thinking,
         }
     }
 
@@ -563,6 +619,58 @@ mod tests {
 
     fn backend() -> AnthropicBackend {
         AnthropicBackend::new(AnthropicConfig::default()).expect("backend")
+    }
+
+    fn backend_with_thinking(budget: u32) -> AnthropicBackend {
+        AnthropicBackend::new(AnthropicConfig {
+            thinking_budget: Some(budget),
+            ..AnthropicConfig::default()
+        })
+        .expect("backend")
+    }
+
+    #[test]
+    fn thinking_disabled_by_default() {
+        let (max_tokens, temperature, thinking) =
+            backend().thinking_request_overrides(8092, Some(0.7));
+        assert_eq!(max_tokens, 8092);
+        assert_eq!(temperature, Some(0.7));
+        assert!(thinking.is_none());
+    }
+
+    #[test]
+    fn thinking_enabled_forces_temperature_and_grows_max_tokens() {
+        let (max_tokens, temperature, thinking) =
+            backend_with_thinking(20000).thinking_request_overrides(8092, Some(0.7));
+        assert_eq!(temperature, Some(1.0));
+        assert!(max_tokens >= 20000 + 4096);
+        let thinking = thinking.expect("thinking block emitted");
+        assert_eq!(thinking.kind, "enabled");
+        assert_eq!(thinking.budget_tokens, 20000);
+    }
+
+    #[test]
+    fn thinking_zero_budget_treated_as_disabled() {
+        let (max_tokens, temperature, thinking) =
+            backend_with_thinking(0).thinking_request_overrides(8092, Some(0.7));
+        assert_eq!(max_tokens, 8092);
+        assert_eq!(temperature, Some(0.7));
+        assert!(thinking.is_none());
+    }
+
+    #[test]
+    fn thinking_block_in_response_is_ignored() {
+        let json = r#"{
+            "content": [
+                {"type": "thinking", "thinking": "Let me think...", "signature": "sig1"},
+                {"type": "text", "text": "The answer is 42."}
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        }"#;
+        let resp: MessagesResponse = serde_json::from_str(json).expect("parses");
+        assert_eq!(resp.content.len(), 2);
+        assert!(matches!(resp.content[0], ContentBlock::Thinking { .. }));
+        assert!(matches!(resp.content[1], ContentBlock::Text { .. }));
     }
 
     #[test]
