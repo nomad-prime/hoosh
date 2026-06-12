@@ -15,6 +15,7 @@ fn create_test_config() -> OpenAICompatibleConfig {
         chat_api: "/v1/chat/completions".to_string(),
         temperature: Some(0.7),
         pricing_endpoint: None,
+        thinking_budget: None,
     }
 }
 
@@ -464,6 +465,7 @@ async fn backend_configuration_with_custom_values() {
         chat_api: "/custom/chat".to_string(),
         temperature: Some(0.9),
         pricing_endpoint: None,
+        thinking_budget: None,
     };
 
     let backend = OpenAICompatibleBackend::new(config).unwrap();
@@ -529,4 +531,62 @@ async fn backend_default_config_values() {
     assert_eq!(config.model, "gpt-4");
     assert_eq!(config.base_url, "https://api.openai.com/v1");
     assert_eq!(config.chat_api, "/chat/completions");
+    assert!(config.thinking_budget.is_none());
+}
+
+fn backend_with_thinking(budget: u32) -> OpenAICompatibleBackend {
+    let config = OpenAICompatibleConfig {
+        thinking_budget: Some(budget),
+        ..create_test_config()
+    };
+    OpenAICompatibleBackend::new(config).unwrap()
+}
+
+#[test]
+fn reasoning_disabled_by_default() {
+    let backend = OpenAICompatibleBackend::new(create_test_config()).unwrap();
+    let (max_tokens, temperature, reasoning) = backend.reasoning_request_overrides(4096, Some(0.7));
+    assert_eq!(max_tokens, 4096);
+    assert_eq!(temperature, Some(0.7));
+    assert!(reasoning.is_none());
+}
+
+#[test]
+fn reasoning_enabled_forces_temperature_and_grows_max_tokens() {
+    let backend = backend_with_thinking(20000);
+    let (max_tokens, temperature, reasoning) = backend.reasoning_request_overrides(4096, Some(0.7));
+    assert_eq!(temperature, Some(1.0));
+    assert!(max_tokens >= 20000 + 4096);
+    let reasoning = reasoning.expect("reasoning block emitted");
+    assert_eq!(reasoning.max_tokens, 20000);
+}
+
+#[test]
+fn reasoning_zero_budget_treated_as_disabled() {
+    let backend = backend_with_thinking(0);
+    let (max_tokens, temperature, reasoning) = backend.reasoning_request_overrides(4096, Some(0.7));
+    assert_eq!(max_tokens, 4096);
+    assert_eq!(temperature, Some(0.7));
+    assert!(reasoning.is_none());
+}
+
+#[test]
+fn reasoning_field_in_response_is_ignored() {
+    let json = r#"{
+        "choices": [
+            {
+                "message": {
+                    "content": "The answer is 42.",
+                    "reasoning": "Thought about it for a while.",
+                    "reasoning_details": [{"type": "text", "text": "..."}]
+                },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+    }"#;
+    let resp: ChatCompletionResponse = serde_json::from_str(json).expect("parses");
+    assert_eq!(resp.choices.len(), 1);
+    let msg = resp.choices[0].message.as_ref().unwrap();
+    assert_eq!(msg.content.as_deref(), Some("The answer is 42."));
 }

@@ -16,6 +16,7 @@ pub struct OpenAICompatibleConfig {
     pub temperature: Option<f32>,
     pub chat_api: String,
     pub pricing_endpoint: Option<String>,
+    pub thinking_budget: Option<u32>,
 }
 
 impl Default for OpenAICompatibleConfig {
@@ -28,8 +29,14 @@ impl Default for OpenAICompatibleConfig {
             chat_api: "/chat/completions".to_string(),
             temperature: None,
             pricing_endpoint: None,
+            thinking_budget: None,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+struct ReasoningConfig {
+    max_tokens: u32,
 }
 
 pub struct OpenAICompatibleBackend {
@@ -51,6 +58,8 @@ struct ChatCompletionRequest {
     tools: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<ReasoningConfig>,
 }
 
 /// Wire-format message for the OpenAI / OpenRouter chat completions API. Mirrors
@@ -548,6 +557,8 @@ impl OpenAICompatibleBackend {
     }
 
     fn create_request(&self, message: &str) -> ChatCompletionRequest {
+        let (max_completion_tokens, temperature, reasoning) =
+            self.reasoning_request_overrides(4096, self.config.temperature);
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: vec![OpenAIWireMessage {
@@ -557,10 +568,11 @@ impl OpenAICompatibleBackend {
                 tool_call_id: None,
                 name: None,
             }],
-            max_completion_tokens: 4096,
-            temperature: self.config.temperature,
+            max_completion_tokens,
+            temperature,
             tools: None,
             tool_choice: None,
+            reasoning,
         }
     }
 
@@ -571,18 +583,39 @@ impl OpenAICompatibleBackend {
     ) -> ChatCompletionRequest {
         let tool_schemas = tools.get_tool_schemas();
         let has_tools = !tool_schemas.is_empty();
+        let (max_completion_tokens, temperature, reasoning) =
+            self.reasoning_request_overrides(4096, self.config.temperature);
 
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: to_openai_wire(conversation.get_messages_for_api()),
-            max_completion_tokens: 4096,
-            temperature: self.config.temperature,
+            max_completion_tokens,
+            temperature,
             tools: if has_tools { Some(tool_schemas) } else { None },
             tool_choice: if has_tools {
                 Some("auto".to_string())
             } else {
                 None
             },
+            reasoning,
+        }
+    }
+
+    fn reasoning_request_overrides(
+        &self,
+        base_max_tokens: u32,
+        base_temperature: Option<f32>,
+    ) -> (u32, Option<f32>, Option<ReasoningConfig>) {
+        match self.config.thinking_budget {
+            Some(budget) if budget > 0 => {
+                let max_tokens = base_max_tokens.max(budget.saturating_add(4096));
+                (
+                    max_tokens,
+                    Some(1.0),
+                    Some(ReasoningConfig { max_tokens: budget }),
+                )
+            }
+            _ => (base_max_tokens, base_temperature, None),
         }
     }
 }

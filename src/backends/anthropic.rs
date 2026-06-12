@@ -12,10 +12,6 @@ pub struct AnthropicConfig {
     pub api_key: String,
     pub model: String,
     pub base_url: String,
-    /// Extended thinking budget in tokens. When `Some(n)`, the request
-    /// includes `thinking: { type: "enabled", budget_tokens: n }`, forces
-    /// `temperature: 1.0` (Anthropic API requirement), and grows `max_tokens`
-    /// to leave headroom for both the thinking and the visible response.
     pub thinking_budget: Option<u32>,
 }
 
@@ -30,7 +26,6 @@ impl Default for AnthropicConfig {
     }
 }
 
-/// Anthropic extended-thinking request block. Serialized only when set.
 #[derive(Debug, Serialize)]
 struct ThinkingConfig {
     #[serde(rename = "type")]
@@ -90,10 +85,6 @@ enum ContentBlock {
         tool_use_id: String,
         content: String,
     },
-    /// Extended-thinking response block. Emitted by the model when
-    /// `thinking` is enabled in the request. We deserialize it so the
-    /// response parses cleanly but do not surface it — the visible answer
-    /// arrives in following `Text` blocks.
     Thinking {
         #[serde(default)]
         thinking: String,
@@ -285,10 +276,6 @@ impl AnthropicBackend {
         }
     }
 
-    /// Resolve the thinking block, temperature override, and effective
-    /// max_tokens for a request. When thinking is enabled, Anthropic
-    /// requires `temperature: 1.0` and `max_tokens > budget_tokens`; we
-    /// add 4096 tokens of visible-response headroom on top of the budget.
     fn thinking_request_overrides(
         &self,
         base_max_tokens: u32,
