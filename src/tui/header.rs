@@ -14,16 +14,16 @@ pub fn create_header_block(
     agent_name: Option<&str>,
     trusted_project: Option<&str>,
 ) -> Vec<Line<'static>> {
-    // ASCII art lines (left side)
-    let ascii_lines = [
-        " __  __     ______     ______     ______     __  __    ",
-        "/\\ \\_\\ \\   /\\  __ \\   /\\  __ \\   /\\  ___\\   /\\ \\_\\ \\   ",
-        "\\ \\  __ \\  \\ \\ \\/\\ \\  \\ \\ \\/\\ \\  \\ \\___  \\  \\ \\  __ \\  ",
-        " \\ \\_\\ \\_\\  \\ \\_____\\  \\ \\_____\\  \\/\\_____\\  \\ \\_\\ \\_\\ ",
-        "  \\/_/\\/_/   \\/_____/   \\/_____/   \\/_____/   \\/_/\\/_/ ",
+    // Braille pixel-art logo lines (left column), taller to fill the box
+    let logo_lines = [
+        "⣿⠀⠀⠀⠀⣿ ⣴⠟⠛⠛⠻⣦ ⣴⠟⠛⠛⠻⣦ ⣴⠟⠛⠛⠛⠓ ⣿⠀⠀⠀⠀⣿",
+        "⣿⠀⠀⠀⠀⣿ ⣿⠀⠀⠀⠀⣿ ⣿⠀⠀⠀⠀⣿ ⠹⣦⣄⡀⠀⠀ ⣿⠀⠀⠀⠀⣿",
+        "⣿⠛⠛⠛⠛⣿ ⣿⠀⠀⠀⠀⣿ ⣿⠀⠀⠀⠀⣿ ⠀⠈⠙⠻⣦⡀ ⣿⠛⠛⠛⠛⣿",
+        "⣿⠀⠀⠀⠀⣿ ⣿⠀⠀⠀⠀⣿ ⣿⠀⠀⠀⠀⣿ ⠀⠀⠀⠀⠙⣷ ⣿⠀⠀⠀⠀⣿",
+        "⣿⠀⠀⠀⠀⣿ ⠻⣦⣀⣀⣴⠟ ⠻⣦⣀⣀⣴⠟ ⠲⣦⣀⣀⣴⠟ ⣿⠀⠀⠀⠀⣿",
     ];
 
-    // Info lines (right side)
+    // Info lines (right column)
     let title = format!("hoosh  v{}", VERSION);
     let agent_info = if let Some(agent) = agent_name {
         format!("Agent: {}", agent)
@@ -31,81 +31,56 @@ pub fn create_header_block(
         "Agent: none".to_string()
     };
 
-    let mut info_lines = vec![
-        title,
-        backend_name.to_string(),
-        model_name.to_string(),
-        agent_info,
-        working_dir.to_string(),
+    let mut info_lines: Vec<(String, &str)> = vec![
+        (title, "title"),
+        (backend_name.to_string(), "info"),
+        (model_name.to_string(), "info"),
+        (agent_info, "info"),
+        (working_dir.to_string(), "info"),
     ];
 
-    // Add trust indicator if project is trusted
     if trusted_project.is_some() {
-        info_lines.push("🔓 Project Trusted".to_string());
+        info_lines.push(("Project Trusted".to_string(), "trust"));
     }
 
-    // Calculate max width needed for the box
-    let max_info_width = info_lines.iter().map(|s| s.len()).max().unwrap_or(0);
-    let ascii_width = ascii_lines[0].len();
-    let total_content_width = ascii_width + 1 + max_info_width;
-    let box_width = total_content_width + 4; // 2 for left/right borders + 2 for padding
-
-    // Combine ASCII art with info on the right
     let logo_color = palette::HEADER_LOGO;
     let title_color = palette::HEADER_TITLE;
     let info_color = palette::HEADER_INFO;
-    let border_color = palette::HEADER_BORDER;
     let trust_color = palette::HEADER_TRUST;
 
-    let mut lines = vec![
-        // Top border
-        Line::from(vec![Span::styled(
-            format!("┌{}┐", "─".repeat(box_width - 2)),
-            Style::default().fg(border_color),
-        )]),
-    ];
+    // Column width (use char count for display width, not byte length)
+    let logo_width = logo_lines[0].chars().count();
+    let num_rows = logo_lines.len().max(info_lines.len());
 
-    // Content lines with borders
-    let num_lines = ascii_lines.len().max(info_lines.len());
-    for i in 0..num_lines {
-        let ascii_text: String = if i < ascii_lines.len() {
-            ascii_lines[i].to_string()
+    let mut lines = Vec::new();
+
+    // ─── content rows (no borders) ───────────────────────────────
+    for i in 0..num_rows {
+        let logo_text: String = if i < logo_lines.len() {
+            logo_lines[i].to_string()
         } else {
-            " ".repeat(ascii_width)
+            " ".repeat(logo_width)
         };
 
-        let info_text = if i < info_lines.len() {
-            format!(" {}", info_lines[i])
+        let (info_text, kind) = if i < info_lines.len() {
+            let (ref s, k) = info_lines[i];
+            (s.clone(), k)
         } else {
-            String::new()
+            (String::new(), "info")
         };
 
-        let padding_needed = max_info_width + 1 - info_text.len();
-        let padding = " ".repeat(padding_needed);
-
-        let style = if i == 0 {
-            Style::default().fg(title_color)
-        } else if i == info_lines.len() - 1 && trusted_project.is_some() {
-            // Last line is the trust indicator
-            Style::default().fg(trust_color)
-        } else {
-            Style::default().fg(info_color)
+        let info_style = match kind {
+            "title" => Style::default().fg(title_color),
+            "trust" => Style::default().fg(trust_color),
+            _ => Style::default().fg(info_color),
         };
 
         lines.push(Line::from(vec![
-            Span::styled("│ ", Style::default().fg(border_color)),
-            Span::styled(ascii_text, Style::default().fg(logo_color)),
-            Span::styled(info_text, style),
-            Span::styled(padding, Style::default()),
-            Span::styled(" │", Style::default().fg(border_color)),
+            Span::styled(logo_text, Style::default().fg(logo_color)),
+            Span::styled("   ", Style::default()),
+            Span::styled(info_text, info_style),
         ]));
     }
-
-    // Bottom border
-    lines.push(Line::from(vec![Span::styled(
-        format!("└{}┘", "─".repeat(box_width - 2)),
-        Style::default().fg(border_color),
-    )]));
 
     lines.push(Line::from(""));
 

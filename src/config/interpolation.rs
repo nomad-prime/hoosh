@@ -11,9 +11,11 @@ pub fn interpolate(content: &str) -> ConfigResult<String> {
     while let Some(start) = rest.find(PREFIX) {
         out.push_str(&rest[..start]);
         let after = &rest[start + PREFIX.len()..];
-        let end = after.find('}').ok_or_else(|| ConfigError::BadInterpolation {
-            detail: format!("unterminated '{PREFIX}…' (missing closing '}}')"),
-        })?;
+        let end = after
+            .find('}')
+            .ok_or_else(|| ConfigError::BadInterpolation {
+                detail: format!("unterminated '{PREFIX}…' (missing closing '}}')"),
+            })?;
         let name = &after[..end];
         if name.is_empty() || !is_valid_var_name(name) {
             return Err(ConfigError::BadInterpolation {
@@ -115,7 +117,9 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap();
         unset("HOOSH_TEST_MISSING");
         let err = interpolate("k = \"${env:HOOSH_TEST_MISSING}\"").unwrap_err();
-        assert!(matches!(err, ConfigError::MissingEnvVar { ref name } if name == "HOOSH_TEST_MISSING"));
+        assert!(
+            matches!(err, ConfigError::MissingEnvVar { ref name } if name == "HOOSH_TEST_MISSING")
+        );
     }
 
     #[test]
