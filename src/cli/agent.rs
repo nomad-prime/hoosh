@@ -83,6 +83,11 @@ pub async fn handle_agent(
         let _ = tool_registry.register_tool(Arc::new(UpdateSessionFileTool));
     }
 
+    if let Some(memory_root) = config.memory_storage_root(&working_dir)? {
+        let _ =
+            tool_registry.register_tool(Arc::new(crate::memory::SaveMemoryTool::new(memory_root)));
+    }
+
     // Handle permissions based on mode
     if !skip_permissions {
         match terminal_mode {

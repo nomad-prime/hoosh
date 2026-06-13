@@ -76,3 +76,20 @@ fn build_memory_prompt_includes_existing_index() {
     assert!(block.contains("data scientist"));
     assert!(!block.contains("currently empty"));
 }
+
+#[test]
+fn build_memory_prompt_includes_full_taxonomy_and_caveats() {
+    let dir = TempDir::new().unwrap();
+    let block = build_memory_prompt(dir.path());
+    for kind in [
+        "<name>user</name>",
+        "<name>feedback</name>",
+        "<name>project</name>",
+        "<name>reference</name>",
+    ] {
+        assert!(block.contains(kind), "missing type block: {}", kind);
+    }
+    assert!(block.contains("What NOT to save"));
+    assert!(block.contains("Before recommending from memory"));
+    assert!(block.contains("When to access memories"));
+}
