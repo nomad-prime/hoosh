@@ -29,6 +29,12 @@ pub enum ConfigError {
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("Environment variable '{name}' referenced in config is not set")]
+    MissingEnvVar { name: String },
+
+    #[error("Invalid interpolation syntax in config: {detail}")]
+    BadInterpolation { detail: String },
 }
 
 pub type ConfigResult<T> = Result<T, ConfigError>;

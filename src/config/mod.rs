@@ -23,6 +23,7 @@ pub fn set_data_dir_override(path: PathBuf) {
 }
 
 pub mod error;
+pub mod interpolation;
 pub use error::{ConfigError, ConfigResult};
 
 pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
@@ -250,15 +251,26 @@ impl AppConfig {
 
         Self::validate_permissions(&config_path)?;
 
-        let content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
+        if let Ok(project_path) = Self::project_config_path()
+            && let Some(project_dir) = project_path.parent()
+        {
+            interpolation::load_env_file(&project_dir.join(".env"));
+        }
+        if let Some(global_dir) = config_path.parent() {
+            interpolation::load_env_file(&global_dir.join(".env"));
+        }
+
+        let raw_content = fs::read_to_string(&config_path).map_err(ConfigError::IoError)?;
+        let content = interpolation::interpolate(&raw_content)?;
         let mut config: Self = toml::from_str(&content).map_err(ConfigError::InvalidToml)?;
 
         if let Ok(project_path) = Self::project_config_path()
             && project_path.exists()
         {
             Self::validate_permissions(&project_path)?;
-            let project_content =
+            let raw_project_content =
                 fs::read_to_string(&project_path).map_err(ConfigError::IoError)?;
+            let project_content = interpolation::interpolate(&raw_project_content)?;
             let project_config: ProjectConfig =
                 toml::from_str(&project_content).map_err(ConfigError::InvalidToml)?;
             config.merge(project_config);
