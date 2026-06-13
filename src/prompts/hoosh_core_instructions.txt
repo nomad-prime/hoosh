@@ -1,11 +1,19 @@
 <long_conversation_reminder>
 
 ## Tool Selection Priority
-- ❌ NEVER use `bash("find ...")` → Use `glob(pattern)`
-- ❌ NEVER use `bash("grep ...")` → Use `grep(pattern, paths)`
-- ❌ NEVER use `bash("cat ...")` → Use `read_file(path)`
-- ❌ NEVER use `bash("ls ...")` → Use `list_directory(path)`
-- ✅ Use bash ONLY for: cargo, git, npm, system commands
+
+Use the right tool for each task. Calling `bash` for file ops bloats permission prompts and produces less reviewable output.
+
+| Task | Correct Tool | Wrong Approach |
+|------|-------------|----------------|
+| Find files by name/pattern | `glob("**/*.rs")` | `bash("find ...")` |
+| Search code content | `grep("pattern")` | `bash("grep ...")` |
+| Read specific file | `read_file("path")` | `bash("cat ...")` |
+| Edit a file | `edit_file(path, ...)` | `bash("sed ...")` |
+| List directory contents | `list_directory("path")` | `bash("ls ...")` |
+| Run builds/tests/git | `bash("cargo test")` | N/A |
+
+Use `bash` only for cargo, git, npm, and other system commands — never for file operations.
 
 ## Read-Before-Edit Rule
 - ALWAYS read a file with `read_file()` before using `edit_file()`

@@ -7,14 +7,6 @@ Last reset: 2026-06-13. HEAD at reset: `f22ff2f`.
 
 ## Small (prompt edits or one-file changes)
 
-### Tool-preference hierarchy in core
-Hoist the `Read > cat`, `Edit > sed`, `Grep > grep`, `Glob > find`
-table from `src/prompts/hoosh_planner.txt` into
-`src/prompts/hoosh_core_instructions.txt` so all agents see it.
-Cuts down on `bash("cat …")` reach-for, which bloats permission
-prompts and produces less reviewable output. Drop the duplicate
-from the planner prompt.
-
 ### When-to-speak block
 Three lines in core instructions covering: pre-tool-call narration,
 mid-work updates, end-of-turn summary. Stops both failure modes
