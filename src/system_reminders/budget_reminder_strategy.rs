@@ -41,9 +41,7 @@ impl ReminderStrategy for BudgetReminderStrategy {
             });
         }
 
-        if self.budget.should_wrap_up(step)
-            && !self.wrap_up_emitted.swap(true, Ordering::SeqCst)
-        {
+        if self.budget.should_wrap_up(step) && !self.wrap_up_emitted.swap(true, Ordering::SeqCst) {
             let wrap_up_message = format!(
                 "BUDGET ALERT: You have approximately {} seconds and {} steps remaining. \
                 Please prioritize wrapping up your work and providing a final answer.",
@@ -119,7 +117,9 @@ mod tests {
 
         let mut conversation = Conversation::new();
         for step in 8..10 {
-            let _ = strategy.apply(&mut conversation, &create_context(step)).await;
+            let _ = strategy
+                .apply(&mut conversation, &create_context(step))
+                .await;
         }
 
         assert_eq!(conversation.messages.len(), 1);

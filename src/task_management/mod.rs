@@ -43,9 +43,15 @@ impl AgentType {
 
     pub fn when_to_use(&self) -> &'static str {
         match self {
-            AgentType::Plan => "Architect agent for designing implementation plans. Use for complex feature planning, architecture decisions, or multi-file refactoring strategies. Returns a step-by-step plan; does not write code. (max 100 steps, 600s timeout)",
-            AgentType::Explore => "Fast read-only search agent for locating code. Use it to find files by pattern, grep for symbols or keywords, or answer 'where is X defined / which files reference Y'. Specify search breadth in the prompt. (max 75 steps, 300s timeout)",
-            AgentType::Review => "Read-only code review agent for correctness bugs, security issues, and convention checks. Use for PR reviews, audits, and cross-file consistency checks. (max 75 steps, 600s timeout)",
+            AgentType::Plan => {
+                "Architect agent for designing implementation plans. Use for complex feature planning, architecture decisions, or multi-file refactoring strategies. Returns a step-by-step plan; does not write code. (max 100 steps, 600s timeout)"
+            }
+            AgentType::Explore => {
+                "Fast read-only search agent for locating code. Use it to find files by pattern, grep for symbols or keywords, or answer 'where is X defined / which files reference Y'. Specify search breadth in the prompt. (max 75 steps, 300s timeout)"
+            }
+            AgentType::Review => {
+                "Read-only code review agent for correctness bugs, security issues, and convention checks. Use for PR reviews, audits, and cross-file consistency checks. (max 75 steps, 600s timeout)"
+            }
         }
     }
 
