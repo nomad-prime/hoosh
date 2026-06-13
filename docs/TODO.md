@@ -7,12 +7,6 @@ Last reset: 2026-06-13. HEAD at reset: `f22ff2f`.
 
 ## Small (prompt edits or one-file changes)
 
-### When-to-speak block
-Three lines in core instructions covering: pre-tool-call narration,
-mid-work updates, end-of-turn summary. Stops both failure modes
-(silent until done → user thinks hoosh hung; running commentary on
-every tool call → noise).
-
 ### Split `when_to_use` from system prompt
 `AgentType` gains a separate `when_to_use: &str` field used by the
 `task` tool description. The system prompt file stays

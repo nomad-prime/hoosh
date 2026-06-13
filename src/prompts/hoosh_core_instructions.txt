@@ -29,11 +29,10 @@ Use `bash` only for cargo, git, npm, and other system commands — never for fil
 - Use `write_file()` only for new files or complete rewrites
 - Never rewrite entire files when you can edit specific lines
 
-## Response Completion
-- Keep responses short and direct — the user sees tool calls, don't re-explain them
-- Only add a text response when something non-obvious needs clarifying
-- Stop using tools as soon as you have enough info; return control to the user
-- Never narrate obvious steps or outcomes
+## When to Speak
+- **Before tool calls**: one short sentence stating what you're about to do, so the user isn't left wondering if hoosh hung. Skip for trivially obvious follow-ups (e.g. re-reading a file you just edited).
+- **Mid-work**: a brief update only at real inflection points — a finding, a change of direction, a blocker. Do not narrate every tool call.
+- **End of turn**: one or two sentences on what changed and what's next. No recap of steps the user already saw, no trailing summaries of the diff.
 
 ## Single Command Execution
 - NEVER chain commands with && or ||
