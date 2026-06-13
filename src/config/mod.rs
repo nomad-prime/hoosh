@@ -163,6 +163,8 @@ pub struct AppConfig {
     pub core_reminder_token_threshold: Option<usize>,
     #[serde(default, deserialize_with = "deserialize_conversation_storage")]
     pub conversation_storage: Option<ConversationStorageMode>,
+    #[serde(default, deserialize_with = "deserialize_conversation_storage")]
+    pub memory_storage: Option<ConversationStorageMode>,
     #[serde(default)]
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default = "default_session_context_enabled")]
@@ -193,6 +195,8 @@ pub struct ProjectConfig {
     pub core_instructions_file: Option<String>,
     #[serde(default, deserialize_with = "deserialize_conversation_storage")]
     pub conversation_storage: Option<ConversationStorageMode>,
+    #[serde(default, deserialize_with = "deserialize_conversation_storage")]
+    pub memory_storage: Option<ConversationStorageMode>,
     #[serde(default)]
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default)]
@@ -228,6 +232,7 @@ impl Default for AppConfig {
             context_manager: None,
             core_reminder_token_threshold: None,
             conversation_storage: None,
+            memory_storage: None,
             terminal_mode: None,
             session_context_enabled: default_session_context_enabled(),
             daemon: None,
@@ -530,12 +535,23 @@ impl AppConfig {
         self.conversation_storage.unwrap_or_default()
     }
 
+    pub fn memory_storage_mode(&self) -> ConversationStorageMode {
+        self.memory_storage
+            .unwrap_or_else(|| self.conversation_storage_mode())
+    }
+
     /// Resolve the on-disk root for conversation storage for the given cwd.
     /// Returns `None` when storage is disabled.
     pub fn conversation_storage_root(&self, cwd: &Path) -> ConfigResult<Option<PathBuf>> {
         let mode = self.conversation_storage_mode();
         let data_dir = Self::hoosh_data_dir()?;
         Ok(resolve_storage_root(mode, cwd, &data_dir))
+    }
+
+    pub fn memory_storage_root(&self, cwd: &Path) -> ConfigResult<Option<PathBuf>> {
+        let mode = self.memory_storage_mode();
+        let data_dir = Self::hoosh_data_dir()?;
+        Ok(crate::storage::resolve_memory_root(mode, cwd, &data_dir))
     }
 
     pub fn project_config_path() -> ConfigResult<PathBuf> {
@@ -578,6 +594,10 @@ impl AppConfig {
 
         if other.conversation_storage.is_some() {
             self.conversation_storage = other.conversation_storage;
+        }
+
+        if other.memory_storage.is_some() {
+            self.memory_storage = other.memory_storage;
         }
 
         if other.terminal_mode.is_some() {

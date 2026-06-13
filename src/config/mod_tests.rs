@@ -829,3 +829,49 @@ fn test_project_config_overrides_user_config() {
         Some(crate::storage::ConversationStorageMode::Local)
     );
 }
+
+#[test]
+fn memory_storage_falls_back_to_conversation_storage_when_unset() {
+    use crate::storage::ConversationStorageMode;
+    let cfg = AppConfig {
+        conversation_storage: Some(ConversationStorageMode::Local),
+        memory_storage: None,
+        ..AppConfig::default()
+    };
+    assert_eq!(cfg.memory_storage_mode(), ConversationStorageMode::Local);
+}
+
+#[test]
+fn memory_storage_overrides_conversation_storage_when_set() {
+    use crate::storage::ConversationStorageMode;
+    let cfg = AppConfig {
+        conversation_storage: Some(ConversationStorageMode::Off),
+        memory_storage: Some(ConversationStorageMode::Local),
+        ..AppConfig::default()
+    };
+    assert_eq!(cfg.memory_storage_mode(), ConversationStorageMode::Local);
+}
+
+#[test]
+fn memory_storage_defaults_off_when_both_unset() {
+    use crate::storage::ConversationStorageMode;
+    let cfg = AppConfig::default();
+    assert_eq!(cfg.memory_storage_mode(), ConversationStorageMode::Off);
+}
+
+#[test]
+fn project_config_memory_storage_overrides_app_config() {
+    use crate::storage::ConversationStorageMode;
+    let mut app = AppConfig {
+        memory_storage: Some(ConversationStorageMode::Off),
+        ..AppConfig::default()
+    };
+
+    let project = ProjectConfig {
+        memory_storage: Some(ConversationStorageMode::Central),
+        ..Default::default()
+    };
+
+    app.merge(project);
+    assert_eq!(app.memory_storage, Some(ConversationStorageMode::Central));
+}

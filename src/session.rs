@@ -190,6 +190,11 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     let storage_root = config.conversation_storage_root(&working_dir)?;
     let storage_enabled = storage_root.is_some();
 
+    let memory_root = config.memory_storage_root(&working_dir)?;
+    if let Some(ref root) = memory_root {
+        std::fs::create_dir_all(root).ok();
+    }
+
     let (conversation_storage, conversation_id, conversation) = if let Some(root) = storage_root {
         // Storage enabled: create with persistence at resolved root
         let conversation_storage = Arc::new(ConversationStorage::with_root(&root));
@@ -212,6 +217,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             default_agent.as_ref(),
             &backend,
             &working_dir,
+            memory_root.as_deref(),
         )?;
 
         // Apply optional --name to the (new or resumed) conversation. We mutate
@@ -235,6 +241,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
             default_agent.as_ref(),
             &backend,
             &working_dir,
+            memory_root.as_deref(),
         )?;
 
         (conversation_storage, conversation_id, conversation)
@@ -516,6 +523,7 @@ fn load_or_create_conversation(
     default_agent: Option<&crate::agent_definition::AgentDefinition>,
     backend: &Arc<dyn LlmBackend>,
     working_dir: &Path,
+    memory_root: Option<&Path>,
 ) -> Result<Conversation> {
     // If storage is provided, try to load existing conversation
     if let Some(ref storage) = conversation_storage
@@ -550,6 +558,10 @@ fn load_or_create_conversation(
     // Add environment context system prompt for new conversations
     let env_context = generate_environment_context(backend, working_dir)?;
     conv.add_system_message(env_context);
+
+    if let Some(root) = memory_root {
+        conv.add_system_message(crate::memory::build_memory_prompt(root));
+    }
 
     Ok(conv)
 }

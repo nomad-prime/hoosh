@@ -79,6 +79,23 @@ pub fn resolve_storage_root(
     }
 }
 
+pub fn resolve_memory_root(
+    mode: ConversationStorageMode,
+    cwd: &Path,
+    data_dir: &Path,
+) -> Option<PathBuf> {
+    match mode {
+        ConversationStorageMode::Off => None,
+        ConversationStorageMode::Local => Some(cwd.join(".hoosh").join("memory")),
+        ConversationStorageMode::Central => Some(
+            data_dir
+                .join("projects")
+                .join(encode_cwd(cwd))
+                .join("memory"),
+        ),
+    }
+}
+
 const GITIGNORE_MARKER: &str = ".hoosh/conversations/";
 const GITIGNORE_BLOCK: &str = "\n# hoosh conversations (added automatically). Remove this line if you want to commit conversation history.\n.hoosh/conversations/\n.hoosh/memory/\n.hoosh/handoffs/\n";
 
