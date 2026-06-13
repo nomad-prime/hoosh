@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::Conversation;
 use crate::system_reminders::{ReminderContext, ReminderStrategy, SideEffectResult};
@@ -8,11 +9,16 @@ use anyhow::Result;
 pub struct BudgetReminderStrategy {
     budget: Arc<ExecutionBudget>,
     max_steps: usize,
+    wrap_up_emitted: AtomicBool,
 }
 
 impl BudgetReminderStrategy {
     pub fn new(budget: Arc<ExecutionBudget>, max_steps: usize) -> Self {
-        Self { budget, max_steps }
+        Self {
+            budget,
+            max_steps,
+            wrap_up_emitted: AtomicBool::new(false),
+        }
     }
 }
 
@@ -35,7 +41,9 @@ impl ReminderStrategy for BudgetReminderStrategy {
             });
         }
 
-        if self.budget.should_wrap_up(step) {
+        if self.budget.should_wrap_up(step)
+            && !self.wrap_up_emitted.swap(true, Ordering::SeqCst)
+        {
             let wrap_up_message = format!(
                 "BUDGET ALERT: You have approximately {} seconds and {} steps remaining. \
                 Please prioritize wrapping up your work and providing a final answer.",
@@ -102,6 +110,19 @@ mod tests {
                 .unwrap()
                 .contains("BUDGET ALERT")
         );
+    }
+
+    #[tokio::test]
+    async fn wrap_up_warning_fires_only_once() {
+        let budget = Arc::new(ExecutionBudget::new(Duration::from_secs(600), 10));
+        let strategy = BudgetReminderStrategy::new(budget, 10);
+
+        let mut conversation = Conversation::new();
+        for step in 8..10 {
+            let _ = strategy.apply(&mut conversation, &create_context(step)).await;
+        }
+
+        assert_eq!(conversation.messages.len(), 1);
     }
 
     #[tokio::test]

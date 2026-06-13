@@ -33,6 +33,14 @@ impl AgentType {
         }
     }
 
+    pub fn default_timeout_seconds(&self) -> u64 {
+        match self {
+            AgentType::Plan => 600,
+            AgentType::Explore => 300,
+            AgentType::Review => 600,
+        }
+    }
+
     pub fn when_to_use(&self) -> &'static str {
         match self {
             AgentType::Plan => "Architect agent for designing implementation plans. Use for complex feature planning, architecture decisions, or multi-file refactoring strategies. Returns a step-by-step plan; does not write code. (max 100 steps, 600s timeout)",
@@ -76,11 +84,12 @@ pub struct TaskDefinition {
 
 impl TaskDefinition {
     pub fn new(agent_type: AgentType, prompt: String, description: String) -> Self {
+        let timeout_seconds = Some(agent_type.default_timeout_seconds());
         Self {
             agent_type,
             prompt,
             description,
-            timeout_seconds: Some(600),
+            timeout_seconds,
             model: None,
             budget: None,
         }
