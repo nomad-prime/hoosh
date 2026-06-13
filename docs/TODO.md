@@ -7,14 +7,6 @@ Last reset: 2026-06-13. HEAD at reset: `f22ff2f`.
 
 ## Small (prompt edits or one-file changes)
 
-### Split `when_to_use` from system prompt
-`AgentType` gains a separate `when_to_use: &str` field used by the
-`task` tool description. The system prompt file stays
-subagent-facing. Today they're the same string — drift is
-impossible but each is suboptimal for its audience (caller wants
-"here's what this subagent is good at"; subagent wants "you are
-an X").
-
 ## Medium
 
 ### Per-agent thinking budgets

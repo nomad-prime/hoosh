@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use capitalize::Capitalize;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 pub struct TaskTool {
     backend: Arc<dyn LlmBackend>,
@@ -113,26 +113,30 @@ impl Tool for TaskTool {
     }
 
     fn description(&self) -> &'static str {
-        "Launch a specialized sub-agent to handle complex, multi-step tasks autonomously.\n\n\
-        Available agent types:\n\
-        - plan: Analyzes codebases and creates detailed implementation plans. Use for complex feature planning, architecture decisions, or multi-file refactoring strategies. (max 100 steps, 600s timeout)\n\
-        - explore: Fast agent for codebase exploration and research. Use for finding files, understanding code structure, or answering questions about the codebase. (max 75 steps, 300s timeout)\n\
-        - review: Read-only code review agent for analyzing code quality, identifying bugs, security issues, and suggesting improvements. Use for PR reviews, code audits, or quality assessments. (max 75 steps, 600s timeout)\n\n\
-        Usage:\n\
-        - Write a detailed, self-contained prompt describing exactly what the agent should do\n\
-        - The agent runs autonomously and returns a final report - you cannot interact with it\n\
-        - Specify what information the agent should return in its final response\n\
-        - Launch multiple agents in parallel when tasks are independent\n\n\
-        When to use:\n\
-        - Complex searches that may require multiple rounds of globbing/grepping\n\
-        - Research tasks requiring exploration of unfamiliar code\n\
-        - Planning multi-step implementations\n\
-        - When you're not confident you'll find the right match quickly\n\n\
-        When NOT to use:\n\
-        - Reading a specific file path you already know - use read_file directly\n\
-        - Searching for a specific class/function definition - use grep directly\n\
-        - Simple file operations - use the dedicated tools instead\n\
-        - Tasks that can be done in 1-2 tool calls"
+        static DESCRIPTION: OnceLock<&'static str> = OnceLock::new();
+        DESCRIPTION.get_or_init(|| {
+            let body = format!(
+                "Launch a specialized sub-agent to handle complex, multi-step tasks autonomously.\n\n\
+                Available agent types:\n\
+                - plan: {}\n\
+                - explore: {}\n\
+                - review: {}\n\n\
+                Usage:\n\
+                - Write a detailed, self-contained prompt describing exactly what the agent should do\n\
+                - The agent runs autonomously and returns a final report - you cannot interact with it\n\
+                - Specify what information the agent should return in its final response\n\
+                - Launch multiple agents in parallel when tasks are independent\n\n\
+                When NOT to use:\n\
+                - Reading a specific file path you already know - use read_file directly\n\
+                - Searching for a specific class/function definition - use grep directly\n\
+                - Simple file operations - use the dedicated tools instead\n\
+                - Tasks that can be done in 1-2 tool calls",
+                AgentType::Plan.when_to_use(),
+                AgentType::Explore.when_to_use(),
+                AgentType::Review.when_to_use(),
+            );
+            Box::leak(body.into_boxed_str())
+        })
     }
 
     fn parameter_schema(&self) -> Value {
