@@ -17,6 +17,7 @@ pub mod parser;
 pub mod permissions;
 pub mod session;
 pub mod session_files;
+pub mod shell_mode;
 pub mod skill_management;
 pub mod storage;
 pub mod system_reminders;

@@ -6,6 +6,7 @@ mod config;
 mod conversations;
 pub mod daemon;
 mod setup;
+mod shell;
 pub mod shell_setup;
 
 use crate::console::VerbosityLevel;
@@ -20,6 +21,7 @@ pub use config::handle_config;
 pub use conversations::handle_conversations;
 pub use daemon::handle_daemon;
 pub use setup::handle_setup;
+pub use shell::handle_shell;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -112,6 +114,8 @@ pub enum Commands {
         action: AliasAction,
     },
     Setup,
+    /// Start hoosh as a shell: bash runs commands, hoosh handles prose and errors
+    Shell,
     Daemon {
         #[command(subcommand)]
         action: DaemonAction,

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use hoosh::cli::{
     handle_agent, handle_agents, handle_alias_install, handle_commands, handle_config,
-    handle_conversations, handle_daemon, handle_setup,
+    handle_conversations, handle_daemon, handle_setup, handle_shell,
 };
 use hoosh::session_files::cleanup_stale_sessions;
 use hoosh::{
@@ -79,6 +79,11 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Setup) => {
             handle_setup().await?;
+        }
+        Some(Commands::Shell) => {
+            let config = AppConfig::load().unwrap_or_default();
+            init_console(cli.get_effective_verbosity(config.get_verbosity()));
+            handle_shell(cli.backend, cli.skip_permissions, &config).await?;
         }
         Some(Commands::Daemon { action }) => {
             let config = AppConfig::load().unwrap_or_default();
