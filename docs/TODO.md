@@ -7,6 +7,18 @@ Last reset: 2026-06-13. HEAD at reset: `f22ff2f`.
 
 ## Small (prompt edits or one-file changes)
 
+### Show model thinking in TUI — collapse follow-up
+v1 shipped: Anthropic `thinking` blocks and OpenAI-compatible
+`reasoning` field are extracted into `LlmResponse.thinking`, emitted
+as `AgentEvent::AssistantThinking`, and rendered dimmed-italic
+inline under a `⎿ thinking` header (`add_thinking` in
+`src/tui/app_state.rs`). Remaining: ctrl+o to collapse/expand the
+most recent thinking block. Blocked because `insert_before` writes
+straight into terminal scrollback — collapse needs the fullview
+re-render path (`app_loop_fullview.rs`) and a new
+`MessageLine::Thinking { content, collapsed }` variant. Also a
+`display.show_thinking` config knob to suppress entirely.
+
 ## Medium
 
 ### Per-agent thinking budgets
@@ -29,12 +41,15 @@ via a trait method like `fn display_mode(&self) -> ToolDisplay`.
 No expand-on-keypress in v1 — the on-disk transcript has
 everything for post-hoc inspection.
 
-### `omitClaudeMd` for Plan/Explore subagents
-Gate AGENTS.md injection on agent type. Plan/Explore skip it;
-Review keeps it (it needs to check conventions). Saves ~1-2k
-tokens per fast read-only subagent turn. Sequence this *after*
-the `when_to_use` split lands so the agent-type plumbing is
-already in place.
+### Orchestration mode for Task subagents
+Top-level agent runs in orchestration mode: minimal direct tool
+use, delegates to Plan/Explore/Review/Coder subagents and stitches
+results. Goal is keeping the main context lean and letting
+specialists do focused work with their own budgets. Open
+questions: how to express "orchestrator-only" vs hybrid; whether
+it's a config knob (`agent.mode = "orchestrate" | "direct"`) or
+a separate AgentType; how to handle short tasks where delegation
+overhead isn't worth it.
 
 ### Read-only bash for Plan/Review subagents
 Their prompts reference `cargo check` but the subagents can't

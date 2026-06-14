@@ -466,6 +466,7 @@ impl AnthropicBackend {
     fn extract_llm_response(&self, response: MessagesResponse) -> LlmResponse {
         let mut text_parts = Vec::new();
         let mut tool_calls = Vec::new();
+        let mut thinking_parts = Vec::new();
 
         for block in response.content {
             match block {
@@ -483,12 +484,22 @@ impl AnthropicBackend {
                         },
                     });
                 }
+                ContentBlock::Thinking { thinking, .. } => {
+                    if !thinking.is_empty() {
+                        thinking_parts.push(thinking);
+                    }
+                }
                 _ => {}
             }
         }
 
         let input_tokens = response.usage.input_tokens as usize;
         let output_tokens = response.usage.output_tokens as usize;
+        let thinking = if thinking_parts.is_empty() {
+            None
+        } else {
+            Some(thinking_parts.join("\n"))
+        };
 
         if !tool_calls.is_empty() {
             let content = if text_parts.is_empty() {
@@ -498,9 +509,11 @@ impl AnthropicBackend {
             };
             LlmResponse::with_tool_calls(content, tool_calls)
                 .with_tokens(input_tokens, output_tokens)
+                .with_thinking(thinking)
         } else {
             LlmResponse::content_only(text_parts.join("\n"))
                 .with_tokens(input_tokens, output_tokens)
+                .with_thinking(thinking)
         }
     }
 }
@@ -646,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn thinking_block_in_response_is_ignored() {
+    fn thinking_block_extracted_into_llm_response() {
         let json = r#"{
             "content": [
                 {"type": "thinking", "thinking": "Let me think...", "signature": "sig1"},
@@ -655,9 +668,9 @@ mod tests {
             "usage": {"input_tokens": 10, "output_tokens": 5}
         }"#;
         let resp: MessagesResponse = serde_json::from_str(json).expect("parses");
-        assert_eq!(resp.content.len(), 2);
-        assert!(matches!(resp.content[0], ContentBlock::Thinking { .. }));
-        assert!(matches!(resp.content[1], ContentBlock::Text { .. }));
+        let llm = backend().extract_llm_response(resp);
+        assert_eq!(llm.content.as_deref(), Some("The answer is 42."));
+        assert_eq!(llm.thinking.as_deref(), Some("Let me think..."));
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub struct LlmResponse {
     pub tool_calls: Option<Vec<ToolCall>>,
     pub input_tokens: Option<usize>,
     pub output_tokens: Option<usize>,
+    pub thinking: Option<String>,
 }
 
 impl LlmResponse {
@@ -21,6 +22,7 @@ impl LlmResponse {
             tool_calls: None,
             input_tokens: None,
             output_tokens: None,
+            thinking: None,
         }
     }
 
@@ -30,12 +32,18 @@ impl LlmResponse {
             tool_calls: Some(tool_calls),
             input_tokens: None,
             output_tokens: None,
+            thinking: None,
         }
     }
 
     pub fn with_tokens(mut self, input_tokens: usize, output_tokens: usize) -> Self {
         self.input_tokens = Some(input_tokens);
         self.output_tokens = Some(output_tokens);
+        self
+    }
+
+    pub fn with_thinking(mut self, thinking: Option<String>) -> Self {
+        self.thinking = thinking.filter(|t| !t.is_empty());
         self
     }
 }

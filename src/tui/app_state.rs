@@ -622,6 +622,9 @@ impl AppState {
             AgentEvent::AssistantThought(content) => {
                 self.add_thought(&content);
             }
+            AgentEvent::AssistantThinking(content) => {
+                self.add_thinking(&content);
+            }
             AgentEvent::ToolCalls(tool_call_info) => {
                 self.agent_state = AgentState::ExecutingTools;
                 let mut rng = rand::thread_rng();
@@ -794,6 +797,27 @@ impl AppState {
                     self.todos = todos;
                 }
             }
+        }
+    }
+
+    pub fn add_thinking(&mut self, content: &str) {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+
+        self.add_message("\n".to_string());
+
+        let dimmed_italic = Style::default()
+            .fg(palette::DIMMED_TEXT)
+            .add_modifier(Modifier::ITALIC);
+
+        let header = Line::from(Span::styled("⎿ thinking", dimmed_italic));
+        self.add_styled_line(header);
+
+        for line in trimmed.lines() {
+            let styled = Line::from(Span::styled(format!("  {}", line), dimmed_italic));
+            self.add_styled_line(styled);
         }
     }
 

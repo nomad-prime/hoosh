@@ -212,6 +212,7 @@ async fn agent_handles_no_response_content() {
         tool_calls: None,
         input_tokens: None,
         output_tokens: None,
+        thinking: None,
     }]));
 
     let (agent, _, _, _) = create_test_agent(backend);
@@ -387,6 +388,7 @@ async fn agent_empty_response_completes_turn() {
         tool_calls: None,
         input_tokens: None,
         output_tokens: None,
+        thinking: None,
     }]));
 
     let (agent, _, _, _) = create_test_agent(backend);
@@ -405,6 +407,7 @@ async fn agent_tracks_token_usage_when_provided() {
         tool_calls: None,
         input_tokens: Some(100),
         output_tokens: Some(50),
+        thinking: None,
     }]));
 
     let (agent, _, _, event_tx) = create_test_agent(backend);
@@ -544,6 +547,7 @@ async fn agent_wraps_up_when_budget_low() {
             }]),
             input_tokens: None,
             output_tokens: None,
+            thinking: None,
         },
         LlmResponse {
             content: None,
@@ -557,6 +561,7 @@ async fn agent_wraps_up_when_budget_low() {
             }]),
             input_tokens: None,
             output_tokens: None,
+            thinking: None,
         },
         LlmResponse {
             content: None,
@@ -570,6 +575,7 @@ async fn agent_wraps_up_when_budget_low() {
             }]),
             input_tokens: None,
             output_tokens: None,
+            thinking: None,
         },
         LlmResponse::content_only("Final response".to_string()),
     ]));

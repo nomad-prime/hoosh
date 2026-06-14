@@ -291,6 +291,12 @@ impl Agent {
             });
         }
 
+        if let Some(thinking) = &response.thinking
+            && !thinking.is_empty()
+        {
+            self.send_event(AgentEvent::AssistantThinking(thinking.clone()));
+        }
+
         if let Some(ref tool_calls) = response.tool_calls
             && !tool_calls.is_empty()
         {

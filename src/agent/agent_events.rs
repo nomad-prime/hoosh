@@ -4,6 +4,7 @@ use crate::tools::todo_write::TodoItem;
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     Thinking,
+    AssistantThinking(String),
     AssistantThought(String),
     ToolCalls(Vec<(String, String)>),
     ToolPreview {

@@ -198,6 +198,8 @@ struct ResponseMessage {
     content: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default)]
+    reasoning: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -537,17 +539,20 @@ impl OpenAICompatibleBackend {
         if let Some(choice) = response_data.choices.first()
             && let Some(message) = &choice.message
         {
+            let thinking = message.reasoning.clone();
             if let Some(tool_calls) = &message.tool_calls {
                 // Response contains tool calls
                 return Ok(LlmResponse::with_tool_calls(
                     message.content.clone(),
                     tool_calls.clone(),
                 )
-                .with_tokens(input_tokens, output_tokens));
+                .with_tokens(input_tokens, output_tokens)
+                .with_thinking(thinking));
             } else if let Some(content) = &message.content {
                 // Response contains only content
                 return Ok(LlmResponse::content_only(content.clone())
-                    .with_tokens(input_tokens, output_tokens));
+                    .with_tokens(input_tokens, output_tokens)
+                    .with_thinking(thinking));
             }
         }
 
