@@ -1,8 +1,9 @@
 use super::app_state::{AppState, MessageLine};
+use super::colors::palette;
 use super::markdown::MarkdownRenderer;
 use crate::tui::terminal::HooshTerminal;
 use anyhow::Result;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Widget};
 
@@ -60,7 +61,45 @@ impl MessageRenderer {
             MessageLine::Markdown(markdown) => {
                 self.render_markdown_message(markdown, terminal_width, terminal)
             }
+            MessageLine::Thinking(text) => {
+                self.render_thinking_message(text, terminal_width, terminal)
+            }
         }
+    }
+
+    fn render_thinking_message(
+        &self,
+        text: String,
+        terminal_width: usize,
+        terminal: &mut HooshTerminal,
+    ) -> Result<()> {
+        let dimmed_italic = Style::default()
+            .fg(palette::DIMMED_TEXT)
+            .add_modifier(Modifier::ITALIC);
+
+        let mut out: Vec<Line<'static>> =
+            vec![Line::from(Span::styled("⎿ thinking", dimmed_italic))];
+
+        let body_width = terminal_width.saturating_sub(2).max(1);
+        for paragraph in text.lines() {
+            if paragraph.is_empty() {
+                out.push(Line::from(""));
+                continue;
+            }
+            for wrapped in textwrap::wrap(paragraph, body_width) {
+                out.push(Line::from(Span::styled(
+                    format!("  {}", wrapped),
+                    dimmed_italic,
+                )));
+            }
+        }
+
+        let line_count = out.len() as u16;
+        terminal.insert_before(line_count, |buf| {
+            Paragraph::new(Text::from(out)).render(buf.area, buf);
+        })?;
+
+        Ok(())
     }
 
     fn render_plain_message(

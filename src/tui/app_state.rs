@@ -27,6 +27,7 @@ pub enum MessageLine {
     Plain(String),
     Styled(Line<'static>),
     Markdown(String),
+    Thinking(String),
 }
 
 #[derive(Clone, Debug)]
@@ -805,20 +806,8 @@ impl AppState {
         if trimmed.is_empty() {
             return;
         }
-
         self.add_message("\n".to_string());
-
-        let dimmed_italic = Style::default()
-            .fg(palette::DIMMED_TEXT)
-            .add_modifier(Modifier::ITALIC);
-
-        let header = Line::from(Span::styled("⎿ thinking", dimmed_italic));
-        self.add_styled_line(header);
-
-        for line in trimmed.lines() {
-            let styled = Line::from(Span::styled(format!("  {}", line), dimmed_italic));
-            self.add_styled_line(styled);
-        }
+        self.add_message_line(MessageLine::Thinking(trimmed.to_string()));
     }
 
     pub fn add_thought(&mut self, content: &str) {

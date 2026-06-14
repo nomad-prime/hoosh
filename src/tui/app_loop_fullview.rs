@@ -216,6 +216,18 @@ fn calculate_wrapped_line_count(app: &AppState, content_width: usize) -> usize {
                 let rendered = markdown_renderer.render(md);
                 calculate_wrapped_lines_for_styled_lines(&rendered, content_width)
             }
+            MessageLine::Thinking(text) => {
+                let body_width = content_width.saturating_sub(2).max(1);
+                let mut count = 1;
+                for paragraph in text.lines() {
+                    if paragraph.is_empty() {
+                        count += 1;
+                    } else {
+                        count += textwrap::wrap(paragraph, body_width).len();
+                    }
+                }
+                count
+            }
         };
     }
 
@@ -278,6 +290,24 @@ fn render_messages_fullview(
             MessageLine::Markdown(md) => {
                 let rendered = markdown_renderer.render(md);
                 all_lines.extend(rendered);
+            }
+            MessageLine::Thinking(text) => {
+                use crate::tui::colors::palette;
+                use ratatui::style::{Modifier, Style};
+                let dimmed_italic = Style::default()
+                    .fg(palette::DIMMED_TEXT)
+                    .add_modifier(Modifier::ITALIC);
+                all_lines.push(Line::from(Span::styled("⎿ thinking", dimmed_italic)));
+                for paragraph in text.lines() {
+                    if paragraph.is_empty() {
+                        all_lines.push(Line::from(""));
+                    } else {
+                        all_lines.push(Line::from(Span::styled(
+                            format!("  {}", paragraph),
+                            dimmed_italic,
+                        )));
+                    }
+                }
             }
         }
     }
