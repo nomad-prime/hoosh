@@ -174,6 +174,8 @@ pub struct AppConfig {
     pub daemon: Option<DaemonConfig>,
     #[serde(default)]
     pub memory_mode: Option<MemoryMode>,
+    #[serde(default)]
+    pub display_compact: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -238,6 +240,7 @@ impl Default for AppConfig {
             session_context_enabled: default_session_context_enabled(),
             daemon: None,
             memory_mode: None,
+            display_compact: None,
         }
     }
 }

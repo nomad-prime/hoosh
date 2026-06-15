@@ -39,6 +39,11 @@ impl InputHandler for TextInputHandler {
                 // Shift+Tab toggles autopilot mode
                 app.toggle_autopilot();
             }
+            KeyCode::Char('b') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let now_compact = app.toggle_display_compact();
+                let label = if now_compact { "compact" } else { "full" };
+                app.add_status_message(&format!("display mode: {}", label));
+            }
             KeyCode::Char('v') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 // Prefer image on the clipboard. Falls back to text when the
                 // clipboard has no image (the common case).

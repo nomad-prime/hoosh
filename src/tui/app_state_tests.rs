@@ -491,6 +491,54 @@ fn app_state_complete_single_tool_call() {
 }
 
 #[test]
+fn toggle_display_compact_flips_and_returns_new_state() {
+    let mut state = AppState::new();
+    assert!(!state.display_compact);
+    assert!(state.toggle_display_compact());
+    assert!(state.display_compact);
+    assert!(!state.toggle_display_compact());
+    assert!(!state.display_compact);
+}
+
+fn rendered_text(state: &mut AppState) -> String {
+    state
+        .drain_pending_messages()
+        .iter()
+        .map(|line| match line {
+            MessageLine::Plain(s) | MessageLine::Markdown(s) | MessageLine::Thinking(s) => {
+                s.clone()
+            }
+            MessageLine::Styled(l) => l
+                .spans
+                .iter()
+                .map(|span| span.content.to_string())
+                .collect::<Vec<_>>()
+                .join(""),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn complete_single_tool_call_skips_continuation_in_compact_mode() {
+    let mut state = AppState::new();
+    state.display_compact = true;
+    state.add_active_tool_call("call1".to_string(), "bash".to_string());
+    state.set_tool_call_result("call1", "unique-result-marker".to_string());
+    state.complete_single_tool_call("call1");
+    assert!(!rendered_text(&mut state).contains("unique-result-marker"));
+}
+
+#[test]
+fn complete_single_tool_call_includes_continuation_in_full_mode() {
+    let mut state = AppState::new();
+    state.add_active_tool_call("call1".to_string(), "bash".to_string());
+    state.set_tool_call_result("call1", "unique-result-marker".to_string());
+    state.complete_single_tool_call("call1");
+    assert!(rendered_text(&mut state).contains("unique-result-marker"));
+}
+
+#[test]
 fn app_state_clear_active_tool_calls() {
     let mut state = AppState::new();
     state.add_active_tool_call("call1".to_string(), "bash".to_string());

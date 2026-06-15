@@ -21,19 +21,18 @@ re-render path (`app_loop_fullview.rs`) and a new
 
 ## Medium
 
-### Brevity mode v1
-`display.verbosity = "compact" | "full"` config knob. Compact
-renders every tool call as a one-line braille-prefixed summary —
-no body, no params, no result. **No checkmarks** — hoosh uses
-brailles (`⎿`, `◐`, `●`, `○`) only. Memory tools collapse to
-`Saved memory: <slug>` in *both* modes by default since they're
-pure background bookkeeping. Entry points:
-`src/tui/message_renderer.rs`, components under
-`src/tui/components/`, new `DisplayConfig` near
-`AppConfig.verbosity` (`src/config/mod.rs:155`), per-tool override
-via a trait method like `fn display_mode(&self) -> ToolDisplay`.
-No expand-on-keypress in v1 — the on-disk transcript has
-everything for post-hoc inspection.
+### Brevity mode v1 — remaining
+v1 shipped: `display_compact` bool on `AppConfig`, runtime
+`Ctrl+B` toggle via `text_input_handler.rs`, completion paths in
+`app_state.rs` skip the `⎿` continuation line when compact.
+Subagent task summaries are preserved (status info, not result
+body). Status message surfaces the new mode on toggle.
+Remaining: memory tools (`save_memory`) should collapse to
+`Saved memory: <slug>` in *both* modes by default — needs raw
+tool name on `ActiveToolCall` (currently only `display_name`
+flows through `ToolCalls` event). Also: per-tool override via a
+trait method like `fn display_mode(&self) -> ToolDisplay` if a
+second tool ever needs the same treatment.
 
 ### Orchestration mode for Task subagents
 Top-level agent runs in orchestration mode: minimal direct tool

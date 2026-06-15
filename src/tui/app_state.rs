@@ -226,6 +226,7 @@ pub struct AppState {
     pub input_mode: InputMode,
     pub attachment_view: Option<AttachmentViewState>,
     pub paste_detector: PasteDetector,
+    pub display_compact: bool,
 }
 
 /// Format a short status/error string as a `  ⎿  [lowercased message]` line.
@@ -296,7 +297,13 @@ impl AppState {
             input_mode: InputMode::Normal,
             attachment_view: None,
             paste_detector: PasteDetector::new(),
+            display_compact: false,
         }
+    }
+
+    pub fn toggle_display_compact(&mut self) -> bool {
+        self.display_compact = !self.display_compact;
+        self.display_compact
     }
 
     pub fn tick_animation(&mut self) {
@@ -549,7 +556,9 @@ impl AppState {
             };
             self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
 
-            if let Some(summary) = &tool_call.result_summary {
+            if !self.display_compact
+                && let Some(summary) = &tool_call.result_summary
+            {
                 self.add_tool_continuation(summary);
             }
 
@@ -580,7 +589,10 @@ impl AppState {
             };
             self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
 
-            // For subagent tasks, show completion stats
+            // For subagent tasks, show completion stats. Subagent summaries are
+            // pure status (tool count, tokens, elapsed) so they survive compact
+            // mode — without them a finished subagent looks indistinguishable
+            // from a zero-result call.
             if tool_call.is_subagent_task {
                 if let (Some(tool_uses), Some(tokens)) =
                     (tool_call.total_tool_uses, tool_call.total_tokens)
@@ -599,7 +611,9 @@ impl AppState {
                     );
                     self.add_tool_continuation(&completion_text);
                 }
-            } else if let Some(summary) = &tool_call.result_summary {
+            } else if !self.display_compact
+                && let Some(summary) = &tool_call.result_summary
+            {
                 self.add_tool_continuation(summary);
             }
 

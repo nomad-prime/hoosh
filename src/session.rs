@@ -125,6 +125,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Initialize app state with history
     let mut app_state = AppState::new();
+    app_state.display_compact = config.display_compact.unwrap_or(false);
     load_history(&mut app_state);
 
     if detected_terminal_mode == TerminalMode::Fullview {
