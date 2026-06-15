@@ -41,6 +41,14 @@ impl AgentType {
         }
     }
 
+    pub fn default_thinking_budget(&self) -> Option<u32> {
+        match self {
+            AgentType::Plan => Some(5000),
+            AgentType::Review => Some(3000),
+            AgentType::Explore => None,
+        }
+    }
+
     pub fn when_to_use(&self) -> &'static str {
         match self {
             AgentType::Plan => {
@@ -86,11 +94,13 @@ pub struct TaskDefinition {
     pub timeout_seconds: Option<u64>,
     pub model: Option<String>,
     pub budget: Option<ExecutionBudget>,
+    pub thinking_budget: Option<u32>,
 }
 
 impl TaskDefinition {
     pub fn new(agent_type: AgentType, prompt: String, description: String) -> Self {
         let timeout_seconds = Some(agent_type.default_timeout_seconds());
+        let thinking_budget = agent_type.default_thinking_budget();
         Self {
             agent_type,
             prompt,
@@ -98,6 +108,7 @@ impl TaskDefinition {
             timeout_seconds,
             model: None,
             budget: None,
+            thinking_budget,
         }
     }
 
@@ -108,6 +119,11 @@ impl TaskDefinition {
 
     pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
         self.timeout_seconds = Some(timeout_seconds);
+        self
+    }
+
+    pub fn with_thinking_budget(mut self, thinking_budget: Option<u32>) -> Self {
+        self.thinking_budget = thinking_budget;
         self
     }
 
@@ -268,6 +284,26 @@ mod tests {
             Ok(AgentType::Review)
         ));
         assert_eq!(AgentType::Review.max_steps(), 75);
+    }
+
+    #[test]
+    fn test_agent_type_default_thinking_budget() {
+        assert_eq!(AgentType::Plan.default_thinking_budget(), Some(5000));
+        assert_eq!(AgentType::Review.default_thinking_budget(), Some(3000));
+        assert_eq!(AgentType::Explore.default_thinking_budget(), None);
+    }
+
+    #[test]
+    fn test_task_definition_inherits_thinking_budget() {
+        let plan_task = TaskDefinition::new(AgentType::Plan, "p".to_string(), "d".to_string());
+        assert_eq!(plan_task.thinking_budget, Some(5000));
+
+        let explore_task =
+            TaskDefinition::new(AgentType::Explore, "p".to_string(), "d".to_string());
+        assert_eq!(explore_task.thinking_budget, None);
+
+        let overridden = plan_task.with_thinking_budget(Some(1000));
+        assert_eq!(overridden.thinking_budget, Some(1000));
     }
 
     #[test]

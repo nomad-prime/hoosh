@@ -261,7 +261,8 @@ impl AnthropicBackend {
     }
 
     fn create_request(&self, message: &str) -> MessagesRequest {
-        let (max_tokens, temperature, thinking) = self.thinking_request_overrides(8092, Some(0.7));
+        let (max_tokens, temperature, thinking) =
+            self.thinking_request_overrides(8092, Some(0.7), None);
         MessagesRequest {
             model: self.config.model.clone(),
             messages: vec![AnthropicMessage {
@@ -280,8 +281,10 @@ impl AnthropicBackend {
         &self,
         base_max_tokens: u32,
         base_temperature: Option<f32>,
+        override_budget: Option<u32>,
     ) -> (u32, Option<f32>, Option<ThinkingConfig>) {
-        match self.config.thinking_budget {
+        let budget = override_budget.or(self.config.thinking_budget);
+        match budget {
             Some(budget) if budget > 0 => {
                 let needed = budget.saturating_add(4096);
                 let max_tokens = base_max_tokens.max(needed);
@@ -328,7 +331,8 @@ impl AnthropicBackend {
         let tool_schemas = self.convert_tool_schemas(tools.get_tool_schemas());
         let has_tools = !tool_schemas.is_empty();
 
-        let (max_tokens, temperature, thinking) = self.thinking_request_overrides(8092, Some(0.7));
+        let (max_tokens, temperature, thinking) =
+            self.thinking_request_overrides(8092, Some(0.7), conversation.thinking_budget_override);
         MessagesRequest {
             model: self.config.model.clone(),
             messages,
@@ -632,7 +636,7 @@ mod tests {
     #[test]
     fn thinking_disabled_by_default() {
         let (max_tokens, temperature, thinking) =
-            backend().thinking_request_overrides(8092, Some(0.7));
+            backend().thinking_request_overrides(8092, Some(0.7), None);
         assert_eq!(max_tokens, 8092);
         assert_eq!(temperature, Some(0.7));
         assert!(thinking.is_none());
@@ -641,7 +645,7 @@ mod tests {
     #[test]
     fn thinking_enabled_forces_temperature_and_grows_max_tokens() {
         let (max_tokens, temperature, thinking) =
-            backend_with_thinking(20000).thinking_request_overrides(8092, Some(0.7));
+            backend_with_thinking(20000).thinking_request_overrides(8092, Some(0.7), None);
         assert_eq!(temperature, Some(1.0));
         assert!(max_tokens >= 20000 + 4096);
         let thinking = thinking.expect("thinking block emitted");
@@ -650,9 +654,26 @@ mod tests {
     }
 
     #[test]
+    fn thinking_override_takes_precedence_over_config() {
+        let (_, _, thinking) =
+            backend_with_thinking(20000).thinking_request_overrides(8092, Some(0.7), Some(3000));
+        let thinking = thinking.expect("thinking block emitted");
+        assert_eq!(thinking.budget_tokens, 3000);
+    }
+
+    #[test]
+    fn thinking_override_enables_thinking_when_config_unset() {
+        let (_, temperature, thinking) =
+            backend().thinking_request_overrides(8092, Some(0.7), Some(5000));
+        assert_eq!(temperature, Some(1.0));
+        let thinking = thinking.expect("thinking block emitted");
+        assert_eq!(thinking.budget_tokens, 5000);
+    }
+
+    #[test]
     fn thinking_zero_budget_treated_as_disabled() {
         let (max_tokens, temperature, thinking) =
-            backend_with_thinking(0).thinking_request_overrides(8092, Some(0.7));
+            backend_with_thinking(0).thinking_request_overrides(8092, Some(0.7), None);
         assert_eq!(max_tokens, 8092);
         assert_eq!(temperature, Some(0.7));
         assert!(thinking.is_none());

@@ -35,6 +35,7 @@ pub struct Agent {
     context_manager: Option<Arc<ContextManager>>,
     system_reminder: Option<Arc<SystemReminder>>,
     cancellation_token: Option<Arc<AtomicBool>>,
+    thinking_budget_override: Option<u32>,
 }
 
 impl Agent {
@@ -52,11 +53,17 @@ impl Agent {
             context_manager: None,
             system_reminder: None,
             cancellation_token: None,
+            thinking_budget_override: None,
         }
     }
 
     pub fn with_max_steps(mut self, max_steps: usize) -> Self {
         self.max_steps = max_steps;
+        self
+    }
+
+    pub fn with_thinking_budget(mut self, thinking_budget: Option<u32>) -> Self {
+        self.thinking_budget_override = thinking_budget;
         self
     }
 
@@ -127,6 +134,10 @@ impl Agent {
 
     pub async fn handle_turn(&self, conversation: &mut Conversation) -> Result<()> {
         self.send_event(AgentEvent::Thinking);
+
+        if self.thinking_budget_override.is_some() {
+            conversation.thinking_budget_override = self.thinking_budget_override;
+        }
 
         // Hard-fail before any backend traffic if the conversation carries
         // attachments and the current backend can't accept them. Avoids the

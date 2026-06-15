@@ -545,7 +545,8 @@ fn backend_with_thinking(budget: u32) -> OpenAICompatibleBackend {
 #[test]
 fn reasoning_disabled_by_default() {
     let backend = OpenAICompatibleBackend::new(create_test_config()).unwrap();
-    let (max_tokens, temperature, reasoning) = backend.reasoning_request_overrides(4096, Some(0.7));
+    let (max_tokens, temperature, reasoning) =
+        backend.reasoning_request_overrides(4096, Some(0.7), None);
     assert_eq!(max_tokens, 4096);
     assert_eq!(temperature, Some(0.7));
     assert!(reasoning.is_none());
@@ -554,7 +555,8 @@ fn reasoning_disabled_by_default() {
 #[test]
 fn reasoning_enabled_forces_temperature_and_grows_max_tokens() {
     let backend = backend_with_thinking(20000);
-    let (max_tokens, temperature, reasoning) = backend.reasoning_request_overrides(4096, Some(0.7));
+    let (max_tokens, temperature, reasoning) =
+        backend.reasoning_request_overrides(4096, Some(0.7), None);
     assert_eq!(temperature, Some(1.0));
     assert!(max_tokens >= 20000 + 4096);
     let reasoning = reasoning.expect("reasoning block emitted");
@@ -564,7 +566,8 @@ fn reasoning_enabled_forces_temperature_and_grows_max_tokens() {
 #[test]
 fn reasoning_zero_budget_treated_as_disabled() {
     let backend = backend_with_thinking(0);
-    let (max_tokens, temperature, reasoning) = backend.reasoning_request_overrides(4096, Some(0.7));
+    let (max_tokens, temperature, reasoning) =
+        backend.reasoning_request_overrides(4096, Some(0.7), None);
     assert_eq!(max_tokens, 4096);
     assert_eq!(temperature, Some(0.7));
     assert!(reasoning.is_none());

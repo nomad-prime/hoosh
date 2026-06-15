@@ -563,7 +563,7 @@ impl OpenAICompatibleBackend {
 
     fn create_request(&self, message: &str) -> ChatCompletionRequest {
         let (max_completion_tokens, temperature, reasoning) =
-            self.reasoning_request_overrides(4096, self.config.temperature);
+            self.reasoning_request_overrides(4096, self.config.temperature, None);
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: vec![OpenAIWireMessage {
@@ -588,8 +588,11 @@ impl OpenAICompatibleBackend {
     ) -> ChatCompletionRequest {
         let tool_schemas = tools.get_tool_schemas();
         let has_tools = !tool_schemas.is_empty();
-        let (max_completion_tokens, temperature, reasoning) =
-            self.reasoning_request_overrides(4096, self.config.temperature);
+        let (max_completion_tokens, temperature, reasoning) = self.reasoning_request_overrides(
+            4096,
+            self.config.temperature,
+            conversation.thinking_budget_override,
+        );
 
         ChatCompletionRequest {
             model: self.config.model.clone(),
@@ -610,8 +613,10 @@ impl OpenAICompatibleBackend {
         &self,
         base_max_tokens: u32,
         base_temperature: Option<f32>,
+        override_budget: Option<u32>,
     ) -> (u32, Option<f32>, Option<ReasoningConfig>) {
-        match self.config.thinking_budget {
+        let budget = override_budget.or(self.config.thinking_budget);
+        match budget {
             Some(budget) if budget > 0 => {
                 let max_tokens = base_max_tokens.max(budget.saturating_add(4096));
                 (

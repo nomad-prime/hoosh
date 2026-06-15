@@ -21,12 +21,6 @@ re-render path (`app_loop_fullview.rs`) and a new
 
 ## Medium
 
-### Per-agent thinking budgets
-Backend wiring is done (`b6c22c6`, `c05b126`). What's left is the
-per-`AgentType` defaults: Plan ~5000, Review ~3000, Explore None,
-Coder configurable. Plumbing goes through `TaskManager`. Highest
-output-quality lift of anything on this list.
-
 ### Brevity mode v1
 `display.verbosity = "compact" | "full"` config knob. Compact
 renders every tool call as a one-line braille-prefixed summary —

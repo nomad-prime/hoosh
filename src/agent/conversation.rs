@@ -135,6 +135,7 @@ impl ToolCallResponse {
 pub struct Conversation {
     pub metadata: ConversationMetadata,
     pub messages: Vec<ConversationMessage>,
+    pub thinking_budget_override: Option<u32>,
     storage: Option<Arc<ConversationStorage>>,
 }
 
@@ -164,6 +165,7 @@ impl Conversation {
         Self {
             metadata: ConversationMetadata::new(id),
             messages: Vec::new(),
+            thinking_budget_override: None,
             storage: None,
         }
     }
@@ -173,6 +175,7 @@ impl Conversation {
         Ok(Self {
             metadata,
             messages: Vec::new(),
+            thinking_budget_override: None,
             storage: Some(storage),
         })
     }
@@ -183,6 +186,7 @@ impl Conversation {
         Ok(Self {
             metadata,
             messages,
+            thinking_budget_override: None,
             storage: Some(storage),
         })
     }
@@ -197,6 +201,7 @@ impl Conversation {
         Ok(Self {
             metadata,
             messages: Vec::new(),
+            thinking_budget_override: None,
             storage: Some(storage),
         })
     }
@@ -613,6 +618,7 @@ impl Clone for Conversation {
         Self {
             metadata: self.metadata.clone(),
             messages: self.messages.clone(),
+            thinking_budget_override: self.thinking_budget_override,
             storage: self.storage.clone(),
         }
     }

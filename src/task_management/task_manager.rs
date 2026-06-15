@@ -82,7 +82,8 @@ impl TaskManager {
         )
         .with_max_steps(max_steps)
         .with_event_sender(event_tx)
-        .with_system_reminder(system_reminder);
+        .with_system_reminder(system_reminder)
+        .with_thinking_budget(task_def.thinking_budget);
 
         let conversation_storage = Arc::new(ConversationStorage::with_default_path()?);
 
