@@ -520,6 +520,21 @@ fn rendered_text(state: &mut AppState) -> String {
 }
 
 #[test]
+fn add_thinking_suppressed_in_compact_mode() {
+    let mut state = AppState::new();
+    state.display_compact = true;
+    state.add_thinking("a long internal monologue marker-xyz");
+    assert!(!rendered_text(&mut state).contains("marker-xyz"));
+}
+
+#[test]
+fn add_thinking_rendered_in_full_mode() {
+    let mut state = AppState::new();
+    state.add_thinking("a long internal monologue marker-xyz");
+    assert!(rendered_text(&mut state).contains("marker-xyz"));
+}
+
+#[test]
 fn complete_single_tool_call_skips_continuation_in_compact_mode() {
     let mut state = AppState::new();
     state.display_compact = true;

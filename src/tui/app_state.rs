@@ -816,6 +816,9 @@ impl AppState {
     }
 
     pub fn add_thinking(&mut self, content: &str) {
+        if self.display_compact {
+            return;
+        }
         let trimmed = content.trim();
         if trimmed.is_empty() {
             return;
