@@ -93,7 +93,18 @@ impl Component for StatusBar {
 
         let token_color = palette::INFO;
 
-        let areas = Layout::horizontal([Constraint::Fill(1), Constraint::Length(36)]).split(area);
+        let mode_text = if state.display_compact {
+            "mode: compact"
+        } else {
+            "mode: full"
+        };
+
+        let areas = Layout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Length(14),
+            Constraint::Length(36),
+        ])
+        .split(area);
 
         if !status_text.is_empty() {
             let status_line =
@@ -102,8 +113,15 @@ impl Component for StatusBar {
             paragraph.render(areas[0], buf);
         }
 
+        let mode_line = Line::from(Span::styled(
+            mode_text,
+            Style::default().fg(palette::SUBDUED_TEXT),
+        ));
+        let paragraph = Paragraph::new(mode_line).right_aligned();
+        paragraph.render(areas[1], buf);
+
         let token_line = Line::from(Span::styled(token_text, Style::default().fg(token_color)));
         let paragraph = Paragraph::new(token_line).right_aligned();
-        paragraph.render(areas[1], buf);
+        paragraph.render(areas[2], buf);
     }
 }
