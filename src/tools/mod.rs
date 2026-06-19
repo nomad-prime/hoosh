@@ -5,6 +5,12 @@ use tokio::sync::mpsc;
 
 use crate::permissions::ToolPermissionDescriptor;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolRender {
+    Standard,
+    Inline { prefix: &'static str },
+}
+
 /// Context provided to tools during execution
 /// Allows tools to access metadata about their execution and communicate with the parent agent
 #[derive(Clone)]
@@ -61,6 +67,10 @@ pub trait Tool: Send + Sync {
 
     async fn generate_preview(&self, _args: &Value) -> Option<String> {
         None
+    }
+
+    fn render_strategy(&self) -> ToolRender {
+        ToolRender::Standard
     }
 
     fn is_hidden(&self) -> bool {

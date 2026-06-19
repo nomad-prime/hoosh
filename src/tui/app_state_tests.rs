@@ -90,7 +90,7 @@ fn active_tool_call_add_subagent_step() {
     let mut tool_call = ActiveToolCall {
         tool_call_id: "call1".to_string(),
         display_name: "test".to_string(),
-        tool_name: "test_tool".to_string(),
+        render: ToolRender::Standard,
         status: ToolCallStatus::Starting,
         preview: None,
         budget_pct: None,
@@ -120,7 +120,7 @@ fn active_tool_call_add_bash_output_line() {
     let mut tool_call = ActiveToolCall {
         tool_call_id: "call1".to_string(),
         display_name: "bash".to_string(),
-        tool_name: "bash".to_string(),
+        render: ToolRender::Standard,
         status: ToolCallStatus::Executing,
         preview: None,
         result_summary: None,
@@ -441,7 +441,11 @@ fn app_state_clear_input() {
 #[test]
 fn app_state_add_active_tool_call() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
 
     assert_eq!(state.active_tool_calls.len(), 1);
     let tool = &state.active_tool_calls[0];
@@ -453,7 +457,11 @@ fn app_state_add_active_tool_call() {
 #[test]
 fn app_state_update_tool_call_status() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
 
     state.update_tool_call_status("call1", ToolCallStatus::Executing);
     assert_eq!(state.active_tool_calls[0].status, ToolCallStatus::Executing);
@@ -462,7 +470,11 @@ fn app_state_update_tool_call_status() {
 #[test]
 fn app_state_set_tool_call_result() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
 
     state.set_tool_call_result("call1", "success".to_string());
     assert_eq!(
@@ -474,7 +486,11 @@ fn app_state_set_tool_call_result() {
 #[test]
 fn app_state_get_active_tool_call_mut() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
 
     let tool = state.get_active_tool_call_mut("call1");
     assert!(tool.is_some());
@@ -484,7 +500,11 @@ fn app_state_get_active_tool_call_mut() {
 #[test]
 fn app_state_complete_single_tool_call() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
     state.set_tool_call_result("call1", "result".to_string());
 
     state.complete_single_tool_call("call1");
@@ -540,7 +560,11 @@ fn add_thinking_rendered_in_full_mode() {
 fn complete_single_tool_call_skips_continuation_in_compact_mode() {
     let mut state = AppState::new();
     state.display_compact = true;
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
     state.set_tool_call_result("call1", "unique-result-marker".to_string());
     state.complete_single_tool_call("call1");
     assert!(!rendered_text(&mut state).contains("unique-result-marker"));
@@ -549,7 +573,11 @@ fn complete_single_tool_call_skips_continuation_in_compact_mode() {
 #[test]
 fn complete_single_tool_call_includes_continuation_in_full_mode() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
     state.set_tool_call_result("call1", "unique-result-marker".to_string());
     state.complete_single_tool_call("call1");
     assert!(rendered_text(&mut state).contains("unique-result-marker"));
@@ -561,7 +589,9 @@ fn save_memory_renders_as_single_collapsed_line_in_full_mode() {
     state.add_active_tool_call(
         "call1".to_string(),
         "SaveMemory(feedback: user-prefers-rust)".to_string(),
-        "save_memory".to_string(),
+        ToolRender::Inline {
+            prefix: "Saved memory: ",
+        },
     );
     state.set_tool_call_result("call1", "user_prefers_rust".to_string());
     state.update_tool_call_status("call1", ToolCallStatus::Completed);
@@ -579,7 +609,9 @@ fn save_memory_renders_as_single_collapsed_line_in_compact_mode() {
     state.add_active_tool_call(
         "call1".to_string(),
         "SaveMemory(feedback: user-prefers-rust)".to_string(),
-        "save_memory".to_string(),
+        ToolRender::Inline {
+            prefix: "Saved memory: ",
+        },
     );
     state.set_tool_call_result("call1", "user_prefers_rust".to_string());
     state.update_tool_call_status("call1", ToolCallStatus::Completed);
@@ -595,7 +627,9 @@ fn save_memory_error_falls_through_to_standard_render() {
     state.add_active_tool_call(
         "call1".to_string(),
         "SaveMemory(feedback: bad)".to_string(),
-        "save_memory".to_string(),
+        ToolRender::Inline {
+            prefix: "Saved memory: ",
+        },
     );
     state.update_tool_call_status("call1", ToolCallStatus::Error("disk full".to_string()));
     state.complete_single_tool_call("call1");
@@ -606,11 +640,15 @@ fn save_memory_error_falls_through_to_standard_render() {
 #[test]
 fn app_state_clear_active_tool_calls() {
     let mut state = AppState::new();
-    state.add_active_tool_call("call1".to_string(), "bash".to_string(), "bash".to_string());
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "bash".to_string(),
+        ToolRender::Standard,
+    );
     state.add_active_tool_call(
         "call2".to_string(),
         "python".to_string(),
-        "python".to_string(),
+        ToolRender::Standard,
     );
 
     state.clear_active_tool_calls();

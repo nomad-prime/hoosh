@@ -10,7 +10,7 @@ use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
 use crate::system_reminders::{ReminderContext, SideEffectResult, SystemReminder};
 use crate::tool_executor::ToolExecutor;
-use crate::tools::ToolRegistry;
+use crate::tools::{ToolRegistry, ToolRender};
 
 #[derive(Debug, Clone)]
 pub struct PermissionResponse {
@@ -375,31 +375,33 @@ impl Agent {
     }
 
     fn emit_tool_call_events(&self, tool_calls: &[ToolCall]) {
-        let tool_call_info: Vec<(String, String, String)> = tool_calls
+        let pending: Vec<crate::agent::agent_events::PendingToolCall> = tool_calls
             .iter()
             .filter_map(|tc| {
                 let tool = self.tool_registry.get_tool(&tc.function.name);
-
-                // Skip hidden tools - they shouldn't appear in the UI
-                if tool.map(|t| t.is_hidden()).unwrap_or(false) {
+                if tool.is_some_and(|t| t.is_hidden()) {
                     return None;
                 }
-
-                let display = if let Some(tool) = tool {
-                    if let Ok(args) = serde_json::from_str(&tc.function.arguments) {
-                        tool.format_call_display(&args)
-                    } else {
-                        tc.function.name.clone()
-                    }
-                } else {
-                    tc.function.name.clone()
-                };
-                Some((tc.id.clone(), display, tc.function.name.clone()))
+                let display_name = tool
+                    .and_then(|t| {
+                        serde_json::from_str(&tc.function.arguments)
+                            .ok()
+                            .map(|args| t.format_call_display(&args))
+                    })
+                    .unwrap_or_else(|| tc.function.name.clone());
+                let render = tool
+                    .map(|t| t.render_strategy())
+                    .unwrap_or(ToolRender::Standard);
+                Some(crate::agent::agent_events::PendingToolCall {
+                    id: tc.id.clone(),
+                    display_name,
+                    render,
+                })
             })
             .collect();
 
-        if !tool_call_info.is_empty() {
-            self.send_event(AgentEvent::ToolCalls(tool_call_info));
+        if !pending.is_empty() {
+            self.send_event(AgentEvent::ToolCalls(pending));
         }
     }
 

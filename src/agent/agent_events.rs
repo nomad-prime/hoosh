@@ -1,12 +1,20 @@
 use crate::permissions::ToolPermissionDescriptor;
+use crate::tools::ToolRender;
 use crate::tools::todo_write::TodoItem;
+
+#[derive(Debug, Clone)]
+pub struct PendingToolCall {
+    pub id: String,
+    pub display_name: String,
+    pub render: ToolRender,
+}
 
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     Thinking,
     AssistantThinking(String),
     AssistantThought(String),
-    ToolCalls(Vec<(String, String, String)>),
+    ToolCalls(Vec<PendingToolCall>),
     ToolPreview {
         preview: String,
     },

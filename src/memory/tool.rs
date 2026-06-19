@@ -6,11 +6,9 @@ use serde_json::{Value, json};
 
 use crate::memory::entrypoint::ENTRYPOINT_NAME;
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolRender, ToolResult};
 
 pub const VALID_TYPES: &[&str] = &["user", "feedback", "project", "reference"];
-
-pub const TOOL_NAME: &str = "save_memory";
 
 const MAX_INDEX_ENTRY_CHARS: usize = 200;
 
@@ -93,7 +91,13 @@ fn update_index(memory_root: &Path, slug: &str, entry: &str) -> std::io::Result<
 #[async_trait]
 impl Tool for SaveMemoryTool {
     fn name(&self) -> &'static str {
-        TOOL_NAME
+        "save_memory"
+    }
+
+    fn render_strategy(&self) -> ToolRender {
+        ToolRender::Inline {
+            prefix: "Saved memory: ",
+        }
     }
 
     fn display_name(&self) -> &'static str {
