@@ -4,6 +4,7 @@ use super::input::{ImageAttachment, PasteDetector, TextArea, TextAttachment};
 use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
+use crate::memory::tool::TOOL_NAME as SAVE_MEMORY_TOOL_NAME;
 use crate::permissions::ToolPermissionDescriptor;
 use crate::tools::todo_write::{TodoItem, TodoStatus};
 use crate::tui::{glyphs, palette};
@@ -48,6 +49,7 @@ pub struct BashOutputLine {
 pub struct ActiveToolCall {
     pub tool_call_id: String,
     pub display_name: String,
+    pub tool_name: String,
     pub status: ToolCallStatus,
     pub preview: Option<String>,
     pub result_summary: Option<String>,
@@ -485,6 +487,15 @@ impl AppState {
         self.add_styled_line(line);
     }
 
+    fn add_memory_save_line(&mut self, slug: &str) {
+        self.add_message("\n".to_string());
+        let line = Line::from(Span::styled(
+            format!("Saved memory: {}", slug),
+            Style::default().fg(palette::SUBDUED_TEXT),
+        ));
+        self.add_styled_line(line);
+    }
+
     pub fn add_debug_message(&mut self, message: String) {
         let styled_line = Line::from(Span::styled(
             format!("  [DEBUG] {}", message),
@@ -508,10 +519,16 @@ impl AppState {
         self.pending_messages.drain(..).collect()
     }
 
-    pub fn add_active_tool_call(&mut self, tool_call_id: String, display_name: String) {
+    pub fn add_active_tool_call(
+        &mut self,
+        tool_call_id: String,
+        display_name: String,
+        tool_name: String,
+    ) {
         self.active_tool_calls.push(ActiveToolCall {
             tool_call_id,
             display_name,
+            tool_name,
             status: ToolCallStatus::Starting,
             preview: None,
             result_summary: None,
@@ -549,6 +566,13 @@ impl AppState {
 
         for tool_call in &tool_calls {
             let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
+
+            if tool_call.tool_name == SAVE_MEMORY_TOOL_NAME && !is_error {
+                let slug = tool_call.result_summary.as_deref().unwrap_or("?");
+                self.add_memory_save_line(slug);
+                continue;
+            }
+
             let glyph = if is_error {
                 glyphs::TOOL_ERROR
             } else {
@@ -582,6 +606,13 @@ impl AppState {
             let tool_call = self.active_tool_calls.remove(index);
 
             let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
+
+            if tool_call.tool_name == SAVE_MEMORY_TOOL_NAME && !is_error {
+                let slug = tool_call.result_summary.as_deref().unwrap_or("?");
+                self.add_memory_save_line(slug);
+                return;
+            }
+
             let glyph = if is_error {
                 glyphs::TOOL_ERROR
             } else {
@@ -644,8 +675,8 @@ impl AppState {
                 self.agent_state = AgentState::ExecutingTools;
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
-                for (tool_call_id, display_name) in tool_call_info {
-                    self.add_active_tool_call(tool_call_id, display_name);
+                for (tool_call_id, display_name, tool_name) in tool_call_info {
+                    self.add_active_tool_call(tool_call_id, display_name, tool_name);
                 }
             }
             AgentEvent::ToolExecutionStarted { tool_call_id, .. } => {

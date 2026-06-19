@@ -10,6 +10,8 @@ use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
 
 pub const VALID_TYPES: &[&str] = &["user", "feedback", "project", "reference"];
 
+pub const TOOL_NAME: &str = "save_memory";
+
 const MAX_INDEX_ENTRY_CHARS: usize = 200;
 
 pub struct SaveMemoryTool {
@@ -91,7 +93,7 @@ fn update_index(memory_root: &Path, slug: &str, entry: &str) -> std::io::Result<
 #[async_trait]
 impl Tool for SaveMemoryTool {
     fn name(&self) -> &'static str {
-        "save_memory"
+        TOOL_NAME
     }
 
     fn display_name(&self) -> &'static str {
@@ -217,6 +219,16 @@ impl Tool for SaveMemoryTool {
             .into_write_safe()
             .build()
             .expect("Failed to build save_memory permission descriptor")
+    }
+
+    fn result_summary(&self, result: &str) -> String {
+        // result is "Saved <kind> memory to <slug>.md" — extract the slug
+        result
+            .split_whitespace()
+            .last()
+            .and_then(|s| s.strip_suffix(".md"))
+            .unwrap_or(result)
+            .to_string()
     }
 
     fn format_call_display(&self, args: &Value) -> String {

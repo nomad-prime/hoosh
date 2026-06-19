@@ -375,7 +375,7 @@ impl Agent {
     }
 
     fn emit_tool_call_events(&self, tool_calls: &[ToolCall]) {
-        let tool_call_info: Vec<(String, String)> = tool_calls
+        let tool_call_info: Vec<(String, String, String)> = tool_calls
             .iter()
             .filter_map(|tc| {
                 let tool = self.tool_registry.get_tool(&tc.function.name);
@@ -394,7 +394,7 @@ impl Agent {
                 } else {
                     tc.function.name.clone()
                 };
-                Some((tc.id.clone(), display))
+                Some((tc.id.clone(), display, tc.function.name.clone()))
             })
             .collect();
 

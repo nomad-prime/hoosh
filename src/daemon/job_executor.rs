@@ -196,7 +196,7 @@ impl JobExecutor {
                     }
                     AgentEvent::ToolCalls(calls) => {
                         if let Some(ref mut f) = log {
-                            for (name, input) in calls {
+                            for (name, input, _tool_name) in calls {
                                 let _ =
                                     writeln!(f, "[{}] tool_call: {} {}", Utc::now(), name, input);
                             }

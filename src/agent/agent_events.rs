@@ -6,7 +6,7 @@ pub enum AgentEvent {
     Thinking,
     AssistantThinking(String),
     AssistantThought(String),
-    ToolCalls(Vec<(String, String)>),
+    ToolCalls(Vec<(String, String, String)>),
     ToolPreview {
         preview: String,
     },
