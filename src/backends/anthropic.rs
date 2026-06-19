@@ -488,10 +488,8 @@ impl AnthropicBackend {
                         },
                     });
                 }
-                ContentBlock::Thinking { thinking, .. } => {
-                    if !thinking.is_empty() {
-                        thinking_parts.push(thinking);
-                    }
+                ContentBlock::Thinking { thinking, .. } if !thinking.is_empty() => {
+                    thinking_parts.push(thinking);
                 }
                 _ => {}
             }
