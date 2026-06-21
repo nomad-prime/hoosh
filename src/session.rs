@@ -13,7 +13,7 @@ use crate::commands::{CommandRegistry, register_custom_commands, register_defaul
 use crate::completion::{CommandCompleter, FileCompleter};
 use crate::config::AppConfig;
 use crate::context_management::{
-    ContextManager, SlidingWindowStrategy, ToolOutputTruncationStrategy,
+    ContextManager, LogCompressionStrategy, SlidingWindowStrategy, ToolOutputTruncationStrategy,
 };
 use crate::history::PromptHistory;
 use crate::memory_mode::{MemoryMode, MemoryModeManager};
@@ -631,7 +631,15 @@ fn setup_context_manager(config: &AppConfig) -> Arc<ContextManager> {
             context_manager_builder.add_strategy(Box::new(sliding_window_strategy));
     }
 
-    // Apply truncation SECOND to reduce size of remaining messages
+    // Apply log compression SECOND to semantically shrink build/test output
+    // before the dumb truncation backstop runs.
+    if let Some(log_compression_config) = context_manager_config.log_compression {
+        let log_compression_strategy = LogCompressionStrategy::new(log_compression_config);
+        context_manager_builder =
+            context_manager_builder.add_strategy(Box::new(log_compression_strategy));
+    }
+
+    // Apply truncation LAST to reduce size of remaining messages
     if let Some(truncation_config) = context_manager_config.tool_output_truncation {
         let truncation_strategy = ToolOutputTruncationStrategy::new(truncation_config);
         context_manager_builder =

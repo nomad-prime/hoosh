@@ -63,6 +63,7 @@ async fn test_strategy_execution_order() {
     let config = ContextManagerConfig {
         max_tokens: 100_000,
         warning_threshold: 0.70,
+        log_compression: None,
         tool_output_truncation: Some(ToolOutputTruncationConfig {
             max_length: 1000, // Very small limit
             show_truncation_notice: true,
@@ -179,6 +180,7 @@ async fn test_pressure_recalculation_after_compression() {
     let config = ContextManagerConfig {
         max_tokens: 100_000,
         warning_threshold: 0.60,
+        log_compression: None,
         tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
         sliding_window: Some(SlidingWindowConfig {
             window_size: 10,

@@ -1,4 +1,5 @@
 mod context_manager;
+mod log_compression_strategy;
 mod sliding_window_strategy;
 mod token_accountant;
 mod tool_output_truncation_strategy;
@@ -19,9 +20,10 @@ pub enum StrategyResult {
 }
 
 pub use context_manager::{
-    ContextManagementStrategy, ContextManager, ContextManagerConfig, SlidingWindowConfig,
-    ToolOutputTruncationConfig,
+    ContextManagementStrategy, ContextManager, ContextManagerConfig, LogCompressionConfig,
+    SlidingWindowConfig, ToolOutputTruncationConfig,
 };
+pub use log_compression_strategy::LogCompressionStrategy;
 pub use sliding_window_strategy::SlidingWindowStrategy;
 pub use token_accountant::{TokenAccountant, TokenAccountantStats, TokenUsageRecord};
 pub use tool_output_truncation_strategy::ToolOutputTruncationStrategy;

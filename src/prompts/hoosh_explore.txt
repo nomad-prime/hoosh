@@ -41,7 +41,3 @@ Return a concise report. Lead with the answer. Include:
 - Any caveats or places you didn't search.
 
 Do not editorialize, do not narrate your process, do not suggest next steps unless asked. The caller will decide what to do with your findings.
-
-# AGENTS.md
-
-If the repo has an `AGENTS.md` or `CLAUDE.md`, read it and adhere to its conventions when reporting findings.

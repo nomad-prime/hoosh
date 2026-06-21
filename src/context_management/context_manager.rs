@@ -68,9 +68,40 @@ impl Default for SlidingWindowConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LogCompressionConfig {
+    pub min_lines: usize,
+    pub max_errors: usize,
+    pub error_context_lines: usize,
+    pub max_stack_traces: usize,
+    pub stack_trace_max_lines: usize,
+    pub max_warnings: usize,
+    pub dedupe_warnings: bool,
+    pub keep_summary_lines: bool,
+    pub max_total_lines: usize,
+}
+
+impl Default for LogCompressionConfig {
+    fn default() -> Self {
+        Self {
+            min_lines: 50,
+            max_errors: 10,
+            error_context_lines: 3,
+            max_stack_traces: 3,
+            stack_trace_max_lines: 20,
+            max_warnings: 5,
+            dedupe_warnings: true,
+            keep_summary_lines: true,
+            max_total_lines: 100,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContextManagerConfig {
     pub max_tokens: usize,
     pub warning_threshold: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_compression: Option<LogCompressionConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_output_truncation: Option<ToolOutputTruncationConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,6 +113,7 @@ impl Default for ContextManagerConfig {
         Self {
             max_tokens: 128_000,
             warning_threshold: 0.70,
+            log_compression: Some(LogCompressionConfig::default()),
             tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
             sliding_window: Some(SlidingWindowConfig::default()),
         }

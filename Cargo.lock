@@ -1160,6 +1160,7 @@ dependencies = [
 name = "hoosh"
 version = "0.6.1"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "arboard",
  "async-trait",
