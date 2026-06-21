@@ -58,7 +58,7 @@ pub fn load_env_file(path: &Path) {
         if key.is_empty() || !is_valid_var_name(key) {
             continue;
         }
-        if env::var_os(key).is_some() {
+        if env::var_os(key).is_some_and(|v| !v.is_empty()) {
             continue;
         }
         let value = strip_quotes(value.trim());
@@ -173,6 +173,18 @@ mod tests {
         load_env_file(&path);
         assert_eq!(env::var("HOOSH_ENVFILE_WINS").unwrap(), "fromprocess");
         unset("HOOSH_ENVFILE_WINS");
+    }
+
+    #[test]
+    fn env_file_overrides_empty_process_env() {
+        let _g = ENV_LOCK.lock().unwrap();
+        set("HOOSH_ENVFILE_EMPTY", "");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        fs::write(&path, "HOOSH_ENVFILE_EMPTY=fromfile\n").unwrap();
+        load_env_file(&path);
+        assert_eq!(env::var("HOOSH_ENVFILE_EMPTY").unwrap(), "fromfile");
+        unset("HOOSH_ENVFILE_EMPTY");
     }
 
     #[test]
