@@ -136,6 +136,32 @@ pub struct BackendConfig {
     pub thinking_budget: Option<u32>,
 }
 
+impl BackendConfig {
+    fn merge_from(&mut self, other: &BackendConfig) {
+        if other.api_key.is_some() {
+            self.api_key = other.api_key.clone();
+        }
+        if other.model.is_some() {
+            self.model = other.model.clone();
+        }
+        if other.base_url.is_some() {
+            self.base_url = other.base_url.clone();
+        }
+        if other.chat_api.is_some() {
+            self.chat_api = other.chat_api.clone();
+        }
+        if other.temperature.is_some() {
+            self.temperature = other.temperature;
+        }
+        if other.pricing_endpoint.is_some() {
+            self.pricing_endpoint = other.pricing_endpoint.clone();
+        }
+        if other.thinking_budget.is_some() {
+            self.thinking_budget = other.thinking_budget;
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AgentConfig {
     pub file: String,
@@ -578,7 +604,10 @@ impl AppConfig {
 
     pub fn merge(&mut self, other: ProjectConfig) {
         for (key, value) in other.backends {
-            self.backends.insert(key, value);
+            self.backends
+                .entry(key)
+                .and_modify(|existing| existing.merge_from(&value))
+                .or_insert(value);
         }
 
         for (key, value) in other.agents {

@@ -387,6 +387,45 @@ fn merge_overwrites_backends() {
 }
 
 #[test]
+fn merge_preserves_unspecified_backend_fields() {
+    let mut config = AppConfig::default();
+    config.backends.insert(
+        "openai".to_string(),
+        BackendConfig {
+            api_key: Some("global-key".to_string()),
+            model: Some("global-model".to_string()),
+            base_url: Some("https://global.example".to_string()),
+            chat_api: None,
+            temperature: None,
+            pricing_endpoint: None,
+            thinking_budget: None,
+        },
+    );
+
+    let mut project_config = ProjectConfig::default();
+    project_config.backends.insert(
+        "openai".to_string(),
+        BackendConfig {
+            api_key: None,
+            model: Some("project-model".to_string()),
+            base_url: None,
+            chat_api: None,
+            temperature: None,
+            pricing_endpoint: None,
+            thinking_budget: Some(20000),
+        },
+    );
+
+    config.merge(project_config);
+
+    let merged = config.get_backend_config("openai").unwrap();
+    assert_eq!(merged.api_key, Some("global-key".to_string()));
+    assert_eq!(merged.model, Some("project-model".to_string()));
+    assert_eq!(merged.base_url, Some("https://global.example".to_string()));
+    assert_eq!(merged.thinking_budget, Some(20000));
+}
+
+#[test]
 fn merge_overwrites_agents() {
     let mut config = AppConfig::default();
     config.agents.insert(
