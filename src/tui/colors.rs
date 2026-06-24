@@ -38,6 +38,17 @@ pub mod palette {
     pub const HEADER_BORDER: Color = Color::Rgb(100, 100, 100);
     pub const HEADER_TRUST: Color = Color::Rgb(255, 200, 0);
 
+    // Subtle logo gradient (top -> bottom: mint -> soft teal)
+    pub const HEADER_LOGO_GRADIENT: [Color; 5] = [
+        Color::Rgb(142, 240, 204), // mint (matches original logo)
+        Color::Rgb(130, 226, 206), // soft aqua
+        Color::Rgb(118, 210, 208), // muted teal
+        Color::Rgb(108, 196, 206), // dim teal
+        Color::Rgb(100, 182, 200), // soft cyan-grey
+    ];
+    pub const HEADER_TITLE_NEON: Color = Color::Rgb(142, 240, 204);
+    pub const HEADER_ACCENT: Color = Color::Rgb(118, 210, 208);
+
     // Status colors
     pub const STATUS_IDLE: Color = Color::Rgb(142, 240, 204);
     pub const STATUS_PROCESSING: Color = Color::Rgb(142, 240, 204);

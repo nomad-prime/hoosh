@@ -12,31 +12,32 @@ use ratatui::{
 
 pub struct StatusBar;
 
+/// Build a subtle "radio wave" pattern: a row of short vertical bars whose
+/// heights ripple sideways like the equalizer on a radio. Heights stay small
+/// so the animation reads as a quiet pulse rather than a loud bar graph.
+fn radio_wave(frame: usize) -> String {
+    // Braille dot glyphs that rise in height, so the wave looks subtle and flat.
+    const LEVELS: [char; 4] = ['⣀', '⣤', '⣶', '⣿'];
+    const WIDTH: usize = 9;
+
+    let mut out = String::with_capacity(WIDTH * 4);
+    for cell in 0..WIDTH {
+        // A travelling sine-like ripple: each cell is phase-shifted so the
+        // crest drifts smoothly across the row.
+        let phase = frame + cell * 2;
+        // Triangle wave over 8 steps gives a gentle rise/fall: 0..=4..=0.
+        let tri = phase % 8;
+        let level = if tri <= 4 { tri } else { 8 - tri };
+        let glyph = LEVELS.get(level.min(LEVELS.len() - 1)).copied().unwrap_or('⣀');
+        out.push(glyph);
+    }
+    out
+}
+
 impl Component for StatusBar {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        let thinking_spinners = [
-            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"][..],
-            &["⠐", "⠒", "⠓", "⠋", "⠙", "⠹", "⠸", "⠼"][..],
-            &["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"][..],
-            &["⡏", "⡟", "⡻", "⣻", "⣿", "⣯", "⣧", "⡧"][..],
-            &["⣷", "⣯", "⣟", "⡿", "⢿", "⠿", "⠷", "⣶"][..],
-            &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠴", "⠲"][..],
-            &["⢹", "⢺", "⢼", "⣸", "⣇", "⡧", "⡏", "⡃"][..],
-        ];
-
-        let executing_spinners = [
-            &["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠤", "⠐"][..],
-            &["⠁", "⠉", "⠋", "⠛", "⠟", "⠿", "⠿", "⠟"][..],
-            &["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"][..],
-            &["⡀", "⡁", "⡃", "⡇", "⡧", "⡷", "⣶", "⣦"][..],
-            &["⠐", "⠒", "⠖", "⠶", "⠷", "⠿", "⠻", "⠛"][..],
-            &["⢀", "⢄", "⢤", "⢦", "⢧", "⢧", "⢧", "⢧"][..],
-            &["⣀", "⣄", "⣤", "⣦", "⣶", "⣾", "⣽", "⣻"][..],
-        ];
-
-        let waiting_spinners = ["⠄", "⠂", "⠁", "⠂"];
         let retry_spinners = ["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"];
 
         let (status_text, status_color) = if let Some(retry_status) = &state.current_retry_status {
@@ -46,9 +47,8 @@ impl Component for StatusBar {
                 palette::DESTRUCTIVE,
             )
         } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {
-            let waiting_spinner = waiting_spinners[state.animation_frame % waiting_spinners.len()];
             (
-                format!("{} Your turn", waiting_spinner),
+                radio_wave(state.animation_frame),
                 palette::STATUS_WAITING,
             )
         } else {
@@ -61,24 +61,10 @@ impl Component for StatusBar {
                         (String::new(), palette::STATUS_IDLE)
                     }
                 }
-                AgentState::Thinking => {
-                    let spinner = thinking_spinners[state.current_thinking_spinner][state
-                        .animation_frame
-                        % thinking_spinners[state.current_thinking_spinner].len()];
-                    (
-                        format!("{} Processing", spinner),
-                        palette::STATUS_PROCESSING,
-                    )
-                }
-                AgentState::ExecutingTools => {
-                    let spinner = executing_spinners[state.current_executing_spinner][state
-                        .animation_frame
-                        % executing_spinners[state.current_executing_spinner].len()];
-                    (
-                        format!("{} Executing tools", spinner),
-                        palette::STATUS_PROCESSING,
-                    )
-                }
+                AgentState::Thinking | AgentState::ExecutingTools => (
+                    radio_wave(state.animation_frame),
+                    palette::STATUS_PROCESSING,
+                ),
             }
         };
 

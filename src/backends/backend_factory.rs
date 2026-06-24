@@ -1,7 +1,7 @@
 use crate::AppConfig;
-use crate::backends::{BackendKind, LlmBackend, MockBackend, OllamaBackend, OllamaConfig};
 #[cfg(feature = "anthropic")]
 use crate::backends::{AnthropicBackend, AnthropicConfig};
+use crate::backends::{BackendKind, LlmBackend, MockBackend, OllamaBackend, OllamaConfig};
 #[cfg(feature = "openai-compatible")]
 use crate::backends::{OpenAICompatibleBackend, OpenAICompatibleConfig};
 #[cfg(feature = "together-ai")]

@@ -1,5 +1,5 @@
 use ratatui::{
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span},
 };
 
@@ -43,8 +43,9 @@ pub fn create_header_block(
         info_lines.push(("Project Trusted".to_string(), "trust"));
     }
 
-    let logo_color = palette::HEADER_LOGO;
-    let title_color = palette::HEADER_TITLE;
+    let logo_gradient = palette::HEADER_LOGO_GRADIENT;
+    let title_color = palette::HEADER_TITLE_NEON;
+    let accent_color = palette::HEADER_ACCENT;
     let info_color = palette::HEADER_INFO;
     let trust_color = palette::HEADER_TRUST;
 
@@ -70,14 +71,28 @@ pub fn create_header_block(
         };
 
         let info_style = match kind {
-            "title" => Style::default().fg(title_color),
+            "title" => Style::default()
+                .fg(title_color)
+                .add_modifier(Modifier::BOLD),
             "trust" => Style::default().fg(trust_color),
             _ => Style::default().fg(info_color),
         };
 
+        // Per-row neon gradient for the logo (cyan -> magenta top to bottom)
+        let logo_color = if i < logo_lines.len() {
+            logo_gradient[i.min(logo_gradient.len() - 1)]
+        } else {
+            logo_gradient[logo_gradient.len() - 1]
+        };
+
         lines.push(Line::from(vec![
-            Span::styled(logo_text, Style::default().fg(logo_color)),
-            Span::styled("   ", Style::default()),
+            Span::styled(
+                logo_text,
+                Style::default().fg(logo_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  ", Style::default()),
+            Span::styled("▌", Style::default().fg(accent_color)),
+            Span::styled(" ", Style::default()),
             Span::styled(info_text, info_style),
         ]));
     }
