@@ -23,6 +23,10 @@ pub enum TerminalMode {
     Tagged,
 }
 
+impl TerminalMode {
+    pub const VARIANTS: &'static [&'static str] = &["inline", "fullview", "tagged"];
+}
+
 impl FromStr for TerminalMode {
     type Err = anyhow::Error;
 

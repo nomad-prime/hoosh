@@ -145,7 +145,7 @@ impl Tool for TaskTool {
             "properties": {
                 "subagent_type": {
                     "type": "string",
-                    "enum": ["plan", "explore", "review"],
+                    "enum": AgentType::names(),
                     "description": "Agent type: \"explore\" for research, \"plan\" for implementation planning, \"review\" for code quality analysis."
                 },
                 "prompt": {

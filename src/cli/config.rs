@@ -1,4 +1,5 @@
 use crate::cli::ConfigAction;
+use crate::console::VerbosityLevel;
 use crate::{AppConfig, console};
 
 enum ConfigKey {
@@ -114,10 +115,10 @@ pub fn handle_config(action: ConfigAction) -> anyhow::Result<()> {
 }
 
 fn validate_verbosity(value: &str) -> anyhow::Result<()> {
-    match value {
-        "quiet" | "normal" | "verbose" | "debug" => Ok(()),
-        _ => Err(anyhow::anyhow!(
-            "Invalid verbosity level. Valid options: quiet, normal, verbose, debug"
-        )),
-    }
+    value.parse::<VerbosityLevel>().map(|_| ()).map_err(|_| {
+        anyhow::anyhow!(
+            "Invalid verbosity level. Valid options: {}",
+            VerbosityLevel::names().join(", ")
+        )
+    })
 }

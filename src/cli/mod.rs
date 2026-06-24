@@ -9,6 +9,10 @@ mod setup;
 pub mod shell_setup;
 
 use crate::console::VerbosityLevel;
+use crate::memory_mode::MemoryMode;
+use crate::output_format::OutputFormat;
+use crate::terminal_mode::TerminalMode;
+use clap::builder::PossibleValuesParser;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -57,15 +61,15 @@ pub struct Cli {
     pub continue_last: bool,
 
     /// Terminal display mode (inline, fullview, tagged)
-    #[arg(long, value_parser = ["inline", "fullview", "tagged"])]
+    #[arg(long, value_parser = PossibleValuesParser::new(TerminalMode::VARIANTS))]
     pub mode: Option<String>,
 
     /// Memory mode: how conversation history is managed (conversation, summary)
-    #[arg(long = "memory-mode", value_parser = ["conversation", "summary"])]
+    #[arg(long = "memory-mode", value_parser = PossibleValuesParser::new(MemoryMode::VARIANTS))]
     pub memory_mode: Option<String>,
 
     /// Output format for tagged mode (text, json)
-    #[arg(long = "output-format", value_parser = ["text", "json"])]
+    #[arg(long = "output-format", value_parser = PossibleValuesParser::new(OutputFormat::VARIANTS))]
     pub output_format: Option<String>,
 
     /// Resume a specific conversation by id or name

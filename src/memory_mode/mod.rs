@@ -16,6 +16,10 @@ pub enum MemoryMode {
     Summary,
 }
 
+impl MemoryMode {
+    pub const VARIANTS: &'static [&'static str] = &["conversation", "summary"];
+}
+
 impl FromStr for MemoryMode {
     type Err = anyhow::Error;
 

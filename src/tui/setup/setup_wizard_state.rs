@@ -13,55 +13,7 @@ pub enum SetupWizardStep {
     Confirmation,
 }
 
-#[derive(Debug, Clone)]
-pub enum BackendType {
-    Anthropic,
-    OpenAI,
-    TogetherAI,
-    Ollama,
-}
-
-impl BackendType {
-    pub fn as_str(&self) -> &str {
-        match self {
-            BackendType::Anthropic => "anthropic",
-            BackendType::OpenAI => "openai",
-            BackendType::TogetherAI => "together_ai",
-            BackendType::Ollama => "ollama",
-        }
-    }
-
-    pub fn description(&self) -> &str {
-        match self {
-            BackendType::Anthropic => "Claude AI models (Sonnet, Opus, Haiku)",
-            BackendType::OpenAI => "GPT models (GPT-4, GPT-3.5)",
-            BackendType::TogetherAI => "Various open source models",
-            BackendType::Ollama => "Local LLM inference (no API key needed)",
-        }
-    }
-
-    pub fn default_model(&self) -> &str {
-        match self {
-            BackendType::Anthropic => "claude-sonnet-4-20250514",
-            BackendType::OpenAI => "gpt-4",
-            BackendType::TogetherAI => "meta-llama/Llama-3-70b-chat-hf",
-            BackendType::Ollama => "llama3",
-        }
-    }
-
-    pub fn needs_api_key(&self) -> bool {
-        !matches!(self, BackendType::Ollama)
-    }
-
-    pub fn all_backends() -> Vec<BackendType> {
-        vec![
-            BackendType::Anthropic,
-            BackendType::OpenAI,
-            BackendType::TogetherAI,
-            BackendType::Ollama,
-        ]
-    }
-}
+pub use crate::backends::BackendKind;
 
 #[derive(Debug, Clone)]
 pub struct SetupWizardResult {
@@ -76,7 +28,7 @@ pub struct SetupWizardResult {
 pub struct SetupWizardState {
     pub current_step: SetupWizardStep,
     pub selected_backend_index: usize,
-    pub selected_backend: Option<BackendType>,
+    pub selected_backend: Option<BackendKind>,
     pub api_key_input: TextArea,
     pub base_url_input: TextArea,
     pub pricing_endpoint_input: TextArea,
@@ -133,12 +85,12 @@ impl SetupWizardState {
     }
 
     pub fn select_next_backend(&mut self) {
-        let backends = BackendType::all_backends();
+        let backends = BackendKind::user_selectable();
         self.selected_backend_index = (self.selected_backend_index + 1) % backends.len();
     }
 
     pub fn select_prev_backend(&mut self) {
-        let backends = BackendType::all_backends();
+        let backends = BackendKind::user_selectable();
         if self.selected_backend_index == 0 {
             self.selected_backend_index = backends.len() - 1;
         } else {
@@ -147,8 +99,8 @@ impl SetupWizardState {
     }
 
     pub fn confirm_backend_selection(&mut self) {
-        let backends = BackendType::all_backends();
-        self.selected_backend = Some(backends[self.selected_backend_index].clone());
+        let backends = BackendKind::user_selectable();
+        self.selected_backend = Some(backends[self.selected_backend_index]);
     }
 
     pub fn advance_step(&mut self) {
@@ -160,7 +112,8 @@ impl SetupWizardState {
                     if backend.needs_api_key() {
                         SetupWizardStep::ApiKeyInput
                     } else {
-                        self.model_input.insert_str(backend.default_model());
+                        self.model_input
+                            .insert_str(backend.default_model().unwrap_or(""));
                         SetupWizardStep::BaseUrlInput
                     }
                 } else {
@@ -173,7 +126,8 @@ impl SetupWizardState {
                 if let Some(backend) = &self.selected_backend {
                     self.model_input.select_all();
                     self.model_input.cut();
-                    self.model_input.insert_str(backend.default_model());
+                    self.model_input
+                        .insert_str(backend.default_model().unwrap_or(""));
                 }
                 SetupWizardStep::ModelSelection
             }

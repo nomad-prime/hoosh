@@ -17,14 +17,42 @@ pub enum VerbosityLevel {
     Debug = 3,
 }
 
+impl VerbosityLevel {
+    pub const ALL: [VerbosityLevel; 4] = [
+        VerbosityLevel::Quiet,
+        VerbosityLevel::Normal,
+        VerbosityLevel::Verbose,
+        VerbosityLevel::Debug,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VerbosityLevel::Quiet => "quiet",
+            VerbosityLevel::Normal => "normal",
+            VerbosityLevel::Verbose => "verbose",
+            VerbosityLevel::Debug => "debug",
+        }
+    }
+
+    pub fn names() -> Vec<&'static str> {
+        Self::ALL.iter().map(VerbosityLevel::as_str).collect()
+    }
+}
+
 impl std::fmt::Display for VerbosityLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VerbosityLevel::Quiet => write!(f, "quiet"),
-            VerbosityLevel::Normal => write!(f, "normal"),
-            VerbosityLevel::Verbose => write!(f, "verbose"),
-            VerbosityLevel::Debug => write!(f, "debug"),
-        }
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for VerbosityLevel {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|level| level.as_str() == s)
+            .ok_or(())
     }
 }
 

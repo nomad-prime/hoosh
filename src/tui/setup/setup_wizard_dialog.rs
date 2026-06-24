@@ -1,6 +1,6 @@
 use crate::tui::component::Component;
 use crate::tui::palette;
-use crate::tui::setup::setup_wizard_state::{BackendType, SetupWizardState, SetupWizardStep};
+use crate::tui::setup::setup_wizard_state::{BackendKind, SetupWizardState, SetupWizardStep};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -61,7 +61,7 @@ impl SetupWizardDialog {
             Line::from(""),
         ];
 
-        let backends = BackendType::all_backends();
+        let backends = BackendKind::user_selectable();
         for (idx, backend) in backends.iter().enumerate() {
             let is_selected = idx == state.selected_backend_index;
             let prefix = if is_selected { "> " } else { "  " };
@@ -306,7 +306,7 @@ impl SetupWizardDialog {
         let default_model = state
             .selected_backend
             .as_ref()
-            .map(|b| b.default_model())
+            .and_then(|b| b.default_model())
             .unwrap_or("");
 
         let block = Block::default()

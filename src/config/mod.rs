@@ -456,14 +456,8 @@ impl AppConfig {
     pub fn get_verbosity(&self) -> VerbosityLevel {
         self.verbosity
             .as_ref()
-            .and_then(|v| match v.as_str() {
-                "quiet" => Some(VerbosityLevel::Quiet),
-                "normal" => Some(VerbosityLevel::Normal),
-                "verbose" => Some(VerbosityLevel::Verbose),
-                "debug" => Some(VerbosityLevel::Debug),
-                _ => None,
-            })
-            .unwrap_or(VerbosityLevel::Normal)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_default()
     }
 
     pub fn set_verbosity(&mut self, verbosity: VerbosityLevel) {

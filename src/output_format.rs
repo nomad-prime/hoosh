@@ -8,6 +8,10 @@ pub enum OutputFormat {
     Json,
 }
 
+impl OutputFormat {
+    pub const VARIANTS: &'static [&'static str] = &["text", "json"];
+}
+
 impl FromStr for OutputFormat {
     type Err = anyhow::Error;
 

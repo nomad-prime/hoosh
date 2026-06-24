@@ -13,16 +13,31 @@ pub enum AgentType {
 }
 
 impl AgentType {
-    pub fn from_name(s: &str) -> Result<Self> {
-        match s.to_lowercase().as_str() {
-            "plan" => Ok(AgentType::Plan),
-            "explore" => Ok(AgentType::Explore),
-            "review" => Ok(AgentType::Review),
-            _ => anyhow::bail!(
-                "Unknown agent type: {}. Valid types are: plan, explore, review",
-                s
-            ),
+    pub const ALL: [AgentType; 3] = [AgentType::Plan, AgentType::Explore, AgentType::Review];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AgentType::Plan => "plan",
+            AgentType::Explore => "explore",
+            AgentType::Review => "review",
         }
+    }
+
+    pub fn names() -> Vec<&'static str> {
+        Self::ALL.iter().map(AgentType::as_str).collect()
+    }
+
+    pub fn from_name(s: &str) -> Result<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|t| t.as_str() == s.to_lowercase())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Unknown agent type: {}. Valid types are: {}",
+                    s,
+                    Self::names().join(", ")
+                )
+            })
     }
 
     pub fn max_steps(&self) -> usize {
