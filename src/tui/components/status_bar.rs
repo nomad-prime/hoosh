@@ -28,7 +28,10 @@ fn radio_wave(frame: usize) -> String {
         // Triangle wave over 8 steps gives a gentle rise/fall: 0..=4..=0.
         let tri = phase % 8;
         let level = if tri <= 4 { tri } else { 8 - tri };
-        let glyph = LEVELS.get(level.min(LEVELS.len() - 1)).copied().unwrap_or('⣀');
+        let glyph = LEVELS
+            .get(level.min(LEVELS.len() - 1))
+            .copied()
+            .unwrap_or('⣀');
         out.push(glyph);
     }
     out
@@ -47,10 +50,7 @@ impl Component for StatusBar {
                 palette::DESTRUCTIVE,
             )
         } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {
-            (
-                radio_wave(state.animation_frame),
-                palette::STATUS_WAITING,
-            )
+            (radio_wave(state.animation_frame), palette::STATUS_WAITING)
         } else {
             match state.agent_state {
                 AgentState::Idle => {
