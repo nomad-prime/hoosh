@@ -264,9 +264,14 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         None
     };
 
-    // Display message when storage is disabled (privacy-first mode)
+    let (command_registry, custom_command_count) = setup_command_registry()?;
+
+    // Informational lines below the header, dimmed and italic.
     if !storage_enabled {
-        app_state.add_message("Conversation storage disabled".to_string());
+        app_state.add_info_line("Conversation storage disabled".to_string());
+    }
+    if custom_command_count > 0 {
+        app_state.add_info_line(format!("Loaded {} custom command(s)", custom_command_count));
     }
 
     app_state.add_message("\n".to_string());
@@ -287,8 +292,6 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     // Setup context management
     let context_manager = setup_context_manager(&config);
-
-    let command_registry = setup_command_registry()?;
 
     // Register command completer after session is initialized
     let command_completer = CommandCompleter::new(Arc::clone(&command_registry));
@@ -384,23 +387,20 @@ async fn setup_completers(app_state: &mut AppState, working_dir: &Path) -> Resul
     Ok(())
 }
 
-fn setup_command_registry() -> Result<Arc<CommandRegistry>> {
+fn setup_command_registry() -> Result<(Arc<CommandRegistry>, usize)> {
     let mut command_registry = CommandRegistry::new();
     register_default_commands(&mut command_registry)?;
 
-    match register_custom_commands(&mut command_registry) {
-        Ok(count) => {
-            if count > 0 {
-                eprintln!("Loaded {} custom command(s)", count);
-            }
-        }
+    let custom_count = match register_custom_commands(&mut command_registry) {
+        Ok(count) => count,
         Err(e) => {
             eprintln!("Warning: Failed to load custom commands: {}", e);
+            0
         }
-    }
+    };
 
     let command_registry = Arc::new(command_registry);
-    Ok(command_registry)
+    Ok((command_registry, custom_count))
 }
 
 fn setup_permission_manager(

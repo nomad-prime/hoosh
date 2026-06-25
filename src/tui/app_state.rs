@@ -462,6 +462,16 @@ impl AppState {
         self.add_message_line(msg_line);
     }
 
+    pub fn add_info_line(&mut self, message: String) {
+        let line = Line::from(Span::styled(
+            message,
+            Style::default()
+                .fg(palette::SECONDARY_TEXT)
+                .add_modifier(Modifier::ITALIC),
+        ));
+        self.add_styled_line(line);
+    }
+
     /// Emits a completed tool-call header line where the leading status glyph
     /// is colored (green for success, red for errors) while the tool name stays
     /// in the default foreground.

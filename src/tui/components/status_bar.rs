@@ -13,21 +13,24 @@ use ratatui::{
 pub struct StatusBar;
 
 /// Build a subtle "radio wave" pattern: a row of short vertical bars whose
-/// heights ripple sideways like the equalizer on a radio. Heights stay small
-/// so the animation reads as a quiet pulse rather than a loud bar graph.
+/// heights ripple sideways like the equalizer on a radio. Two ripples of
+/// different periods are layered so crests land at uneven intervals, giving
+/// the row an organic, irregular pulse rather than a uniform sweep.
 fn radio_wave(frame: usize) -> String {
-    // Braille dot glyphs that rise in height, so the wave looks subtle and flat.
     const LEVELS: [char; 4] = ['⣀', '⣤', '⣶', '⣿'];
     const WIDTH: usize = 9;
 
+    let triangle = |phase: usize, period: usize| {
+        let half = period / 2;
+        let t = phase % period;
+        if t <= half { t } else { period - t }
+    };
+
     let mut out = String::with_capacity(WIDTH * 4);
     for cell in 0..WIDTH {
-        // A travelling sine-like ripple: each cell is phase-shifted so the
-        // crest drifts smoothly across the row.
-        let phase = frame + cell * 2;
-        // Triangle wave over 8 steps gives a gentle rise/fall: 0..=4..=0.
-        let tri = phase % 8;
-        let level = if tri <= 4 { tri } else { 8 - tri };
+        let fast = triangle(frame + cell * 3, 6);
+        let slow = triangle(frame + cell * 5, 14);
+        let level = (fast + slow) / 4;
         let glyph = LEVELS
             .get(level.min(LEVELS.len() - 1))
             .copied()
