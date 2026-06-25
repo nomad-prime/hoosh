@@ -16,6 +16,7 @@ fn create_test_config() -> OpenAICompatibleConfig {
         temperature: Some(0.7),
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     }
 }
 
@@ -466,6 +467,7 @@ async fn backend_configuration_with_custom_values() {
         temperature: Some(0.9),
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     let backend = OpenAICompatibleBackend::new(config).unwrap();
@@ -545,32 +547,59 @@ fn backend_with_thinking(budget: u32) -> OpenAICompatibleBackend {
 #[test]
 fn reasoning_disabled_by_default() {
     let backend = OpenAICompatibleBackend::new(create_test_config()).unwrap();
-    let (max_tokens, temperature, reasoning) =
+    let (max_tokens, temperature, reasoning, effort) =
         backend.reasoning_request_overrides(4096, Some(0.7), None);
     assert_eq!(max_tokens, 4096);
     assert_eq!(temperature, Some(0.7));
     assert!(reasoning.is_none());
+    assert!(effort.is_none());
 }
 
 #[test]
 fn reasoning_enabled_forces_temperature_and_grows_max_tokens() {
     let backend = backend_with_thinking(20000);
-    let (max_tokens, temperature, reasoning) =
+    let (max_tokens, temperature, reasoning, effort) =
         backend.reasoning_request_overrides(4096, Some(0.7), None);
     assert_eq!(temperature, Some(1.0));
     assert!(max_tokens >= 20000 + 4096);
     let reasoning = reasoning.expect("reasoning block emitted");
     assert_eq!(reasoning.max_tokens, 20000);
+    assert!(effort.is_none());
 }
 
 #[test]
 fn reasoning_zero_budget_treated_as_disabled() {
     let backend = backend_with_thinking(0);
-    let (max_tokens, temperature, reasoning) =
+    let (max_tokens, temperature, reasoning, effort) =
         backend.reasoning_request_overrides(4096, Some(0.7), None);
     assert_eq!(max_tokens, 4096);
     assert_eq!(temperature, Some(0.7));
     assert!(reasoning.is_none());
+    assert!(effort.is_none());
+}
+
+#[test]
+fn reasoning_effort_mode_sends_effort_not_token_budget() {
+    let config = OpenAICompatibleConfig {
+        reasoning_effort: Some(crate::config::ReasoningEffort::Medium),
+        thinking_budget: Some(20000),
+        ..create_test_config()
+    };
+    let backend = OpenAICompatibleBackend::new(config).unwrap();
+    let (_, temperature, reasoning, effort) =
+        backend.reasoning_request_overrides(4096, Some(0.7), Some(3000));
+    assert_eq!(temperature, Some(1.0));
+    assert!(
+        reasoning.is_none(),
+        "effort mode must not emit the token-budget object"
+    );
+    assert_eq!(effort, Some(crate::config::ReasoningEffort::Medium));
+}
+
+#[test]
+fn reasoning_effort_serializes_lowercase() {
+    let json = serde_json::to_string(&crate::config::ReasoningEffort::High).unwrap();
+    assert_eq!(json, "\"high\"");
 }
 
 #[test]

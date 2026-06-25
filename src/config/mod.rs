@@ -44,6 +44,10 @@ pub const DEFAULT_AGENTS: &[(&str, &str)] = &[
         include_str!("../prompts/hoosh_explore.txt"),
     ),
     (
+        "hoosh_general.txt",
+        include_str!("../prompts/hoosh_general.txt"),
+    ),
+    (
         "hoosh_troubleshooter.txt",
         include_str!("../prompts/hoosh_troubleshooter.txt"),
     ),
@@ -134,6 +138,16 @@ pub struct BackendConfig {
     /// Anthropic API requirement). Ignored by non-Anthropic backends.
     #[serde(default)]
     pub thinking_budget: Option<u32>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
 }
 
 impl BackendConfig {
@@ -158,6 +172,9 @@ impl BackendConfig {
         }
         if other.thinking_budget.is_some() {
             self.thinking_budget = other.thinking_budget;
+        }
+        if other.reasoning_effort.is_some() {
+            self.reasoning_effort = other.reasoning_effort;
         }
     }
 }
@@ -428,6 +445,7 @@ impl AppConfig {
                 temperature: None,
                 pricing_endpoint: None,
                 thinking_budget: None,
+                reasoning_effort: None,
             });
 
         match key {

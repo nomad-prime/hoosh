@@ -174,13 +174,9 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         &mut app_state,
     )?;
 
-    let readonly_tool_registry = Arc::new(ToolRegistry::new().with_provider(Arc::new(
-        crate::ReadOnlyToolProvider::new(working_dir.clone()),
-    )));
-
     tool_registry.add_provider(Arc::new(TaskToolProvider::new(
         Arc::clone(&backend),
-        Arc::clone(&readonly_tool_registry),
+        working_dir.clone(),
         Arc::clone(&permission_manager),
     )));
 

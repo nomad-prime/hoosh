@@ -1,28 +1,29 @@
 use crate::backends::LlmBackend;
 use crate::permissions::{PermissionManager, ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::task_management::{AgentType, TaskDefinition, TaskManager};
-use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult};
+use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult, create_subagent_registry};
 use async_trait::async_trait;
 use capitalize::Capitalize;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 pub struct TaskTool {
     backend: Arc<dyn LlmBackend>,
-    readonly_tool_registry: Arc<ToolRegistry>,
+    working_directory: PathBuf,
     permission_manager: Arc<PermissionManager>,
 }
 
 impl TaskTool {
     pub fn new(
         backend: Arc<dyn LlmBackend>,
-        readonly_tool_registry: Arc<ToolRegistry>,
+        working_directory: PathBuf,
         permission_manager: Arc<PermissionManager>,
     ) -> Self {
         Self {
             backend,
-            readonly_tool_registry,
+            working_directory,
             permission_manager,
         }
     }
@@ -80,8 +81,8 @@ impl TaskTool {
             Err(ToolError::execution_failed(result.output))
         }
     }
-    fn get_tool_registry_for_agent(&self, _agent_type: &AgentType) -> Arc<ToolRegistry> {
-        self.readonly_tool_registry.clone()
+    fn get_tool_registry_for_agent(&self, agent_type: &AgentType) -> Arc<ToolRegistry> {
+        create_subagent_registry(agent_type, &self.working_directory)
     }
 }
 
@@ -120,7 +121,8 @@ impl Tool for TaskTool {
                 Available agent types:\n\
                 - plan: {}\n\
                 - explore: {}\n\
-                - review: {}\n\n\
+                - review: {}\n\
+                - general: {}\n\n\
                 Usage:\n\
                 - Write a detailed, self-contained prompt describing exactly what the agent should do\n\
                 - The agent runs autonomously and returns a final report - you cannot interact with it\n\
@@ -134,6 +136,7 @@ impl Tool for TaskTool {
                 AgentType::Plan.when_to_use(),
                 AgentType::Explore.when_to_use(),
                 AgentType::Review.when_to_use(),
+                AgentType::General.when_to_use(),
             );
             Box::leak(body.into_boxed_str())
         })
@@ -146,7 +149,7 @@ impl Tool for TaskTool {
                 "subagent_type": {
                     "type": "string",
                     "enum": AgentType::names(),
-                    "description": "Agent type: \"explore\" for research, \"plan\" for implementation planning, \"review\" for code quality analysis."
+                    "description": "Agent type: \"explore\" for research, \"plan\" for implementation planning, \"review\" for code quality analysis, \"general\" for delegating a small self-contained coding task."
                 },
                 "prompt": {
                     "type": "string",
@@ -261,17 +264,12 @@ mod tests {
                 "Plan created successfully".to_string(),
             )]));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager =
             Arc::new(PermissionManager::new(event_tx, response_rx).with_skip_permissions(true));
 
-        let task_tool = TaskTool::new(
-            mock_backend,
-            tool_registry.clone(),
-            permission_manager.clone(),
-        );
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager.clone());
 
         let args = json!({
             "subagent_type": "plan",
@@ -299,7 +297,6 @@ mod tests {
                 "Found 10 matching files".to_string(),
             )]));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -307,7 +304,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "explore",
@@ -332,7 +329,6 @@ mod tests {
 
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -340,7 +336,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "invalid_type",
@@ -368,7 +364,6 @@ mod tests {
 
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -376,7 +371,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "plan"
@@ -405,7 +400,6 @@ mod tests {
                 "Response from custom model".to_string(),
             )]));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -413,7 +407,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "plan",
@@ -435,7 +429,6 @@ mod tests {
     #[test]
     fn test_task_tool_name() {
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -443,7 +436,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
         assert_eq!(task_tool.name(), "task");
         assert_eq!(task_tool.display_name(), "Task");
     }
@@ -451,7 +444,6 @@ mod tests {
     #[test]
     fn test_task_tool_description() {
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -459,7 +451,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
         let description = task_tool.description();
         assert!(description.contains("specialized sub-agent"));
         assert!(description.contains("plan"));
@@ -469,7 +461,6 @@ mod tests {
     #[test]
     fn test_task_tool_parameter_schema() {
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -477,7 +468,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
         let schema = task_tool.parameter_schema();
 
         assert_eq!(schema["type"], "object");
@@ -495,7 +486,6 @@ mod tests {
     #[test]
     fn test_task_tool_format_call_display() {
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -503,7 +493,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "plan",
@@ -518,7 +508,6 @@ mod tests {
     #[test]
     fn test_task_tool_result_summary() {
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -526,7 +515,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let short_result = "Short output";
         assert_eq!(task_tool.result_summary(short_result), "Short output");
@@ -546,7 +535,6 @@ mod tests {
                 "Found 3 security issues".to_string(),
             )]));
 
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -554,7 +542,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "review",
@@ -575,7 +563,6 @@ mod tests {
     #[test]
     fn test_task_tool_format_call_display_review() {
         let mock_backend: Arc<dyn crate::backends::LlmBackend> = Arc::new(MockBackend::new(vec![]));
-        let tool_registry = Arc::new(ToolRegistry::new());
         let (event_tx, _) = mpsc::unbounded_channel();
         let (_, response_rx) = mpsc::unbounded_channel();
         let permission_manager = Arc::new(
@@ -583,7 +570,7 @@ mod tests {
                 .with_skip_permissions(true),
         );
 
-        let task_tool = TaskTool::new(mock_backend, tool_registry, permission_manager);
+        let task_tool = TaskTool::new(mock_backend, PathBuf::from("."), permission_manager);
 
         let args = json!({
             "subagent_type": "review",

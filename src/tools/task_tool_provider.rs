@@ -1,24 +1,25 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
-use crate::tools::{TaskTool, Tool, ToolProvider, ToolRegistry};
+use crate::tools::{TaskTool, Tool, ToolProvider};
 
 pub struct TaskToolProvider {
     backend: Arc<dyn LlmBackend>,
-    readonly_tool_registry: Arc<ToolRegistry>,
+    working_directory: PathBuf,
     permission_manager: Arc<PermissionManager>,
 }
 
 impl TaskToolProvider {
     pub fn new(
         backend: Arc<dyn LlmBackend>,
-        readonly_tool_registry: Arc<ToolRegistry>,
+        working_directory: PathBuf,
         permission_manager: Arc<PermissionManager>,
     ) -> Self {
         Self {
             backend,
-            readonly_tool_registry,
+            working_directory,
             permission_manager,
         }
     }
@@ -28,7 +29,7 @@ impl ToolProvider for TaskToolProvider {
     fn provide_tools(&self) -> Vec<Arc<dyn Tool>> {
         vec![Arc::new(TaskTool::new(
             self.backend.clone(),
-            self.readonly_tool_registry.clone(),
+            self.working_directory.clone(),
             self.permission_manager.clone(),
         ))]
     }

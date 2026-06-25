@@ -176,6 +176,7 @@ mod tests {
                 temperature: None,
                 pricing_endpoint: None,
                 thinking_budget: None,
+                reasoning_effort: None,
             },
         );
         let mut ctx = CommandContext::new().with_config(config);
@@ -208,6 +209,7 @@ mod tests {
                 temperature: None,
                 pricing_endpoint: None,
                 thinking_budget: None,
+                reasoning_effort: None,
             },
         );
         config.backends.insert(
@@ -220,6 +222,7 @@ mod tests {
                 temperature: None,
                 pricing_endpoint: None,
                 thinking_budget: None,
+                reasoning_effort: None,
             },
         );
         let mut ctx = CommandContext::new().with_config(config);

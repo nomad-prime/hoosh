@@ -34,6 +34,7 @@ fn backend_config_fields_are_optional() {
         temperature: None,
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     assert!(backend.api_key.is_none());
@@ -53,6 +54,7 @@ fn backend_config_can_be_fully_populated() {
         temperature: Some(0.7),
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     assert_eq!(backend.api_key, Some("test-key".to_string()));
@@ -121,6 +123,7 @@ fn get_backend_config_returns_config_when_exists() {
         temperature: None,
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     config.set_backend_config("test".to_string(), backend);
@@ -141,6 +144,7 @@ fn set_backend_config_adds_new_backend() {
         temperature: None,
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     config.set_backend_config("new_backend".to_string(), backend);
@@ -361,6 +365,7 @@ fn merge_overwrites_backends() {
             temperature: None,
             pricing_endpoint: None,
             thinking_budget: None,
+            reasoning_effort: None,
         },
     );
 
@@ -375,6 +380,7 @@ fn merge_overwrites_backends() {
             temperature: None,
             pricing_endpoint: None,
             thinking_budget: None,
+            reasoning_effort: None,
         },
     );
 
@@ -399,6 +405,7 @@ fn merge_preserves_unspecified_backend_fields() {
             temperature: None,
             pricing_endpoint: None,
             thinking_budget: None,
+            reasoning_effort: None,
         },
     );
 
@@ -413,6 +420,7 @@ fn merge_preserves_unspecified_backend_fields() {
             temperature: None,
             pricing_endpoint: None,
             thinking_budget: Some(20000),
+            reasoning_effort: None,
         },
     );
 
@@ -572,6 +580,7 @@ fn serialize_backend_config_to_toml() {
         temperature: Some(0.7),
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     let toml = toml::to_string(&backend).unwrap();
@@ -727,6 +736,7 @@ fn clone_backend_config() {
         temperature: Some(0.5),
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     let cloned = backend.clone();
@@ -773,6 +783,7 @@ fn debug_format_backend_config() {
         temperature: None,
         pricing_endpoint: None,
         thinking_budget: None,
+        reasoning_effort: None,
     };
 
     let debug_str = format!("{:?}", backend);

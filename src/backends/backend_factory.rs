@@ -101,6 +101,7 @@ impl BackendFactory for OpenAICompatibleBackend {
             temperature: config.temperature,
             pricing_endpoint: config.pricing_endpoint.clone(),
             thinking_budget: config.thinking_budget,
+            reasoning_effort: config.reasoning_effort,
         };
 
         Ok(Box::new(OpenAICompatibleBackend::new(openai_config)?))

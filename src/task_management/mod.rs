@@ -10,16 +10,23 @@ pub enum AgentType {
     Plan,
     Explore,
     Review,
+    General,
 }
 
 impl AgentType {
-    pub const ALL: [AgentType; 3] = [AgentType::Plan, AgentType::Explore, AgentType::Review];
+    pub const ALL: [AgentType; 4] = [
+        AgentType::Plan,
+        AgentType::Explore,
+        AgentType::Review,
+        AgentType::General,
+    ];
 
     pub fn as_str(&self) -> &'static str {
         match self {
             AgentType::Plan => "plan",
             AgentType::Explore => "explore",
             AgentType::Review => "review",
+            AgentType::General => "general",
         }
     }
 
@@ -45,6 +52,7 @@ impl AgentType {
             AgentType::Plan => 100,
             AgentType::Explore => 75,
             AgentType::Review => 75,
+            AgentType::General => 100,
         }
     }
 
@@ -53,6 +61,7 @@ impl AgentType {
             AgentType::Plan => 600,
             AgentType::Explore => 300,
             AgentType::Review => 600,
+            AgentType::General => 600,
         }
     }
 
@@ -61,6 +70,7 @@ impl AgentType {
             AgentType::Plan => Some(5000),
             AgentType::Review => Some(3000),
             AgentType::Explore => None,
+            AgentType::General => Some(3000),
         }
     }
 
@@ -75,6 +85,9 @@ impl AgentType {
             AgentType::Review => {
                 "Read-only code review agent for correctness bugs, security issues, and convention checks. Use for PR reviews, audits, and cross-file consistency checks. (max 75 steps, 600s timeout)"
             }
+            AgentType::General => {
+                "General coding agent with full read/write/bash tools. Use to delegate a small, self-contained coding task — implement a focused change, fix a bug, wire up a helper — so the main context stays lean. Give it a precise, verifiable goal. (max 100 steps, 600s timeout)"
+            }
         }
     }
 
@@ -83,6 +96,7 @@ impl AgentType {
             AgentType::Plan => include_str!("../prompts/hoosh_planner.txt"),
             AgentType::Explore => include_str!("../prompts/hoosh_explore.txt"),
             AgentType::Review => include_str!("../prompts/hoosh_reviewer.txt"),
+            AgentType::General => include_str!("../prompts/hoosh_general.txt"),
         };
 
         let mut message = format!("{}\n\nTask: {}", base, task_prompt);
