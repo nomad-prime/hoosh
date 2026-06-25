@@ -118,10 +118,6 @@ pub const DEFAULT_CORE_INSTRUCTIONS: &[(&str, &str)] = &[
     ),
 ];
 
-fn default_session_context_enabled() -> bool {
-    true
-}
-
 #[cfg(test)]
 mod mod_tests;
 
@@ -211,8 +207,6 @@ pub struct AppConfig {
     pub memory_storage: Option<ConversationStorageMode>,
     #[serde(default)]
     pub terminal_mode: Option<TerminalMode>,
-    #[serde(default = "default_session_context_enabled")]
-    pub session_context_enabled: bool,
     #[serde(default)]
     pub daemon: Option<DaemonConfig>,
     #[serde(default)]
@@ -246,8 +240,6 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default)]
-    pub session_context_enabled: Option<bool>,
-    #[serde(default)]
     pub memory_mode: Option<MemoryMode>,
 }
 
@@ -280,7 +272,6 @@ impl Default for AppConfig {
             conversation_storage: None,
             memory_storage: None,
             terminal_mode: None,
-            session_context_enabled: default_session_context_enabled(),
             daemon: None,
             memory_mode: None,
             display_compact: None,
@@ -658,10 +649,6 @@ impl AppConfig {
 
         if other.terminal_mode.is_some() {
             self.terminal_mode = other.terminal_mode;
-        }
-
-        if other.session_context_enabled.is_some() {
-            self.session_context_enabled = other.session_context_enabled.unwrap_or(true);
         }
 
         if other.memory_mode.is_some() {
