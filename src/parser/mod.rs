@@ -1,5 +1,5 @@
-use crate::agent::{Attachment, AttachmentKind};
-use crate::tools::{Tool, file_ops::ReadFileTool};
+use crate::agent::{Attachment, AttachmentKind, FileMention};
+use crate::tools::{Tool, file_ops::ListDirectoryTool, file_ops::ReadFileTool};
 use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,13 @@ fn image_media_type(path: &str) -> Option<&'static str> {
         .map(|(_, m)| *m)
 }
 
+#[derive(Debug, Default)]
+pub struct ExpandedMessage {
+    pub text: String,
+    pub attachments: Vec<Attachment>,
+    pub mentions: Vec<FileMention>,
+}
+
 #[derive(Debug, Clone)]
 pub struct FileReference {
     pub original_text: String,
@@ -31,20 +38,19 @@ pub struct FileReference {
 pub struct MessageParser {
     working_directory: PathBuf,
     read_file_tool: ReadFileTool,
+    list_directory_tool: ListDirectoryTool,
 }
 
 impl MessageParser {
     pub fn new() -> Self {
         let working_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self {
-            read_file_tool: ReadFileTool::with_working_directory(working_dir.clone()),
-            working_directory: working_dir,
-        }
+        Self::with_working_directory(working_dir)
     }
 
     pub fn with_working_directory(working_dir: PathBuf) -> Self {
         Self {
             read_file_tool: ReadFileTool::with_working_directory(working_dir.clone()),
+            list_directory_tool: ListDirectoryTool::with_working_directory(working_dir.clone()),
             working_directory: working_dir,
         }
     }
@@ -149,28 +155,42 @@ impl MessageParser {
             .map_err(Into::into)
     }
 
-    pub async fn expand_message(&self, message: &str) -> Result<String> {
-        let (expanded, _) = self.expand_message_with_attachments(message).await?;
-        Ok(expanded)
+    async fn list_directory_reference(&self, path: &str) -> Result<String> {
+        let args = serde_json::json!({ "path": path });
+        let context = crate::tools::ToolExecutionContext {
+            tool_call_id: "parser".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+        self.list_directory_tool
+            .execute(&args, &context)
+            .await
+            .map_err(Into::into)
     }
 
-    /// Like [`Self::expand_message`], but image-extension `@` refs (`.png`,
-    /// `.jpg`, ...) are read as bytes and returned as attachments. The text
-    /// reference is replaced by an `[image #N]` marker so the model still has
-    /// a positional anchor.
-    pub async fn expand_message_with_attachments(
-        &self,
-        message: &str,
-    ) -> Result<(String, Vec<Attachment>)> {
+    fn resolve(&self, path: &str) -> PathBuf {
+        let p = Path::new(path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.working_directory.join(p)
+        }
+    }
+
+    pub async fn expand(&self, message: &str) -> Result<ExpandedMessage> {
         let file_references = self.find_file_references(message)?;
 
         if file_references.is_empty() {
-            return Ok((message.to_string(), Vec::new()));
+            return Ok(ExpandedMessage {
+                text: message.to_string(),
+                attachments: Vec::new(),
+                mentions: Vec::new(),
+            });
         }
 
-        let mut expanded_message = message.to_string();
-        let mut file_contents = Vec::new();
+        let mut text = message.to_string();
         let mut attachments: Vec<Attachment> = Vec::new();
+        let mut mentions: Vec<FileMention> = Vec::new();
 
         for file_ref in &file_references {
             if let Some(media_type) = image_media_type(&file_ref.file_path) {
@@ -182,53 +202,47 @@ impl MessageParser {
                             data,
                         });
                         let marker = format!("[image #{}]", attachments.len());
-                        // Replace the first occurrence of this @ref with the marker.
-                        if let Some(pos) = expanded_message.find(&file_ref.original_text) {
-                            expanded_message
-                                .replace_range(pos..pos + file_ref.original_text.len(), &marker);
+                        if let Some(pos) = text.find(&file_ref.original_text) {
+                            text.replace_range(pos..pos + file_ref.original_text.len(), &marker);
                         }
                     }
-                    Err(e) => {
-                        file_contents.push(format!(
-                            "\n\n--- Error reading image {}: {}",
-                            file_ref.file_path, e
-                        ));
-                    }
+                    Err(e) => mentions.push(FileMention::File {
+                        path: file_ref.file_path.clone(),
+                        line_range: file_ref.line_range,
+                        result: Err(e.to_string()),
+                    }),
                 }
                 continue;
             }
 
-            match self.read_file_reference(file_ref).await {
-                Ok(content) => {
-                    let line_info = if let Some((start, end)) = file_ref.line_range {
-                        if start == end {
-                            format!(" (line {})", start)
-                        } else {
-                            format!(" (lines {}-{})", start, end)
-                        }
-                    } else {
-                        String::new()
-                    };
-
-                    file_contents.push(format!(
-                        "\n\n--- Content of {}{}:\n```\n{}\n```",
-                        file_ref.file_path, line_info, content
-                    ));
-                }
-                Err(e) => {
-                    file_contents.push(format!(
-                        "\n\n--- Error reading {}: {}",
-                        file_ref.file_path, e
-                    ));
-                }
+            if self.resolve(&file_ref.file_path).is_dir() {
+                let result = self
+                    .list_directory_reference(&file_ref.file_path)
+                    .await
+                    .map_err(|e| e.to_string());
+                mentions.push(FileMention::Directory {
+                    path: file_ref.file_path.clone(),
+                    result,
+                });
+                continue;
             }
+
+            let result = self
+                .read_file_reference(file_ref)
+                .await
+                .map_err(|e| e.to_string());
+            mentions.push(FileMention::File {
+                path: file_ref.file_path.clone(),
+                line_range: file_ref.line_range,
+                result,
+            });
         }
 
-        for content in file_contents {
-            expanded_message.push_str(&content);
-        }
-
-        Ok((expanded_message, attachments))
+        Ok(ExpandedMessage {
+            text,
+            attachments,
+            mentions,
+        })
     }
 
     fn read_image_bytes(&self, file_path: &str) -> Result<Vec<u8>> {
@@ -342,7 +356,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_expand_message() {
+    async fn file_ref_becomes_mention_with_contents() {
         let temp_dir = tempdir().unwrap();
         let test_file = temp_dir.path().join("test.txt");
         let content = "Hello, World!\nLine 2\nLine 3";
@@ -350,11 +364,60 @@ mod tests {
         fs::write(&test_file, content).await.unwrap();
 
         let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
-        let message = "Please review @test.txt";
+        let expanded = parser.expand("Please review @test.txt").await.unwrap();
 
-        let expanded = parser.expand_message(message).await.unwrap();
-        assert!(expanded.contains("Hello, World!"));
-        assert!(expanded.contains("Content of test.txt:"));
+        assert_eq!(expanded.text, "Please review @test.txt");
+        assert_eq!(expanded.mentions.len(), 1);
+        assert!(matches!(expanded.mentions[0], FileMention::File { .. }));
+        assert_eq!(expanded.mentions[0].path(), "test.txt");
+        assert_eq!(expanded.mentions[0].result().as_deref(), Ok(content));
+    }
+
+    #[tokio::test]
+    async fn file_ref_keeps_line_range_on_mention() {
+        let temp_dir = tempdir().unwrap();
+        fs::write(temp_dir.path().join("a.txt"), "l1\nl2\nl3\nl4")
+            .await
+            .unwrap();
+
+        let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
+        let expanded = parser.expand("@a.txt:2-3").await.unwrap();
+
+        let FileMention::File { line_range, .. } = &expanded.mentions[0] else {
+            panic!("expected file mention");
+        };
+        assert_eq!(*line_range, Some((2, 3)));
+        assert_eq!(expanded.mentions[0].result().as_deref(), Ok("l2\nl3"));
+    }
+
+    #[tokio::test]
+    async fn dir_ref_becomes_directory_mention() {
+        let temp_dir = tempdir().unwrap();
+        fs::create_dir(temp_dir.path().join("sub")).await.unwrap();
+        fs::write(temp_dir.path().join("sub/inner.txt"), "x")
+            .await
+            .unwrap();
+
+        let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
+        let expanded = parser.expand("look at @sub").await.unwrap();
+
+        assert_eq!(expanded.mentions.len(), 1);
+        assert!(matches!(
+            expanded.mentions[0],
+            FileMention::Directory { .. }
+        ));
+        assert_eq!(expanded.mentions[0].path(), "sub");
+        assert!(expanded.mentions[0].result().is_ok());
+    }
+
+    #[tokio::test]
+    async fn missing_file_ref_records_error_mention() {
+        let temp_dir = tempdir().unwrap();
+        let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
+        let expanded = parser.expand("see @nope.txt").await.unwrap();
+
+        assert_eq!(expanded.mentions.len(), 1);
+        assert!(expanded.mentions[0].result().is_err());
     }
 
     #[tokio::test]
@@ -365,33 +428,15 @@ mod tests {
         fs::write(&png, bytes).await.unwrap();
 
         let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
-        let (expanded, attachments) = parser
-            .expand_message_with_attachments("describe @shot.png please")
-            .await
-            .unwrap();
+        let expanded = parser.expand("describe @shot.png please").await.unwrap();
 
-        assert_eq!(attachments.len(), 1);
-        assert_eq!(attachments[0].kind, AttachmentKind::Image);
-        assert_eq!(attachments[0].media_type, "image/png");
-        assert_eq!(attachments[0].data, bytes);
-        assert!(expanded.contains("[image #1]"));
-        assert!(!expanded.contains("@shot.png"));
-    }
-
-    #[tokio::test]
-    async fn non_image_ref_still_inlines() {
-        let temp_dir = tempdir().unwrap();
-        let txt = temp_dir.path().join("notes.txt");
-        fs::write(&txt, "hello").await.unwrap();
-
-        let parser = MessageParser::with_working_directory(temp_dir.path().to_path_buf());
-        let (expanded, attachments) = parser
-            .expand_message_with_attachments("see @notes.txt")
-            .await
-            .unwrap();
-
-        assert!(attachments.is_empty());
-        assert!(expanded.contains("hello"));
+        assert_eq!(expanded.attachments.len(), 1);
+        assert_eq!(expanded.attachments[0].kind, AttachmentKind::Image);
+        assert_eq!(expanded.attachments[0].media_type, "image/png");
+        assert_eq!(expanded.attachments[0].data, bytes);
+        assert!(expanded.mentions.is_empty());
+        assert!(expanded.text.contains("[image #1]"));
+        assert!(!expanded.text.contains("@shot.png"));
     }
 
     #[test]

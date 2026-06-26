@@ -1,6 +1,7 @@
 use crate::console;
 use crate::storage::{ConversationMetadata, ConversationStorage};
 use crate::tools::error::ToolError;
+use crate::tools::{ListDirectoryTool, ReadFileTool};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -132,6 +133,63 @@ impl ToolCallResponse {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum FileMention {
+    File {
+        path: String,
+        line_range: Option<(usize, usize)>,
+        result: Result<String, String>,
+    },
+    Directory {
+        path: String,
+        result: Result<String, String>,
+    },
+}
+
+impl FileMention {
+    pub fn path(&self) -> &str {
+        match self {
+            FileMention::File { path, .. } | FileMention::Directory { path, .. } => path,
+        }
+    }
+
+    pub fn result(&self) -> &Result<String, String> {
+        match self {
+            FileMention::File { result, .. } | FileMention::Directory { result, .. } => result,
+        }
+    }
+
+    pub fn tool_name(&self) -> &'static str {
+        match self {
+            FileMention::File { .. } => ReadFileTool::NAME,
+            FileMention::Directory { .. } => ListDirectoryTool::NAME,
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            FileMention::File { .. } => "read",
+            FileMention::Directory { .. } => "list",
+        }
+    }
+
+    pub fn tool_args(&self) -> serde_json::Value {
+        match self {
+            FileMention::File {
+                path, line_range, ..
+            } => {
+                let mut args = serde_json::json!({ "path": path });
+                if let Some((start, end)) = line_range {
+                    args["start_line"] = (*start).into();
+                    args["end_line"] = (*end).into();
+                }
+                args
+            }
+            FileMention::Directory { path, .. } => serde_json::json!({ "path": path }),
+        }
+    }
+}
+
 pub struct Conversation {
     pub metadata: ConversationMetadata,
     pub messages: Vec<ConversationMessage>,
@@ -238,6 +296,49 @@ impl Conversation {
         };
         self.messages.push(message.clone());
         self.persist_message(&message);
+    }
+
+    pub fn add_user_message_with_file_mentions(
+        &mut self,
+        content: String,
+        attachments: Vec<Attachment>,
+        mentions: Vec<FileMention>,
+    ) {
+        self.add_user_message_with_attachments(content, attachments);
+        for mention in mentions {
+            self.add_file_mention(mention);
+        }
+    }
+
+    fn add_file_mention(&mut self, mention: FileMention) {
+        let tool_call_id = format!("mention_{}", uuid::Uuid::new_v4());
+        let tool_name = mention.tool_name();
+        let display_name = mention.display_name();
+        let args = mention.tool_args();
+
+        self.add_assistant_message(
+            None,
+            Some(vec![ToolCall {
+                id: tool_call_id.clone(),
+                r#type: "function".to_string(),
+                function: ToolFunction {
+                    name: tool_name.to_string(),
+                    arguments: args.to_string(),
+                },
+            }]),
+        );
+
+        let content = match mention.result() {
+            Ok(output) => output.clone(),
+            Err(err) => format!("Error reading {}: {}", mention.path(), err),
+        };
+
+        self.add_tool_result(ToolCallResponse::success(
+            tool_call_id,
+            tool_name.to_string(),
+            display_name.to_string(),
+            content,
+        ));
     }
 
     pub fn add_assistant_message(
@@ -1204,5 +1305,125 @@ mod tests {
         let kind = conv.cancel_in_flight_turn();
         assert_eq!(kind, CancelKind::Thinking);
         assert_eq!(conv.messages.len(), 1);
+    }
+
+    fn mention(path: &str, result: Result<String, String>) -> FileMention {
+        FileMention::File {
+            path: path.to_string(),
+            line_range: None,
+            result,
+        }
+    }
+
+    #[test]
+    fn file_mention_renders_as_synthetic_read_call() {
+        let mut conv = Conversation::new();
+        conv.add_user_message_with_file_mentions(
+            "review @src/main.rs".to_string(),
+            Vec::new(),
+            vec![mention("src/main.rs", Ok("fn main() {}".to_string()))],
+        );
+
+        assert_eq!(conv.messages.len(), 3);
+
+        let user = &conv.messages[0];
+        assert_eq!(user.role, "user");
+        assert_eq!(user.content.as_deref(), Some("review @src/main.rs"));
+
+        let call = &conv.messages[1];
+        assert_eq!(call.role, "assistant");
+        let tool_calls = call.tool_calls.as_ref().expect("synthetic tool call");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].function.name, ReadFileTool::NAME);
+        let args: serde_json::Value =
+            serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
+        assert_eq!(args["path"], "src/main.rs");
+
+        let result = &conv.messages[2];
+        assert_eq!(result.role, "tool");
+        assert_eq!(
+            result.tool_call_id.as_deref(),
+            Some(tool_calls[0].id.as_str())
+        );
+        assert_eq!(result.content.as_deref(), Some("fn main() {}"));
+    }
+
+    #[test]
+    fn file_mention_passes_line_range_to_read_args() {
+        let mut conv = Conversation::new();
+        let m = FileMention::File {
+            path: "a.rs".to_string(),
+            line_range: Some((10, 20)),
+            result: Ok("body".to_string()),
+        };
+        conv.add_user_message_with_file_mentions("x".to_string(), Vec::new(), vec![m]);
+
+        let args: serde_json::Value = serde_json::from_str(
+            &conv.messages[1].tool_calls.as_ref().unwrap()[0]
+                .function
+                .arguments,
+        )
+        .unwrap();
+        assert_eq!(args["start_line"], 10);
+        assert_eq!(args["end_line"], 20);
+    }
+
+    #[test]
+    fn failed_file_mention_renders_error_result() {
+        let mut conv = Conversation::new();
+        conv.add_user_message_with_file_mentions(
+            "@gone.rs".to_string(),
+            Vec::new(),
+            vec![mention("gone.rs", Err("not found".to_string()))],
+        );
+
+        let result = &conv.messages[2];
+        assert_eq!(result.role, "tool");
+        let content = result.content.as_deref().unwrap();
+        assert!(content.contains("gone.rs"));
+        assert!(content.contains("not found"));
+    }
+
+    #[test]
+    fn directory_mention_renders_as_list_call() {
+        let mut conv = Conversation::new();
+        conv.add_user_message_with_file_mentions(
+            "what's in @src/".to_string(),
+            Vec::new(),
+            vec![FileMention::Directory {
+                path: "src/".to_string(),
+                result: Ok("main.rs\nlib.rs".to_string()),
+            }],
+        );
+
+        let call = &conv.messages[1];
+        let tool_calls = call.tool_calls.as_ref().unwrap();
+        assert_eq!(tool_calls[0].function.name, ListDirectoryTool::NAME);
+        let args: serde_json::Value =
+            serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
+        assert_eq!(args["path"], "src/");
+        assert!(args.get("start_line").is_none());
+        assert_eq!(conv.messages[2].content.as_deref(), Some("main.rs\nlib.rs"));
+    }
+
+    #[test]
+    fn multiple_file_mentions_each_get_their_own_call() {
+        let mut conv = Conversation::new();
+        conv.add_user_message_with_file_mentions(
+            "@a.rs @b.rs".to_string(),
+            Vec::new(),
+            vec![
+                mention("a.rs", Ok("A".to_string())),
+                mention("b.rs", Ok("B".to_string())),
+            ],
+        );
+
+        // user, (assistant, tool) x2
+        assert_eq!(conv.messages.len(), 5);
+        let id1 = &conv.messages[1].tool_calls.as_ref().unwrap()[0].id;
+        let id2 = &conv.messages[3].tool_calls.as_ref().unwrap()[0].id;
+        assert_ne!(id1, id2);
+        assert_eq!(conv.messages[2].tool_call_id.as_ref(), Some(id1));
+        assert_eq!(conv.messages[4].tool_call_id.as_ref(), Some(id2));
     }
 }

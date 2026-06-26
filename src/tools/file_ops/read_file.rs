@@ -11,6 +11,8 @@ pub struct ReadFileTool {
 }
 
 impl ReadFileTool {
+    pub const NAME: &'static str = "read_file";
+
     pub fn new() -> Self {
         let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self { working_directory }
@@ -113,7 +115,7 @@ impl Tool for ReadFileTool {
     }
 
     fn name(&self) -> &'static str {
-        "read_file"
+        Self::NAME
     }
 
     fn display_name(&self) -> &'static str {

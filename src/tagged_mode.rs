@@ -130,13 +130,15 @@ pub async fn run_tagged_mode(
         return Ok(());
     }
 
-    // Expand message with parser (text + image attachments)
-    let (expanded_input, attachments) = event_loop_context
+    let expanded = event_loop_context
         .system_resources
         .parser
-        .expand_message_with_attachments(&input)
+        .expand(&input)
         .await
-        .unwrap_or_else(|_| (input.to_string(), Vec::new()));
+        .unwrap_or_else(|_| crate::parser::ExpandedMessage {
+            text: input.to_string(),
+            ..Default::default()
+        });
 
     let memory_manager = event_loop_context
         .runtime
@@ -168,7 +170,11 @@ pub async fn run_tagged_mode(
             conv.add_system_message(content);
         }
 
-        conv.add_user_message_with_attachments(expanded_input.clone(), attachments);
+        conv.add_user_message_with_file_mentions(
+            expanded.text,
+            expanded.attachments,
+            expanded.mentions,
+        );
     }
 
     // Create agent

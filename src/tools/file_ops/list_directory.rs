@@ -11,6 +11,8 @@ pub struct ListDirectoryTool {
 }
 
 impl ListDirectoryTool {
+    pub const NAME: &'static str = "list_directory";
+
     pub fn new() -> Self {
         let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self { working_directory }
@@ -116,14 +118,14 @@ impl ListDirectoryTool {
             if !dirs.is_empty() {
                 result.push_str("\nDirectories:\n");
                 for dir in dirs {
-                    result.push_str(&format!("  📁 {}/\n", dir));
+                    result.push_str(&format!("  {}/\n", dir));
                 }
             }
 
             if !files.is_empty() {
                 result.push_str("\nFiles:\n");
                 for file in files {
-                    result.push_str(&format!("  📄 {}\n", file));
+                    result.push_str(&format!("  {}\n", file));
                 }
             }
         }
@@ -159,7 +161,7 @@ impl Tool for ListDirectoryTool {
     }
 
     fn name(&self) -> &'static str {
-        "list_directory"
+        Self::NAME
     }
 
     fn display_name(&self) -> &'static str {
@@ -169,7 +171,7 @@ impl Tool for ListDirectoryTool {
     fn description(&self) -> &'static str {
         "List the contents of a directory, showing files and subdirectories.\n\n\
         Usage:\n\
-        - Returns directories first (with 📁), then files (with 📄)\n\
+        - Returns directories first (each with a trailing /), then files\n\
         - File sizes are shown in bytes\n\
         - Hidden files (starting with .) are excluded by default\n\
         - Use this instead of bash ls command\n\n\
@@ -215,13 +217,25 @@ impl Tool for ListDirectoryTool {
     }
 
     fn result_summary(&self, result: &str) -> String {
-        let file_count = result.matches("📄").count();
-        let dir_count = result.matches("📁").count();
+        if result.contains("(empty directory)") {
+            return "Empty directory".to_string();
+        }
+
+        let mut dir_count = 0;
+        let mut file_count = 0;
+        for line in result.lines() {
+            if !line.starts_with("  ") {
+                continue;
+            }
+            if line.trim_end().ends_with('/') {
+                dir_count += 1;
+            } else {
+                file_count += 1;
+            }
+        }
 
         if file_count > 0 || dir_count > 0 {
             format!("Found {} files, {} directories", file_count, dir_count)
-        } else if result.contains("empty directory") {
-            "Empty directory".to_string()
         } else {
             "Listed directory contents".to_string()
         }
@@ -275,5 +289,37 @@ mod tests {
         let result = tool.execute(&args, &context).await.unwrap();
         assert!(result.contains("file1.txt"));
         assert!(result.contains("subdir/"));
+        assert!(!result.contains('📁'));
+        assert!(!result.contains('📄'));
+    }
+
+    #[tokio::test]
+    async fn result_summary_counts_without_emoji() {
+        let temp_dir = tempdir().unwrap();
+        fs::write(temp_dir.path().join("a.txt"), "x").await.unwrap();
+        fs::write(temp_dir.path().join("b.txt"), "y").await.unwrap();
+        fs::create_dir(temp_dir.path().join("sub")).await.unwrap();
+
+        let tool = ListDirectoryTool::with_working_directory(temp_dir.path().to_path_buf());
+        let context = ToolExecutionContext {
+            tool_call_id: "test".to_string(),
+            event_tx: None,
+            parent_conversation_id: None,
+        };
+        let result = tool
+            .execute(&serde_json::json!({ "path": "" }), &context)
+            .await
+            .unwrap();
+
+        assert_eq!(tool.result_summary(&result), "Found 2 files, 1 directories");
+    }
+
+    #[test]
+    fn result_summary_reports_empty_directory() {
+        let tool = ListDirectoryTool::new();
+        assert_eq!(
+            tool.result_summary("Contents of .:\n  (empty directory)\n"),
+            "Empty directory"
+        );
     }
 }
