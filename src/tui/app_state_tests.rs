@@ -269,7 +269,10 @@ fn app_state_tick_animation_increments_after_interval() {
     let initial = state.animation_frame;
 
     state.tick_animation();
-    assert_eq!(state.animation_frame, initial, "no tick before the interval");
+    assert_eq!(
+        state.animation_frame, initial,
+        "no tick before the interval"
+    );
 
     state.last_animation_tick = std::time::Instant::now() - std::time::Duration::from_millis(150);
     state.tick_animation();

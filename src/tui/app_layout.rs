@@ -62,8 +62,7 @@ impl AppLayout for Layout<AppState> {
         });
 
         // Calculate streaming-response preview visibility and height
-        let streaming_response_visible =
-            !app.fullview && app.visible_streaming_text().is_some();
+        let streaming_response_visible = !app.fullview && app.visible_streaming_text().is_some();
         let streaming_response_height = u16::from(streaming_response_visible);
 
         // Calculate todo list visibility and height

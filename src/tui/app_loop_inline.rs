@@ -34,7 +34,11 @@ pub async fn run_event_loop(
 
         app.tick_animation();
 
-        let poll_ms = if app.streaming_text.is_some() { 16 } else { 100 };
+        let poll_ms = if app.streaming_text.is_some() {
+            16
+        } else {
+            100
+        };
         if event::poll(Duration::from_millis(poll_ms))? {
             let event = event::read()?;
             handle_user_input(&event, app, &mut agent_task, &mut context).await?;
