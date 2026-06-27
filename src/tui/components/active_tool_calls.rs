@@ -41,7 +41,7 @@ impl Component for ActiveToolCallsComponent {
                 ),
                 ToolCallStatus::Executing => {
                     let sweep = glyphs::TOOL_EXECUTING_SWEEP;
-                    let frame = sweep[state.animation_frame % sweep.len()];
+                    let frame = sweep[state.animation.frame % sweep.len()];
                     Span::styled(frame, Style::default().fg(palette::TOOL_STATUS_EXECUTING))
                 }
                 ToolCallStatus::Completed => Span::styled(
@@ -119,7 +119,7 @@ impl ActiveToolCallsComponent {
             )
         } else {
             let sweep = glyphs::TOOL_EXECUTING_SWEEP;
-            let frame = sweep[state.animation_frame % sweep.len()];
+            let frame = sweep[state.animation.frame % sweep.len()];
             Span::styled(frame, Style::default().fg(palette::TOOL_STATUS_EXECUTING))
         };
 

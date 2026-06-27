@@ -47,13 +47,13 @@ impl Component for StatusBar {
         let retry_spinners = ["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"];
 
         let (status_text, status_color) = if let Some(retry_status) = &state.current_retry_status {
-            let retry_spinner = retry_spinners[state.animation_frame % retry_spinners.len()];
+            let retry_spinner = retry_spinners[state.animation.frame % retry_spinners.len()];
             (
                 format!("{} {}", retry_spinner, retry_status),
                 palette::DESTRUCTIVE,
             )
         } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {
-            (radio_wave(state.animation_frame), palette::STATUS_WAITING)
+            (radio_wave(state.animation.frame), palette::STATUS_WAITING)
         } else {
             match state.agent_state {
                 AgentState::Idle => {
@@ -69,7 +69,7 @@ impl Component for StatusBar {
                     (String::new(), palette::STATUS_PROCESSING)
                 }
                 AgentState::Thinking | AgentState::ExecutingTools => (
-                    radio_wave(state.animation_frame),
+                    radio_wave(state.animation.frame),
                     palette::STATUS_PROCESSING,
                 ),
             }

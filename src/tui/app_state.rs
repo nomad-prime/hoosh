@@ -9,7 +9,6 @@ use crate::tools::todo_write::{TodoItem, TodoStatus};
 use crate::tools::{ToolCategory, ToolRender};
 use crate::tui::{glyphs, palette};
 use anyhow::Result;
-use rand::Rng;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::ScrollbarState;
@@ -207,10 +206,8 @@ pub struct AppState {
     pub tool_permission_dialog_state: Option<ToolPermissionDialogState>,
     pub approval_dialog_state: Option<ApprovalDialogState>,
     pub autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    pub animation_frame: usize,
+    pub animation: AnimationState,
     pub prompt_history: PromptHistory,
-    pub current_thinking_spinner: usize,
-    pub current_executing_spinner: usize,
     pub clipboard: ClipboardManager,
     pub current_retry_status: Option<String>,
     pub input_tokens: usize,
@@ -228,9 +225,33 @@ pub struct AppState {
     pub attachment_view: Option<AttachmentViewState>,
     pub paste_detector: PasteDetector,
     pub display_compact: bool,
-    pub last_animation_tick: Instant,
     pub fullview: bool,
     pub streaming: StreamingState,
+}
+
+/// Frame counter and spinner cadence for the TUI's animations, advanced on a
+/// fixed 100ms tick decoupled from the event-loop rate.
+pub struct AnimationState {
+    pub frame: usize,
+    pub last_tick: Instant,
+}
+
+impl Default for AnimationState {
+    fn default() -> Self {
+        Self {
+            frame: 0,
+            last_tick: Instant::now(),
+        }
+    }
+}
+
+impl AnimationState {
+    pub fn tick(&mut self) {
+        if self.last_tick.elapsed() >= std::time::Duration::from_millis(100) {
+            self.frame = self.frame.wrapping_add(1);
+            self.last_tick = Instant::now();
+        }
+    }
 }
 
 /// Live token-by-token streaming buffer for the in-progress assistant reply.
@@ -358,11 +379,6 @@ impl AppState {
         input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         input.set_cursor_line_style(Style::default());
 
-        // Initialize with random spinner indices
-        let mut rng = rand::thread_rng();
-        let current_thinking_spinner = rng.gen_range(0..7);
-        let current_executing_spinner = rng.gen_range(0..7);
-
         Self {
             input,
             messages: VecDeque::new(),
@@ -379,10 +395,8 @@ impl AppState {
             tool_permission_dialog_state: None,
             approval_dialog_state: None,
             autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            animation_frame: 0,
+            animation: AnimationState::default(),
             prompt_history: PromptHistory::new(1000),
-            current_thinking_spinner,
-            current_executing_spinner,
             clipboard: ClipboardManager::new(),
             current_retry_status: None,
             input_tokens: 0,
@@ -400,7 +414,6 @@ impl AppState {
             attachment_view: None,
             paste_detector: PasteDetector::new(),
             display_compact: false,
-            last_animation_tick: Instant::now(),
             fullview: false,
             streaming: StreamingState::default(),
         }
@@ -412,10 +425,7 @@ impl AppState {
     }
 
     pub fn tick_animation(&mut self) {
-        if self.last_animation_tick.elapsed() >= std::time::Duration::from_millis(100) {
-            self.animation_frame = self.animation_frame.wrapping_add(1);
-            self.last_animation_tick = Instant::now();
-        }
+        self.animation.tick();
     }
 
     pub fn register_completer(&mut self, completer: Box<dyn Completer>) {
@@ -875,8 +885,6 @@ impl AppState {
 
     fn on_thinking(&mut self) {
         self.agent_state = AgentState::Thinking;
-        let mut rng = rand::thread_rng();
-        self.current_thinking_spinner = rng.gen_range(0..7);
     }
 
     fn on_stream_started(&mut self) {
@@ -898,8 +906,6 @@ impl AppState {
 
     fn on_tool_calls(&mut self, calls: Vec<crate::agent::PendingToolCall>) {
         self.agent_state = AgentState::ExecutingTools;
-        let mut rng = rand::thread_rng();
-        self.current_executing_spinner = rng.gen_range(0..7);
         if self.active_tool_calls.is_empty() {
             self.tool_calls_expanded = false;
         }

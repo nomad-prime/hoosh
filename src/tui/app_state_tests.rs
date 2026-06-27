@@ -268,17 +268,17 @@ fn final_response_clears_streaming_buffer() {
 #[test]
 fn app_state_tick_animation_increments_after_interval() {
     let mut state = AppState::new();
-    let initial = state.animation_frame;
+    let initial = state.animation.frame;
 
     state.tick_animation();
     assert_eq!(
-        state.animation_frame, initial,
+        state.animation.frame, initial,
         "no tick before the interval"
     );
 
-    state.last_animation_tick = std::time::Instant::now() - std::time::Duration::from_millis(150);
+    state.animation.last_tick = std::time::Instant::now() - std::time::Duration::from_millis(150);
     state.tick_animation();
-    assert_eq!(state.animation_frame, initial.wrapping_add(1));
+    assert_eq!(state.animation.frame, initial.wrapping_add(1));
 }
 
 #[test]
