@@ -28,43 +28,23 @@ impl InputHandler for ScrollHandler {
         match event {
             Event::Key(key) => match key.code {
                 KeyCode::PageDown => {
-                    let max_scroll = app
-                        .vertical_scroll_content_length
-                        .saturating_sub(app.vertical_scroll_viewport_length);
-                    app.vertical_scroll = app
-                        .vertical_scroll
-                        .saturating_add(app.vertical_scroll_viewport_length.saturating_sub(1))
-                        .min(max_scroll);
-                    app.vertical_scroll_state =
-                        app.vertical_scroll_state.position(app.vertical_scroll);
+                    let page = app.scroll.page();
+                    app.scroll.down(page);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::PageUp => {
-                    app.vertical_scroll = app
-                        .vertical_scroll
-                        .saturating_sub(app.vertical_scroll_viewport_length.saturating_sub(1));
-                    app.vertical_scroll_state =
-                        app.vertical_scroll_state.position(app.vertical_scroll);
+                    let page = app.scroll.page();
+                    app.scroll.up(page);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    let half_page = app.vertical_scroll_viewport_length / 2;
-                    let max_scroll = app
-                        .vertical_scroll_content_length
-                        .saturating_sub(app.vertical_scroll_viewport_length);
-                    app.vertical_scroll = app
-                        .vertical_scroll
-                        .saturating_add(half_page)
-                        .min(max_scroll);
-                    app.vertical_scroll_state =
-                        app.vertical_scroll_state.position(app.vertical_scroll);
+                    let half = app.scroll.half_page();
+                    app.scroll.down(half);
                     KeyHandlerResult::Handled
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    let half_page = app.vertical_scroll_viewport_length / 2;
-                    app.vertical_scroll = app.vertical_scroll.saturating_sub(half_page);
-                    app.vertical_scroll_state =
-                        app.vertical_scroll_state.position(app.vertical_scroll);
+                    let half = app.scroll.half_page();
+                    app.scroll.up(half);
                     KeyHandlerResult::Handled
                 }
                 _ => KeyHandlerResult::NotHandled,
@@ -73,23 +53,14 @@ impl InputHandler for ScrollHandler {
                 kind: MouseEventKind::ScrollUp,
                 ..
             }) => {
-                app.vertical_scroll = app.vertical_scroll.saturating_sub(3);
-                let max_scroll = app
-                    .vertical_scroll_content_length
-                    .saturating_sub(app.vertical_scroll_viewport_length);
-                app.vertical_scroll = app.vertical_scroll.min(max_scroll);
-                app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                app.scroll.up(3);
                 KeyHandlerResult::Handled
             }
             Event::Mouse(MouseEvent {
                 kind: MouseEventKind::ScrollDown,
                 ..
             }) => {
-                let max_scroll = app
-                    .vertical_scroll_content_length
-                    .saturating_sub(app.vertical_scroll_viewport_length);
-                app.vertical_scroll = app.vertical_scroll.saturating_add(3).min(max_scroll);
-                app.vertical_scroll_state = app.vertical_scroll_state.position(app.vertical_scroll);
+                app.scroll.down(3);
                 KeyHandlerResult::Handled
             }
             _ => KeyHandlerResult::NotHandled,

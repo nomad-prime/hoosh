@@ -852,6 +852,60 @@ fn app_state_add_retry_failure() {
     assert_eq!(state.messages.len(), 1);
 }
 
+fn scroll(content: usize, viewport: usize) -> ScrollState {
+    ScrollState {
+        content_length: content,
+        viewport_length: viewport,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn scroll_down_clamps_to_max_offset() {
+    let mut s = scroll(100, 10);
+    assert_eq!(s.max_offset(), 90);
+    s.down(50);
+    assert_eq!(s.offset, 50);
+    s.down(50);
+    assert_eq!(s.offset, 90);
+    s.down(50);
+    assert_eq!(s.offset, 90);
+}
+
+#[test]
+fn scroll_up_saturates_at_zero() {
+    let mut s = scroll(100, 10);
+    s.down(30);
+    s.up(50);
+    assert_eq!(s.offset, 0);
+}
+
+#[test]
+fn scroll_page_sizes_derive_from_viewport() {
+    let s = scroll(100, 10);
+    assert_eq!(s.page(), 9);
+    assert_eq!(s.half_page(), 5);
+}
+
+#[test]
+fn scroll_at_bottom_reflects_max_offset() {
+    let mut s = scroll(100, 10);
+    assert!(!s.at_bottom());
+    s.scroll_to_bottom();
+    assert_eq!(s.offset, 90);
+    assert!(s.at_bottom());
+}
+
+#[test]
+fn scroll_clamp_pulls_offset_in_when_content_shrinks() {
+    let mut s = scroll(100, 10);
+    s.scroll_to_bottom();
+    assert_eq!(s.offset, 90);
+    s.content_length = 20;
+    s.clamp();
+    assert_eq!(s.offset, 10);
+}
+
 fn executing_call(id: &str, render: ToolRender) -> ActiveToolCall {
     ActiveToolCall {
         tool_call_id: id.to_string(),

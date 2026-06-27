@@ -130,9 +130,10 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
 
     if detected_terminal_mode == TerminalMode::Fullview {
         let (_, height) = crossterm::terminal::size()?;
-        app_state.vertical_scroll_viewport_length = height as usize;
-        app_state.vertical_scroll_state = app_state
-            .vertical_scroll_state
+        app_state.scroll.viewport_length = height as usize;
+        app_state.scroll.bar = app_state
+            .scroll
+            .bar
             .viewport_content_length(height as usize);
     }
 

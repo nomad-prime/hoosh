@@ -122,38 +122,24 @@ fn render_frame(
         };
 
         let viewport_height = message_area.height as usize;
-        app.vertical_scroll_viewport_length = viewport_height;
+        app.scroll.viewport_length = viewport_height;
 
-        let content_width = if app.vertical_scroll_content_length > viewport_height {
+        let content_width = if app.scroll.content_length > viewport_height {
             message_area.width.saturating_sub(1)
         } else {
             message_area.width
         } as usize;
 
-        let was_at_bottom = app.vertical_scroll
-            >= app
-                .vertical_scroll_content_length
-                .saturating_sub(app.vertical_scroll_viewport_length);
+        let was_at_bottom = app.scroll.at_bottom();
 
-        app.vertical_scroll_content_length =
+        app.scroll.content_length =
             calculate_wrapped_line_count(app, content_width).saturating_add(10);
 
         if has_pending && was_at_bottom {
-            app.vertical_scroll = app
-                .vertical_scroll_content_length
-                .saturating_sub(viewport_height);
+            app.scroll.scroll_to_bottom();
         }
-
-        let max_scroll = app
-            .vertical_scroll_content_length
-            .saturating_sub(viewport_height);
-        app.vertical_scroll = app.vertical_scroll.min(max_scroll);
-
-        app.vertical_scroll_state = app
-            .vertical_scroll_state
-            .content_length(app.vertical_scroll_content_length)
-            .viewport_content_length(viewport_height)
-            .position(app.vertical_scroll);
+        app.scroll.clamp();
+        app.scroll.sync_bar();
 
         render_messages_fullview(app, message_area, frame.buffer_mut());
         layout.render(app, ui_area, frame.buffer_mut());
@@ -321,7 +307,7 @@ fn render_messages_fullview(
 
     let viewport_height = area.height as usize;
 
-    let content_area = if app.vertical_scroll_content_length > viewport_height {
+    let content_area = if app.scroll.content_length > viewport_height {
         ratatui::layout::Rect {
             x: area.x,
             y: area.y,
@@ -334,10 +320,10 @@ fn render_messages_fullview(
 
     Paragraph::new(all_lines)
         .wrap(Wrap { trim: false })
-        .scroll((app.vertical_scroll as u16, 0))
+        .scroll((app.scroll.offset as u16, 0))
         .render(content_area, buf);
 
-    if app.vertical_scroll_content_length > viewport_height {
+    if app.scroll.content_length > viewport_height {
         let scrollbar_area = ratatui::layout::Rect {
             x: area.x + area.width.saturating_sub(1),
             y: area.y,
@@ -351,7 +337,7 @@ fn render_messages_fullview(
             .track_symbol(Some("│"))
             .thumb_symbol("█");
 
-        scrollbar.render(scrollbar_area, buf, &mut app.vertical_scroll_state);
+        scrollbar.render(scrollbar_area, buf, &mut app.scroll.bar);
     }
 }
 

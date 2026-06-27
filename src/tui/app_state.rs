@@ -219,10 +219,7 @@ pub struct AppState {
     pub active_tool_calls: Vec<ActiveToolCall>,
     pub tool_calls_expanded: bool,
     pub todos: Vec<TodoItem>,
-    pub vertical_scroll: usize,
-    pub vertical_scroll_state: ScrollbarState,
-    pub vertical_scroll_content_length: usize,
-    pub vertical_scroll_viewport_length: usize,
+    pub scroll: ScrollState,
     pub attachments: Vec<TextAttachment>,
     pub next_attachment_id: usize,
     pub image_attachments: Vec<ImageAttachment>,
@@ -275,6 +272,64 @@ impl StreamingState {
         } else {
             Some(buf)
         }
+    }
+}
+
+/// Vertical scrollback position and the geometry the scrollbar widget needs.
+#[derive(Default)]
+pub struct ScrollState {
+    pub offset: usize,
+    pub bar: ScrollbarState,
+    pub content_length: usize,
+    pub viewport_length: usize,
+}
+
+impl ScrollState {
+    pub fn max_offset(&self) -> usize {
+        self.content_length.saturating_sub(self.viewport_length)
+    }
+
+    pub fn at_bottom(&self) -> bool {
+        self.offset >= self.max_offset()
+    }
+
+    pub fn page(&self) -> usize {
+        self.viewport_length.saturating_sub(1)
+    }
+
+    pub fn half_page(&self) -> usize {
+        self.viewport_length / 2
+    }
+
+    pub fn up(&mut self, lines: usize) {
+        self.set_offset(self.offset.saturating_sub(lines));
+    }
+
+    pub fn down(&mut self, lines: usize) {
+        self.set_offset(self.offset.saturating_add(lines));
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.set_offset(self.max_offset());
+    }
+
+    /// Re-clamp the offset after the content or viewport size changed.
+    pub fn clamp(&mut self) {
+        self.set_offset(self.offset);
+    }
+
+    fn set_offset(&mut self, offset: usize) {
+        self.offset = offset.min(self.max_offset());
+        self.bar = self.bar.position(self.offset);
+    }
+
+    /// Push the current geometry into the scrollbar widget state.
+    pub fn sync_bar(&mut self) {
+        self.bar = self
+            .bar
+            .content_length(self.content_length)
+            .viewport_content_length(self.viewport_length)
+            .position(self.offset);
     }
 }
 
@@ -336,10 +391,7 @@ impl AppState {
             active_tool_calls: Vec::new(),
             tool_calls_expanded: false,
             todos: Vec::new(),
-            vertical_scroll: 0,
-            vertical_scroll_state: ScrollbarState::default(),
-            vertical_scroll_content_length: 0,
-            vertical_scroll_viewport_length: 0,
+            scroll: ScrollState::default(),
             attachments: Vec::new(),
             next_attachment_id: 1,
             image_attachments: Vec::new(),
