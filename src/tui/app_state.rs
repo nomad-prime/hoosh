@@ -231,12 +231,51 @@ pub struct AppState {
     pub attachment_view: Option<AttachmentViewState>,
     pub paste_detector: PasteDetector,
     pub display_compact: bool,
-    pub streaming_text: Option<String>,
     pub last_animation_tick: Instant,
     pub fullview: bool,
-    pub stream_to_scrollback: bool,
-    pub streaming_committed: usize,
-    pub streaming_finalize: bool,
+    pub streaming: StreamingState,
+}
+
+/// Live token-by-token streaming buffer for the in-progress assistant reply.
+#[derive(Default)]
+pub struct StreamingState {
+    pub text: Option<String>,
+    /// Number of fully-rendered lines already flushed to scrollback.
+    pub committed: usize,
+    /// Set when the buffer holds the final text and should be flushed in full.
+    pub finalize: bool,
+    /// Append committed lines to scrollback (inline mode) vs. overlay (fullview).
+    pub to_scrollback: bool,
+}
+
+impl StreamingState {
+    fn start(&mut self) {
+        self.text = Some(String::new());
+        self.committed = 0;
+        self.finalize = false;
+    }
+
+    fn push_delta(&mut self, delta: &str) {
+        self.text.get_or_insert_with(String::new).push_str(delta);
+    }
+
+    fn replace_final(&mut self, content: String) {
+        self.text = Some(content);
+        self.finalize = true;
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.text.is_some()
+    }
+
+    pub fn visible_text(&self) -> Option<&str> {
+        let buf = self.text.as_deref()?;
+        if buf.trim().is_empty() {
+            None
+        } else {
+            Some(buf)
+        }
+    }
 }
 
 /// Format a short status/error string as a `  ⎿  [lowercased message]` line.
@@ -309,12 +348,9 @@ impl AppState {
             attachment_view: None,
             paste_detector: PasteDetector::new(),
             display_compact: false,
-            streaming_text: None,
             last_animation_tick: Instant::now(),
             fullview: false,
-            stream_to_scrollback: false,
-            streaming_committed: 0,
-            streaming_finalize: false,
+            streaming: StreamingState::default(),
         }
     }
 
@@ -792,23 +828,18 @@ impl AppState {
     }
 
     fn on_stream_started(&mut self) {
-        self.streaming_text = Some(String::new());
-        self.streaming_committed = 0;
-        self.streaming_finalize = false;
+        self.streaming.start();
     }
 
     fn on_text_delta(&mut self, delta: String) {
-        self.streaming_text
-            .get_or_insert_with(String::new)
-            .push_str(&delta);
+        self.streaming.push_delta(&delta);
     }
 
     fn on_assistant_thought(&mut self, content: String) {
-        if self.stream_to_scrollback && self.streaming_text.is_some() {
-            self.streaming_text = Some(content);
-            self.streaming_finalize = true;
+        if self.streaming.to_scrollback && self.streaming.is_active() {
+            self.streaming.replace_final(content);
         } else {
-            self.streaming_text = None;
+            self.streaming.text = None;
             self.add_thought(&content);
         }
     }
@@ -832,18 +863,17 @@ impl AppState {
 
     fn on_final_response(&mut self, content: String) {
         self.agent_state = AgentState::Idle;
-        if self.stream_to_scrollback && self.streaming_text.is_some() {
-            self.streaming_text = Some(content);
-            self.streaming_finalize = true;
+        if self.streaming.to_scrollback && self.streaming.is_active() {
+            self.streaming.replace_final(content);
         } else {
-            self.streaming_text = None;
+            self.streaming.text = None;
             self.add_final_response(&content);
         }
     }
 
     fn on_error(&mut self, error: String) {
         self.agent_state = AgentState::Idle;
-        self.streaming_finalize = true;
+        self.streaming.finalize = true;
         self.add_error(&error);
     }
 
@@ -1001,22 +1031,17 @@ impl AppState {
     }
 
     pub fn visible_streaming_text(&self) -> Option<&str> {
-        let buf = self.streaming_text.as_deref()?;
-        if buf.trim().is_empty() {
-            None
-        } else {
-            Some(buf)
-        }
+        self.streaming.visible_text()
     }
 
     pub fn flush_streaming_to_scrollback(&mut self, width: u16) {
-        if !self.stream_to_scrollback {
+        if !self.streaming.to_scrollback {
             return;
         }
-        let Some(text) = self.streaming_text.clone() else {
+        let Some(text) = self.streaming.text.clone() else {
             return;
         };
-        let finalize = self.streaming_finalize;
+        let finalize = self.streaming.finalize;
         if text.trim().is_empty() && !finalize {
             return;
         }
@@ -1029,18 +1054,18 @@ impl AppState {
             rendered.len().saturating_sub(1)
         };
 
-        if self.streaming_committed == 0 && stable > 0 {
+        if self.streaming.committed == 0 && stable > 0 {
             self.add_message_line(MessageLine::Plain(String::new()));
         }
-        for line in rendered.iter().take(stable).skip(self.streaming_committed) {
+        for line in rendered.iter().take(stable).skip(self.streaming.committed) {
             self.add_message_line(MessageLine::Styled(line.clone()));
         }
-        self.streaming_committed = stable;
+        self.streaming.committed = stable;
 
         if finalize {
-            self.streaming_text = None;
-            self.streaming_committed = 0;
-            self.streaming_finalize = false;
+            self.streaming.text = None;
+            self.streaming.committed = 0;
+            self.streaming.finalize = false;
         }
     }
 

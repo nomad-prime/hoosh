@@ -319,11 +319,11 @@ pub(crate) async fn handle_cancel_task(
 
         // Keep whatever text had already streamed in so the user doesn't lose
         // what they were reading when they interrupted.
-        if app.stream_to_scrollback {
-            if app.streaming_text.is_some() {
-                app.streaming_finalize = true;
+        if app.streaming.to_scrollback {
+            if app.streaming.is_active() {
+                app.streaming.finalize = true;
             }
-        } else if let Some(partial) = app.streaming_text.take()
+        } else if let Some(partial) = app.streaming.text.take()
             && !partial.trim().is_empty()
         {
             app.add_final_response(partial.trim_end());

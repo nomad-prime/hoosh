@@ -22,7 +22,7 @@ pub async fn run_event_loop(
     let mut agent_task: Option<JoinHandle<()>> = None;
 
     let message_renderer = MessageRenderer::new();
-    app.stream_to_scrollback = true;
+    app.streaming.to_scrollback = true;
 
     loop {
         render_frame(app, &mut terminal, &message_renderer)?;
@@ -34,11 +34,7 @@ pub async fn run_event_loop(
 
         app.tick_animation();
 
-        let poll_ms = if app.streaming_text.is_some() {
-            16
-        } else {
-            100
-        };
+        let poll_ms = if app.streaming.is_active() { 16 } else { 100 };
         if event::poll(Duration::from_millis(poll_ms))? {
             let event = event::read()?;
             handle_user_input(&event, app, &mut agent_task, &mut context).await?;

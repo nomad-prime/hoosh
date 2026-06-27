@@ -230,7 +230,7 @@ fn text_deltas_accumulate_into_streaming_buffer() {
     state.handle_agent_event(AgentEvent::StreamStarted);
     state.handle_agent_event(AgentEvent::TextDelta("Hello ".into()));
     state.handle_agent_event(AgentEvent::TextDelta("world".into()));
-    assert_eq!(state.streaming_text.as_deref(), Some("Hello world"));
+    assert_eq!(state.streaming.text.as_deref(), Some("Hello world"));
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn final_response_clears_streaming_buffer() {
     state.handle_agent_event(AgentEvent::StreamStarted);
     state.handle_agent_event(AgentEvent::TextDelta("partial".into()));
     state.handle_agent_event(AgentEvent::FinalResponse("partial answer".into()));
-    assert!(state.streaming_text.is_none());
+    assert!(state.streaming.text.is_none());
 }
 
 #[test]
