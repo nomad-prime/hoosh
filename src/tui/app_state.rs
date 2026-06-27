@@ -697,156 +697,50 @@ impl AppState {
 
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
         match event {
-            AgentEvent::Thinking => {
-                self.agent_state = AgentState::Thinking;
-                let mut rng = rand::thread_rng();
-                self.current_thinking_spinner = rng.gen_range(0..7);
-            }
-            AgentEvent::StreamStarted => {
-                self.streaming_text = Some(String::new());
-                self.streaming_committed = 0;
-                self.streaming_finalize = false;
-            }
-            AgentEvent::TextDelta(delta) => {
-                self.streaming_text
-                    .get_or_insert_with(String::new)
-                    .push_str(&delta);
-            }
-            AgentEvent::ThinkingDelta(_) => {}
-            AgentEvent::AssistantThought(content) => {
-                if self.stream_to_scrollback && self.streaming_text.is_some() {
-                    self.streaming_text = Some(content);
-                    self.streaming_finalize = true;
-                } else {
-                    self.streaming_text = None;
-                    self.add_thought(&content);
-                }
-            }
-            AgentEvent::AssistantThinking(content) => {
-                self.add_thinking(&content);
-            }
-            AgentEvent::ToolCalls(tool_call_info) => {
-                self.agent_state = AgentState::ExecutingTools;
-                let mut rng = rand::thread_rng();
-                self.current_executing_spinner = rng.gen_range(0..7);
-                if self.active_tool_calls.is_empty() {
-                    self.tool_calls_expanded = false;
-                }
-                for call in tool_call_info {
-                    self.add_active_tool_call(
-                        call.id,
-                        call.display_name,
-                        call.render,
-                        call.category,
-                    );
-                }
-            }
+            AgentEvent::Thinking => self.on_thinking(),
+            AgentEvent::StreamStarted => self.on_stream_started(),
+            AgentEvent::TextDelta(delta) => self.on_text_delta(delta),
+            AgentEvent::AssistantThought(content) => self.on_assistant_thought(content),
+            AgentEvent::AssistantThinking(content) => self.add_thinking(&content),
+            AgentEvent::ToolCalls(calls) => self.on_tool_calls(calls),
             AgentEvent::ToolExecutionStarted { tool_call_id, .. } => {
-                self.update_tool_call_status(&tool_call_id, ToolCallStatus::Executing);
+                self.update_tool_call_status(&tool_call_id, ToolCallStatus::Executing)
             }
-            AgentEvent::ToolPreview { preview, .. } => {
-                self.add_message(format!("\n{}", preview));
-            }
+            AgentEvent::ToolPreview { preview, .. } => self.add_message(format!("\n{}", preview)),
             AgentEvent::ToolResult {
                 tool_call_id,
                 summary,
                 ..
-            } => {
-                self.set_tool_call_result(&tool_call_id, summary);
-            }
+            } => self.set_tool_call_result(&tool_call_id, summary),
             AgentEvent::ToolExecutionCompleted { tool_call_id, .. } => {
-                self.update_tool_call_status(&tool_call_id, ToolCallStatus::Completed);
+                self.update_tool_call_status(&tool_call_id, ToolCallStatus::Completed)
             }
-            AgentEvent::AllToolsComplete => {
-                self.complete_active_tool_calls();
-                self.agent_state = AgentState::Thinking;
+            AgentEvent::AllToolsComplete => self.on_all_tools_complete(),
+            AgentEvent::FinalResponse(content) => self.on_final_response(content),
+            AgentEvent::Error(error) => self.on_error(error),
+            AgentEvent::MaxStepsReached(max_steps) => self.on_max_steps_reached(max_steps),
+            AgentEvent::UserRejection(calls) => {
+                self.on_tool_calls_rejected(&calls, "Rejected, tell me what to do instead")
             }
-            AgentEvent::FinalResponse(content) => {
-                self.agent_state = AgentState::Idle;
-                if self.stream_to_scrollback && self.streaming_text.is_some() {
-                    self.streaming_text = Some(content);
-                    self.streaming_finalize = true;
-                } else {
-                    self.streaming_text = None;
-                    self.add_final_response(&content);
-                }
+            AgentEvent::PermissionDenied(calls) => {
+                self.on_tool_calls_rejected(&calls, "Permission denied, tell me what to do instead")
             }
-            AgentEvent::Error(error) => {
-                self.agent_state = AgentState::Idle;
-                self.streaming_finalize = true;
-                self.add_error(&error);
-            }
-            AgentEvent::MaxStepsReached(max_steps) => {
-                self.agent_state = AgentState::Idle;
-                self.add_message(format!(
-                    "   Maximum conversation steps ({}) reached, stopping.",
-                    max_steps
-                ));
-            }
-            AgentEvent::ToolPermissionRequest { .. } => {}
-            AgentEvent::ApprovalRequest { .. } => {}
-            AgentEvent::UserRejection(rejected_tool_calls) => {
-                for rtc in &rejected_tool_calls {
-                    self.add_tool_call(rtc);
-                    self.add_status_message("Rejected, tell me what to do instead");
-                }
-                self.clear_active_tool_calls();
-
-                self.agent_state = AgentState::Idle;
-            }
-            AgentEvent::PermissionDenied(rejected_tool_calls) => {
-                for rtc in &rejected_tool_calls {
-                    self.add_tool_call(rtc);
-                    self.add_status_message("Permission denied, tell me what to do instead");
-                }
-                self.clear_active_tool_calls();
-
-                self.agent_state = AgentState::Idle;
-            }
-            AgentEvent::Exit => {}
-            AgentEvent::ClearConversation => {}
-            AgentEvent::DebugMessage(_) => {}
             AgentEvent::RetryEvent {
                 message,
                 is_success,
                 attempt,
                 max_attempts,
                 ..
-            } => {
-                if is_success {
-                    self.current_retry_status = None;
-                    self.add_status_message(&message);
-                } else if attempt < max_attempts {
-                    self.current_retry_status = Some(message.clone());
-                } else {
-                    self.current_retry_status = None;
-                    self.agent_state = AgentState::Idle;
-                    self.add_retry_failure(&message);
-                }
-            }
+            } => self.on_retry(message, is_success, attempt, max_attempts),
             AgentEvent::TokenPressureWarning {
                 current_pressure,
                 threshold,
-            } => {
-                if current_pressure > threshold {
-                    self.add_status_message(&format!(
-                        "High token pressure: {:.0}% (threshold: {:.0}%)",
-                        current_pressure * 100.0,
-                        threshold * 100.0
-                    ));
-                }
-            }
+            } => self.on_token_pressure(current_pressure, threshold),
             AgentEvent::TokenUsage {
                 input_tokens,
                 output_tokens,
                 cost,
-            } => {
-                self.input_tokens = input_tokens;
-                self.output_tokens = output_tokens;
-                if let Some(call_cost) = cost {
-                    self.total_cost += call_cost;
-                }
-            }
+            } => self.on_token_usage(input_tokens, output_tokens, cost),
             AgentEvent::SubagentStepProgress {
                 tool_call_id,
                 step_number,
@@ -854,64 +748,208 @@ impl AppState {
                 description,
                 budget_pct,
                 ..
-            } => {
-                if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-                    tool_call.is_subagent_task = true;
-                    let step = SubagentStepSummary {
-                        step_number,
-                        action_type,
-                        description,
-                    };
-                    tool_call.budget_pct = Some(budget_pct);
-                    tool_call.add_subagent_step(step);
-                }
-            }
+            } => self.on_subagent_step(
+                tool_call_id,
+                step_number,
+                action_type,
+                description,
+                budget_pct,
+            ),
             AgentEvent::SubagentTaskComplete {
                 tool_call_id,
                 total_tool_uses,
                 total_input_tokens,
                 total_output_tokens,
                 ..
-            } => {
-                if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-                    tool_call.total_tool_uses = Some(total_tool_uses);
-                    tool_call.total_tokens = Some(total_input_tokens + total_output_tokens);
-                }
-            }
+            } => self.on_subagent_complete(
+                tool_call_id,
+                total_tool_uses,
+                total_input_tokens + total_output_tokens,
+            ),
             AgentEvent::BashOutputChunk {
                 tool_call_id,
                 output_line,
                 stream_type,
                 line_number,
                 ..
-            } => {
-                if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-                    let bash_line = BashOutputLine {
-                        line_number,
-                        content: output_line,
-                        stream_type,
-                    };
-                    tool_call.add_bash_output_line(bash_line);
-                }
-            }
-            AgentEvent::StepStarted { .. } => {
-                // This event is used internally for step tracking, no UI update needed
-            }
-            AgentEvent::SwitchBackend { .. } => {
-                // Handled on the event loop's main task; no app_state mutation needed.
-            }
-            AgentEvent::TodoUpdate { todos } => {
-                // If all todos are completed, auto-clear after updating
-                let all_completed =
-                    !todos.is_empty() && todos.iter().all(|t| t.status == TodoStatus::Completed);
+            } => self.on_bash_output(tool_call_id, line_number, output_line, stream_type),
+            AgentEvent::TodoUpdate { todos } => self.on_todo_update(todos),
+            AgentEvent::ThinkingDelta(_)
+            | AgentEvent::ToolPermissionRequest { .. }
+            | AgentEvent::ApprovalRequest { .. }
+            | AgentEvent::Exit
+            | AgentEvent::ClearConversation
+            | AgentEvent::DebugMessage(_)
+            | AgentEvent::StepStarted { .. }
+            | AgentEvent::SwitchBackend { .. } => {}
+        }
+    }
 
-                if all_completed {
-                    // Clear the list when all items are done
-                    self.todos = Vec::new();
-                } else {
-                    self.todos = todos;
-                }
-            }
+    fn on_thinking(&mut self) {
+        self.agent_state = AgentState::Thinking;
+        let mut rng = rand::thread_rng();
+        self.current_thinking_spinner = rng.gen_range(0..7);
+    }
+
+    fn on_stream_started(&mut self) {
+        self.streaming_text = Some(String::new());
+        self.streaming_committed = 0;
+        self.streaming_finalize = false;
+    }
+
+    fn on_text_delta(&mut self, delta: String) {
+        self.streaming_text
+            .get_or_insert_with(String::new)
+            .push_str(&delta);
+    }
+
+    fn on_assistant_thought(&mut self, content: String) {
+        if self.stream_to_scrollback && self.streaming_text.is_some() {
+            self.streaming_text = Some(content);
+            self.streaming_finalize = true;
+        } else {
+            self.streaming_text = None;
+            self.add_thought(&content);
+        }
+    }
+
+    fn on_tool_calls(&mut self, calls: Vec<crate::agent::PendingToolCall>) {
+        self.agent_state = AgentState::ExecutingTools;
+        let mut rng = rand::thread_rng();
+        self.current_executing_spinner = rng.gen_range(0..7);
+        if self.active_tool_calls.is_empty() {
+            self.tool_calls_expanded = false;
+        }
+        for call in calls {
+            self.add_active_tool_call(call.id, call.display_name, call.render, call.category);
+        }
+    }
+
+    fn on_all_tools_complete(&mut self) {
+        self.complete_active_tool_calls();
+        self.agent_state = AgentState::Thinking;
+    }
+
+    fn on_final_response(&mut self, content: String) {
+        self.agent_state = AgentState::Idle;
+        if self.stream_to_scrollback && self.streaming_text.is_some() {
+            self.streaming_text = Some(content);
+            self.streaming_finalize = true;
+        } else {
+            self.streaming_text = None;
+            self.add_final_response(&content);
+        }
+    }
+
+    fn on_error(&mut self, error: String) {
+        self.agent_state = AgentState::Idle;
+        self.streaming_finalize = true;
+        self.add_error(&error);
+    }
+
+    fn on_max_steps_reached(&mut self, max_steps: usize) {
+        self.agent_state = AgentState::Idle;
+        self.add_message(format!(
+            "   Maximum conversation steps ({}) reached, stopping.",
+            max_steps
+        ));
+    }
+
+    fn on_tool_calls_rejected(&mut self, rejected: &[String], reason: &str) {
+        for rtc in rejected {
+            self.add_tool_call(rtc);
+            self.add_status_message(reason);
+        }
+        self.clear_active_tool_calls();
+        self.agent_state = AgentState::Idle;
+    }
+
+    fn on_retry(&mut self, message: String, is_success: bool, attempt: u32, max_attempts: u32) {
+        if is_success {
+            self.current_retry_status = None;
+            self.add_status_message(&message);
+        } else if attempt < max_attempts {
+            self.current_retry_status = Some(message.clone());
+        } else {
+            self.current_retry_status = None;
+            self.agent_state = AgentState::Idle;
+            self.add_retry_failure(&message);
+        }
+    }
+
+    fn on_token_pressure(&mut self, current_pressure: f32, threshold: f32) {
+        if current_pressure > threshold {
+            self.add_status_message(&format!(
+                "High token pressure: {:.0}% (threshold: {:.0}%)",
+                current_pressure * 100.0,
+                threshold * 100.0
+            ));
+        }
+    }
+
+    fn on_token_usage(&mut self, input_tokens: usize, output_tokens: usize, cost: Option<f64>) {
+        self.input_tokens = input_tokens;
+        self.output_tokens = output_tokens;
+        if let Some(call_cost) = cost {
+            self.total_cost += call_cost;
+        }
+    }
+
+    fn on_subagent_step(
+        &mut self,
+        tool_call_id: String,
+        step_number: usize,
+        action_type: String,
+        description: String,
+        budget_pct: f32,
+    ) {
+        if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+            tool_call.is_subagent_task = true;
+            let step = SubagentStepSummary {
+                step_number,
+                action_type,
+                description,
+            };
+            tool_call.budget_pct = Some(budget_pct);
+            tool_call.add_subagent_step(step);
+        }
+    }
+
+    fn on_subagent_complete(
+        &mut self,
+        tool_call_id: String,
+        total_tool_uses: usize,
+        total_tokens: usize,
+    ) {
+        if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+            tool_call.total_tool_uses = Some(total_tool_uses);
+            tool_call.total_tokens = Some(total_tokens);
+        }
+    }
+
+    fn on_bash_output(
+        &mut self,
+        tool_call_id: String,
+        line_number: usize,
+        output_line: String,
+        stream_type: String,
+    ) {
+        if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
+            tool_call.add_bash_output_line(BashOutputLine {
+                line_number,
+                content: output_line,
+                stream_type,
+            });
+        }
+    }
+
+    fn on_todo_update(&mut self, todos: Vec<TodoItem>) {
+        let all_completed =
+            !todos.is_empty() && todos.iter().all(|t| t.status == TodoStatus::Completed);
+        if all_completed {
+            self.todos = Vec::new();
+        } else {
+            self.todos = todos;
         }
     }
 
