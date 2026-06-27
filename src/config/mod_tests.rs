@@ -35,6 +35,7 @@ fn backend_config_fields_are_optional() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 
@@ -56,6 +57,7 @@ fn backend_config_can_be_fully_populated() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 
@@ -126,6 +128,7 @@ fn get_backend_config_returns_config_when_exists() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 
@@ -148,6 +151,7 @@ fn set_backend_config_adds_new_backend() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 
@@ -370,6 +374,7 @@ fn merge_overwrites_backends() {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            reasoning_display: None,
             streaming: None,
         },
     );
@@ -386,6 +391,7 @@ fn merge_overwrites_backends() {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            reasoning_display: None,
             streaming: None,
         },
     );
@@ -412,6 +418,7 @@ fn merge_preserves_unspecified_backend_fields() {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            reasoning_display: None,
             streaming: None,
         },
     );
@@ -428,6 +435,7 @@ fn merge_preserves_unspecified_backend_fields() {
             pricing_endpoint: None,
             thinking_budget: Some(20000),
             reasoning_effort: None,
+            reasoning_display: None,
             streaming: None,
         },
     );
@@ -589,6 +597,7 @@ fn serialize_backend_config_to_toml() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 
@@ -746,6 +755,7 @@ fn clone_backend_config() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 
@@ -794,6 +804,7 @@ fn debug_format_backend_config() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: None,
     };
 

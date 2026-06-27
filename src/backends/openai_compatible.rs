@@ -2,7 +2,7 @@ use super::{LlmBackend, LlmResponse, RequestExecutor};
 use crate::agent::{Conversation, ConversationMessage, ToolCall};
 use crate::backends::llm_error::LlmError;
 use crate::backends::stream::StreamOptions;
-use crate::config::ReasoningEffort;
+use crate::config::{ReasoningDisplay, ReasoningEffort};
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -20,6 +20,7 @@ pub struct OpenAICompatibleConfig {
     pub pricing_endpoint: Option<String>,
     pub thinking_budget: Option<u32>,
     pub reasoning_effort: Option<ReasoningEffort>,
+    pub reasoning_display: Option<ReasoningDisplay>,
     pub streaming: bool,
 }
 
@@ -35,6 +36,7 @@ impl Default for OpenAICompatibleConfig {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            reasoning_display: None,
             streaming: true,
         }
     }
@@ -43,6 +45,27 @@ impl Default for OpenAICompatibleConfig {
 #[derive(Debug, Serialize)]
 struct ReasoningConfig {
     max_tokens: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct ThinkingConfig {
+    r#type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display: Option<ReasoningDisplay>,
+}
+
+#[derive(Debug, Serialize)]
+struct OutputConfig {
+    effort: ReasoningEffort,
+}
+
+struct ReasoningParams {
+    max_tokens: u32,
+    temperature: Option<f32>,
+    reasoning: Option<ReasoningConfig>,
+    reasoning_effort: Option<ReasoningEffort>,
+    thinking: Option<ThinkingConfig>,
+    output_config: Option<OutputConfig>,
 }
 
 pub struct OpenAICompatibleBackend {
@@ -68,6 +91,10 @@ struct ChatCompletionRequest {
     reasoning: Option<ReasoningConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<ReasoningEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_config: Option<OutputConfig>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -210,7 +237,7 @@ struct ResponseMessage {
     content: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<ToolCall>>,
-    #[serde(default)]
+    #[serde(default, alias = "reasoning_content")]
     reasoning: Option<String>,
 }
 
@@ -655,8 +682,7 @@ impl OpenAICompatibleBackend {
     }
 
     fn create_request(&self, message: &str) -> ChatCompletionRequest {
-        let (max_completion_tokens, temperature, reasoning, reasoning_effort) =
-            self.reasoning_request_overrides(4096, self.config.temperature, None);
+        let r = self.reasoning_request_overrides(4096, self.config.temperature, None);
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: vec![OpenAIWireMessage {
@@ -666,12 +692,14 @@ impl OpenAICompatibleBackend {
                 tool_call_id: None,
                 name: None,
             }],
-            max_completion_tokens,
-            temperature,
+            max_completion_tokens: r.max_tokens,
+            temperature: r.temperature,
             tools: None,
             tool_choice: None,
-            reasoning,
-            reasoning_effort,
+            reasoning: r.reasoning,
+            reasoning_effort: r.reasoning_effort,
+            thinking: r.thinking,
+            output_config: r.output_config,
             stream: false,
             stream_options: None,
         }
@@ -684,26 +712,27 @@ impl OpenAICompatibleBackend {
     ) -> ChatCompletionRequest {
         let tool_schemas = tools.get_tool_schemas();
         let has_tools = !tool_schemas.is_empty();
-        let (max_completion_tokens, temperature, reasoning, reasoning_effort) = self
-            .reasoning_request_overrides(
-                4096,
-                self.config.temperature,
-                conversation.thinking_budget_override,
-            );
+        let r = self.reasoning_request_overrides(
+            4096,
+            self.config.temperature,
+            conversation.thinking_budget_override,
+        );
 
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: to_openai_wire(conversation.get_messages_for_api()),
-            max_completion_tokens,
-            temperature,
+            max_completion_tokens: r.max_tokens,
+            temperature: r.temperature,
             tools: if has_tools { Some(tool_schemas) } else { None },
             tool_choice: if has_tools {
                 Some("auto".to_string())
             } else {
                 None
             },
-            reasoning,
-            reasoning_effort,
+            reasoning: r.reasoning,
+            reasoning_effort: r.reasoning_effort,
+            thinking: r.thinking,
+            output_config: r.output_config,
             stream: false,
             stream_options: None,
         }
@@ -714,28 +743,56 @@ impl OpenAICompatibleBackend {
         base_max_tokens: u32,
         base_temperature: Option<f32>,
         override_budget: Option<u32>,
-    ) -> (
-        u32,
-        Option<f32>,
-        Option<ReasoningConfig>,
-        Option<ReasoningEffort>,
-    ) {
+    ) -> ReasoningParams {
+        // Bedrock-native adaptive thinking: opting in via `reasoning_display`
+        // emits `thinking: {type: adaptive, display}` + `output_config: {effort}`
+        // rather than the OpenAI/OpenRouter reasoning params.
+        if let Some(display) = self.config.reasoning_display {
+            return ReasoningParams {
+                max_tokens: base_max_tokens,
+                temperature: Some(1.0),
+                reasoning: None,
+                reasoning_effort: None,
+                thinking: Some(ThinkingConfig {
+                    r#type: "adaptive",
+                    display: Some(display),
+                }),
+                output_config: self
+                    .config
+                    .reasoning_effort
+                    .map(|effort| OutputConfig { effort }),
+            };
+        }
+
         if let Some(effort) = self.config.reasoning_effort {
-            return (base_max_tokens, Some(1.0), None, Some(effort));
+            return ReasoningParams {
+                max_tokens: base_max_tokens,
+                temperature: Some(1.0),
+                reasoning: None,
+                reasoning_effort: Some(effort),
+                thinking: None,
+                output_config: None,
+            };
         }
 
         let budget = override_budget.or(self.config.thinking_budget);
         match budget {
-            Some(budget) if budget > 0 => {
-                let max_tokens = base_max_tokens.max(budget.saturating_add(4096));
-                (
-                    max_tokens,
-                    Some(1.0),
-                    Some(ReasoningConfig { max_tokens: budget }),
-                    None,
-                )
-            }
-            _ => (base_max_tokens, base_temperature, None, None),
+            Some(budget) if budget > 0 => ReasoningParams {
+                max_tokens: base_max_tokens.max(budget.saturating_add(4096)),
+                temperature: Some(1.0),
+                reasoning: Some(ReasoningConfig { max_tokens: budget }),
+                reasoning_effort: None,
+                thinking: None,
+                output_config: None,
+            },
+            _ => ReasoningParams {
+                max_tokens: base_max_tokens,
+                temperature: base_temperature,
+                reasoning: None,
+                reasoning_effort: None,
+                thinking: None,
+                output_config: None,
+            },
         }
     }
 }

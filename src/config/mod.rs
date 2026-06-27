@@ -136,9 +136,23 @@ pub struct BackendConfig {
     pub thinking_budget: Option<u32>,
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
+    /// Bedrock-native adaptive thinking display. When set, the backend emits
+    /// `thinking: {type: adaptive, display: <…>}` plus `output_config: {effort}`
+    /// instead of the OpenAI/OpenRouter reasoning params. Newer Claude models
+    /// (Opus 4.7/4.8, Fable 5) default to `omitted`, so set `summarized` to
+    /// receive readable reasoning text.
+    #[serde(default)]
+    pub reasoning_display: Option<ReasoningDisplay>,
     /// Stream responses token-by-token. Defaults to enabled when unset.
     #[serde(default)]
     pub streaming: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningDisplay {
+    Summarized,
+    Omitted,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
@@ -147,6 +161,8 @@ pub enum ReasoningEffort {
     Low,
     Medium,
     High,
+    Xhigh,
+    Max,
 }
 
 impl BackendConfig {
@@ -174,6 +190,9 @@ impl BackendConfig {
         }
         if other.reasoning_effort.is_some() {
             self.reasoning_effort = other.reasoning_effort;
+        }
+        if other.reasoning_display.is_some() {
+            self.reasoning_display = other.reasoning_display;
         }
         if other.streaming.is_some() {
             self.streaming = other.streaming;
@@ -443,6 +462,7 @@ impl AppConfig {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                reasoning_display: None,
                 streaming: None,
             });
 

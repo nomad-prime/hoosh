@@ -17,6 +17,7 @@ fn create_test_config() -> OpenAICompatibleConfig {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: true,
     }
 }
@@ -469,6 +470,7 @@ async fn backend_configuration_with_custom_values() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        reasoning_display: None,
         streaming: true,
     };
 
@@ -549,35 +551,33 @@ fn backend_with_thinking(budget: u32) -> OpenAICompatibleBackend {
 #[test]
 fn reasoning_disabled_by_default() {
     let backend = OpenAICompatibleBackend::new(create_test_config()).unwrap();
-    let (max_tokens, temperature, reasoning, effort) =
-        backend.reasoning_request_overrides(4096, Some(0.7), None);
-    assert_eq!(max_tokens, 4096);
-    assert_eq!(temperature, Some(0.7));
-    assert!(reasoning.is_none());
-    assert!(effort.is_none());
+    let r = backend.reasoning_request_overrides(4096, Some(0.7), None);
+    assert_eq!(r.max_tokens, 4096);
+    assert_eq!(r.temperature, Some(0.7));
+    assert!(r.reasoning.is_none());
+    assert!(r.reasoning_effort.is_none());
+    assert!(r.thinking.is_none());
 }
 
 #[test]
 fn reasoning_enabled_forces_temperature_and_grows_max_tokens() {
     let backend = backend_with_thinking(20000);
-    let (max_tokens, temperature, reasoning, effort) =
-        backend.reasoning_request_overrides(4096, Some(0.7), None);
-    assert_eq!(temperature, Some(1.0));
-    assert!(max_tokens >= 20000 + 4096);
-    let reasoning = reasoning.expect("reasoning block emitted");
+    let r = backend.reasoning_request_overrides(4096, Some(0.7), None);
+    assert_eq!(r.temperature, Some(1.0));
+    assert!(r.max_tokens >= 20000 + 4096);
+    let reasoning = r.reasoning.expect("reasoning block emitted");
     assert_eq!(reasoning.max_tokens, 20000);
-    assert!(effort.is_none());
+    assert!(r.reasoning_effort.is_none());
 }
 
 #[test]
 fn reasoning_zero_budget_treated_as_disabled() {
     let backend = backend_with_thinking(0);
-    let (max_tokens, temperature, reasoning, effort) =
-        backend.reasoning_request_overrides(4096, Some(0.7), None);
-    assert_eq!(max_tokens, 4096);
-    assert_eq!(temperature, Some(0.7));
-    assert!(reasoning.is_none());
-    assert!(effort.is_none());
+    let r = backend.reasoning_request_overrides(4096, Some(0.7), None);
+    assert_eq!(r.max_tokens, 4096);
+    assert_eq!(r.temperature, Some(0.7));
+    assert!(r.reasoning.is_none());
+    assert!(r.reasoning_effort.is_none());
 }
 
 #[test]
@@ -588,14 +588,71 @@ fn reasoning_effort_mode_sends_effort_not_token_budget() {
         ..create_test_config()
     };
     let backend = OpenAICompatibleBackend::new(config).unwrap();
-    let (_, temperature, reasoning, effort) =
-        backend.reasoning_request_overrides(4096, Some(0.7), Some(3000));
-    assert_eq!(temperature, Some(1.0));
+    let r = backend.reasoning_request_overrides(4096, Some(0.7), Some(3000));
+    assert_eq!(r.temperature, Some(1.0));
     assert!(
-        reasoning.is_none(),
+        r.reasoning.is_none(),
         "effort mode must not emit the token-budget object"
     );
-    assert_eq!(effort, Some(crate::config::ReasoningEffort::Medium));
+    assert_eq!(
+        r.reasoning_effort,
+        Some(crate::config::ReasoningEffort::Medium)
+    );
+    assert!(r.thinking.is_none());
+}
+
+#[test]
+fn reasoning_display_emits_native_adaptive_thinking() {
+    let config = OpenAICompatibleConfig {
+        reasoning_display: Some(crate::config::ReasoningDisplay::Summarized),
+        reasoning_effort: Some(crate::config::ReasoningEffort::High),
+        thinking_budget: Some(20000),
+        ..create_test_config()
+    };
+    let backend = OpenAICompatibleBackend::new(config).unwrap();
+    let r = backend.reasoning_request_overrides(4096, Some(0.7), None);
+    assert_eq!(r.temperature, Some(1.0));
+    assert!(
+        r.reasoning.is_none() && r.reasoning_effort.is_none(),
+        "native adaptive mode must not emit OpenAI/OpenRouter reasoning params"
+    );
+    let thinking = r.thinking.expect("adaptive thinking block emitted");
+    assert_eq!(thinking.r#type, "adaptive");
+    assert_eq!(
+        thinking.display,
+        Some(crate::config::ReasoningDisplay::Summarized)
+    );
+    let output = r.output_config.expect("output_config carries effort");
+    assert_eq!(output.effort, crate::config::ReasoningEffort::High);
+}
+
+#[test]
+fn reasoning_display_without_effort_omits_output_config() {
+    let config = OpenAICompatibleConfig {
+        reasoning_display: Some(crate::config::ReasoningDisplay::Summarized),
+        ..create_test_config()
+    };
+    let backend = OpenAICompatibleBackend::new(config).unwrap();
+    let r = backend.reasoning_request_overrides(4096, Some(0.7), None);
+    assert!(r.thinking.is_some());
+    assert!(r.output_config.is_none());
+}
+
+#[test]
+fn reasoning_display_serializes_thinking_and_output_config() {
+    let config = OpenAICompatibleConfig {
+        reasoning_display: Some(crate::config::ReasoningDisplay::Summarized),
+        reasoning_effort: Some(crate::config::ReasoningEffort::Xhigh),
+        ..create_test_config()
+    };
+    let backend = OpenAICompatibleBackend::new(config).unwrap();
+    let request = backend.create_request("hi");
+    let wire = serde_json::to_value(&request).unwrap();
+    assert_eq!(wire["thinking"]["type"], "adaptive");
+    assert_eq!(wire["thinking"]["display"], "summarized");
+    assert_eq!(wire["output_config"]["effort"], "xhigh");
+    assert!(wire.get("reasoning").is_none());
+    assert!(wire.get("reasoning_effort").is_none());
 }
 
 #[test]

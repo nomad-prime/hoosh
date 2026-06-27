@@ -177,6 +177,7 @@ mod tests {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                reasoning_display: None,
                 streaming: None,
             },
         );
@@ -211,6 +212,7 @@ mod tests {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                reasoning_display: None,
                 streaming: None,
             },
         );
@@ -225,6 +227,7 @@ mod tests {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                reasoning_display: None,
                 streaming: None,
             },
         );

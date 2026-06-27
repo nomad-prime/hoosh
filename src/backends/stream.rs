@@ -110,7 +110,7 @@ struct OpenAiStreamChoice {
 struct OpenAiStreamDelta {
     #[serde(default)]
     content: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "reasoning_content")]
     reasoning: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<OpenAiStreamToolCall>>,
@@ -367,6 +367,17 @@ mod tests {
         let resp = apply_chunks(&[
             r#"{"choices":[{"delta":{"reasoning":"think "}}]}"#,
             r#"{"choices":[{"delta":{"reasoning":"more"}}]}"#,
+            r#"{"choices":[{"delta":{"content":"done"}}]}"#,
+        ]);
+        assert_eq!(resp.content.as_deref(), Some("done"));
+        assert_eq!(resp.thinking.as_deref(), Some("think more"));
+    }
+
+    #[test]
+    fn openai_accumulator_collects_reasoning_content_field() {
+        let resp = apply_chunks(&[
+            r#"{"choices":[{"delta":{"reasoning_content":"think "}}]}"#,
+            r#"{"choices":[{"delta":{"reasoning_content":"more"}}]}"#,
             r#"{"choices":[{"delta":{"content":"done"}}]}"#,
         ]);
         assert_eq!(resp.content.as_deref(), Some("done"));

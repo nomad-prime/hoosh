@@ -104,6 +104,7 @@ impl BackendFactory for OpenAICompatibleBackend {
             pricing_endpoint: config.pricing_endpoint.clone(),
             thinking_budget: config.thinking_budget,
             reasoning_effort: config.reasoning_effort,
+            reasoning_display: config.reasoning_display,
             streaming: config.streaming.unwrap_or(true),
         };
 
