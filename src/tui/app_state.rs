@@ -210,9 +210,7 @@ pub struct AppState {
     pub prompt_history: PromptHistory,
     pub clipboard: ClipboardManager,
     pub current_retry_status: Option<String>,
-    pub input_tokens: usize,
-    pub output_tokens: usize,
-    pub total_cost: f64,
+    pub metrics: MetricsState,
     pub active_tool_calls: Vec<ActiveToolCall>,
     pub tool_calls_expanded: bool,
     pub todos: Vec<TodoItem>,
@@ -251,6 +249,32 @@ impl AnimationState {
             self.frame = self.frame.wrapping_add(1);
             self.last_tick = Instant::now();
         }
+    }
+}
+
+/// Cumulative token counts and cost for the current conversation.
+#[derive(Default)]
+pub struct MetricsState {
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+    pub total_cost: f64,
+}
+
+impl MetricsState {
+    pub fn record(&mut self, input_tokens: usize, output_tokens: usize, cost: Option<f64>) {
+        self.input_tokens = input_tokens;
+        self.output_tokens = output_tokens;
+        if let Some(call_cost) = cost {
+            self.total_cost += call_cost;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn has_usage(&self) -> bool {
+        self.input_tokens > 0 || self.output_tokens > 0
     }
 }
 
@@ -399,9 +423,7 @@ impl AppState {
             prompt_history: PromptHistory::new(1000),
             clipboard: ClipboardManager::new(),
             current_retry_status: None,
-            input_tokens: 0,
-            output_tokens: 0,
-            total_cost: 0.0,
+            metrics: MetricsState::default(),
             active_tool_calls: Vec::new(),
             tool_calls_expanded: false,
             todos: Vec::new(),
@@ -976,11 +998,7 @@ impl AppState {
     }
 
     fn on_token_usage(&mut self, input_tokens: usize, output_tokens: usize, cost: Option<f64>) {
-        self.input_tokens = input_tokens;
-        self.output_tokens = output_tokens;
-        if let Some(call_cost) = cost {
-            self.total_cost += call_cost;
-        }
+        self.metrics.record(input_tokens, output_tokens, cost);
     }
 
     fn on_subagent_step(

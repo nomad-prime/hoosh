@@ -451,9 +451,7 @@ async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) 
         .context_manager
         .token_accountant
         .reset();
-    app.input_tokens = 0;
-    app.output_tokens = 0;
-    app.total_cost = 0.0;
+    app.metrics.reset();
     app.add_status_message("Conversation cleared.");
 }
 

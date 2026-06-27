@@ -75,10 +75,10 @@ impl Component for StatusBar {
             }
         };
 
-        let token_text = if state.input_tokens > 0 || state.output_tokens > 0 {
+        let token_text = if state.metrics.has_usage() {
             format!(
                 "Tokens: {} ↑ | {} ↓ (${:.4}) ",
-                state.input_tokens, state.output_tokens, state.total_cost
+                state.metrics.input_tokens, state.metrics.output_tokens, state.metrics.total_cost
             )
         } else {
             "Tokens: 0 ↑ | 0 ↓ ".to_string()

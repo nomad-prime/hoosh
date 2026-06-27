@@ -170,9 +170,9 @@ fn app_state_new_initializes_correctly() {
             .autopilot_enabled
             .load(std::sync::atomic::Ordering::Relaxed)
     );
-    assert_eq!(state.input_tokens, 0);
-    assert_eq!(state.output_tokens, 0);
-    assert_eq!(state.total_cost, 0.0);
+    assert_eq!(state.metrics.input_tokens, 0);
+    assert_eq!(state.metrics.output_tokens, 0);
+    assert_eq!(state.metrics.total_cost, 0.0);
 }
 
 #[test]
