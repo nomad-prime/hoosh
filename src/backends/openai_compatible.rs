@@ -1,6 +1,7 @@
 use super::{LlmBackend, LlmResponse, RequestExecutor};
 use crate::agent::{Conversation, ConversationMessage, ToolCall};
 use crate::backends::llm_error::LlmError;
+use crate::backends::stream::StreamOptions;
 use crate::config::ReasoningEffort;
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
@@ -19,6 +20,7 @@ pub struct OpenAICompatibleConfig {
     pub pricing_endpoint: Option<String>,
     pub thinking_budget: Option<u32>,
     pub reasoning_effort: Option<ReasoningEffort>,
+    pub streaming: bool,
 }
 
 impl Default for OpenAICompatibleConfig {
@@ -33,6 +35,7 @@ impl Default for OpenAICompatibleConfig {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            streaming: true,
         }
     }
 }
@@ -65,6 +68,10 @@ struct ChatCompletionRequest {
     reasoning: Option<ReasoningConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<ReasoningEffort>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<StreamOptions>,
 }
 
 /// Wire-format message for the OpenAI / OpenRouter chat completions API. Mirrors
@@ -566,6 +573,87 @@ impl OpenAICompatibleBackend {
         })
     }
 
+    async fn send_message_with_tools_streaming_attempt(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: &tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    ) -> Result<LlmResponse, LlmError> {
+        if self.config.api_key.is_empty() {
+            return Err(LlmError::AuthenticationError {
+                message: format!(
+                    "{} API key not configured. Set it with: hoosh config set {}_api_key <your_key>",
+                    self.config.name, self.config.name
+                ),
+            });
+        }
+
+        let mut request = self.create_request_with_tools(conversation, tools);
+        request.stream = true;
+        request.stream_options = Some(StreamOptions {
+            include_usage: true,
+        });
+        let url = format!("{}{}", self.config.base_url, self.config.chat_api);
+
+        crate::backends::stream::emit_stream_started(event_tx);
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Accept", "text/event-stream")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| LlmError::NetworkError {
+                message: e.to_string(),
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let headers = response.headers().clone();
+            let error_text = response.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after = headers
+                    .get("retry-after")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+                return Err(LlmError::RateLimit {
+                    retry_after,
+                    message: error_text,
+                });
+            }
+            return Err(Self::http_error_to_llm_error(status, error_text));
+        }
+
+        let mut reader = crate::backends::stream::LineReader::new(response.bytes_stream());
+        let mut acc = crate::backends::stream::OpenAiStreamAccumulator::default();
+        while let Some(line) = reader.next_line().await? {
+            let Some(data) = crate::backends::stream::sse_data(&line) else {
+                continue;
+            };
+            if data == "[DONE]" {
+                break;
+            }
+            let Ok(chunk) =
+                serde_json::from_str::<crate::backends::stream::OpenAiStreamChunk>(data)
+            else {
+                continue;
+            };
+            if acc.apply(chunk, event_tx) {
+                return Err(LlmError::RecoverableByLlm {
+                    message:
+                        "Your response was cut off because it exceeded the maximum token limit. \
+                     Please provide a shorter, more concise response. \
+                     If you were writing a large file or tool call, break it into smaller parts."
+                            .to_string(),
+                });
+            }
+        }
+
+        Ok(acc.into_response())
+    }
+
     fn create_request(&self, message: &str) -> ChatCompletionRequest {
         let (max_completion_tokens, temperature, reasoning, reasoning_effort) =
             self.reasoning_request_overrides(4096, self.config.temperature, None);
@@ -584,6 +672,8 @@ impl OpenAICompatibleBackend {
             tool_choice: None,
             reasoning,
             reasoning_effort,
+            stream: false,
+            stream_options: None,
         }
     }
 
@@ -614,6 +704,8 @@ impl OpenAICompatibleBackend {
             },
             reasoning,
             reasoning_effort,
+            stream: false,
+            stream_options: None,
         }
     }
 
@@ -681,6 +773,10 @@ impl LlmBackend for OpenAICompatibleBackend {
         &self.config.model
     }
 
+    fn supports_streaming(&self) -> bool {
+        self.config.streaming
+    }
+
     async fn initialize(&self) -> Result<()> {
         // Fetch pricing + capability info at initialization if endpoint is configured
         self.fetch_and_cache_model_info().await?;
@@ -744,6 +840,21 @@ impl LlmBackend for OpenAICompatibleBackend {
         tools: &ToolRegistry,
         event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<LlmResponse, LlmError> {
+        if self.config.streaming
+            && let Some(tx) = event_tx.clone()
+        {
+            return self
+                .default_executor
+                .execute(
+                    || async {
+                        self.send_message_with_tools_streaming_attempt(conversation, tools, &tx)
+                            .await
+                    },
+                    event_tx,
+                )
+                .await;
+        }
+
         self.default_executor
             .execute(
                 || async {

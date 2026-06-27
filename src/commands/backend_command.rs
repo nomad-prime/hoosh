@@ -177,6 +177,7 @@ mod tests {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                streaming: None,
             },
         );
         let mut ctx = CommandContext::new().with_config(config);
@@ -210,6 +211,7 @@ mod tests {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                streaming: None,
             },
         );
         config.backends.insert(
@@ -223,6 +225,7 @@ mod tests {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                streaming: None,
             },
         );
         let mut ctx = CommandContext::new().with_config(config);

@@ -35,6 +35,7 @@ fn backend_config_fields_are_optional() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     assert!(backend.api_key.is_none());
@@ -55,6 +56,7 @@ fn backend_config_can_be_fully_populated() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     assert_eq!(backend.api_key, Some("test-key".to_string()));
@@ -124,6 +126,7 @@ fn get_backend_config_returns_config_when_exists() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     config.set_backend_config("test".to_string(), backend);
@@ -145,6 +148,7 @@ fn set_backend_config_adds_new_backend() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     config.set_backend_config("new_backend".to_string(), backend);
@@ -366,6 +370,7 @@ fn merge_overwrites_backends() {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            streaming: None,
         },
     );
 
@@ -381,6 +386,7 @@ fn merge_overwrites_backends() {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            streaming: None,
         },
     );
 
@@ -406,6 +412,7 @@ fn merge_preserves_unspecified_backend_fields() {
             pricing_endpoint: None,
             thinking_budget: None,
             reasoning_effort: None,
+            streaming: None,
         },
     );
 
@@ -421,6 +428,7 @@ fn merge_preserves_unspecified_backend_fields() {
             pricing_endpoint: None,
             thinking_budget: Some(20000),
             reasoning_effort: None,
+            streaming: None,
         },
     );
 
@@ -581,6 +589,7 @@ fn serialize_backend_config_to_toml() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     let toml = toml::to_string(&backend).unwrap();
@@ -737,6 +746,7 @@ fn clone_backend_config() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     let cloned = backend.clone();
@@ -784,6 +794,7 @@ fn debug_format_backend_config() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: None,
     };
 
     let debug_str = format!("{:?}", backend);

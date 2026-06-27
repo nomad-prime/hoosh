@@ -17,6 +17,7 @@ fn create_test_config() -> OpenAICompatibleConfig {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: true,
     }
 }
 
@@ -468,6 +469,7 @@ async fn backend_configuration_with_custom_values() {
         pricing_endpoint: None,
         thinking_budget: None,
         reasoning_effort: None,
+        streaming: true,
     };
 
     let backend = OpenAICompatibleBackend::new(config).unwrap();

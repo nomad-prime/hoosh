@@ -14,6 +14,7 @@ pub struct TogetherAiConfig {
     pub api_key: String,
     pub model: String,
     pub base_url: String,
+    pub streaming: bool,
 }
 
 impl Default for TogetherAiConfig {
@@ -22,6 +23,7 @@ impl Default for TogetherAiConfig {
             api_key: String::new(),
             model: "meta-llama/Llama-2-7b-chat-hf".to_string(),
             base_url: "https://api.together.xyz/v1".to_string(),
+            streaming: true,
         }
     }
 }
@@ -43,6 +45,10 @@ struct ChatCompletionRequest {
     tools: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<crate::backends::stream::StreamOptions>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -337,6 +343,8 @@ impl TogetherAiBackend {
             temperature: Some(0.7),
             tools: None,
             tool_choice: None,
+            stream: false,
+            stream_options: None,
         }
     }
 
@@ -359,7 +367,79 @@ impl TogetherAiBackend {
             } else {
                 None
             },
+            stream: false,
+            stream_options: None,
         }
+    }
+
+    async fn send_message_with_tools_streaming_attempt(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: &tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    ) -> Result<LlmResponse, LlmError> {
+        if self.config.api_key.is_empty() {
+            return Err(LlmError::AuthenticationError {
+                message: "Together AI API key not configured. Set it with: hoosh config set together_ai_api_key <your_key>".to_string()
+            });
+        }
+
+        let mut request = self.create_request_with_tools(conversation, tools);
+        request.stream = true;
+        request.stream_options = Some(crate::backends::stream::StreamOptions {
+            include_usage: true,
+        });
+        let url = format!("{}/chat/completions", self.config.base_url);
+
+        crate::backends::stream::emit_stream_started(event_tx);
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Accept", "text/event-stream")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| LlmError::NetworkError {
+                message: e.to_string(),
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let headers = response.headers().clone();
+            let error_text = response.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after = headers
+                    .get("retry-after")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+                return Err(LlmError::RateLimit {
+                    retry_after,
+                    message: error_text,
+                });
+            }
+            return Err(Self::http_error_to_llm_error(status, error_text));
+        }
+
+        let mut reader = crate::backends::stream::LineReader::new(response.bytes_stream());
+        let mut acc = crate::backends::stream::OpenAiStreamAccumulator::default();
+        while let Some(line) = reader.next_line().await? {
+            let Some(data) = crate::backends::stream::sse_data(&line) else {
+                continue;
+            };
+            if data == "[DONE]" {
+                break;
+            }
+            let Ok(chunk) =
+                serde_json::from_str::<crate::backends::stream::OpenAiStreamChunk>(data)
+            else {
+                continue;
+            };
+            acc.apply(chunk, event_tx);
+        }
+
+        Ok(acc.into_response())
     }
 }
 
@@ -408,6 +488,21 @@ impl LlmBackend for TogetherAiBackend {
         tools: &ToolRegistry,
         event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<LlmResponse, LlmError> {
+        if self.config.streaming
+            && let Some(tx) = event_tx.clone()
+        {
+            return self
+                .default_executor
+                .execute(
+                    || async {
+                        self.send_message_with_tools_streaming_attempt(conversation, tools, &tx)
+                            .await
+                    },
+                    event_tx,
+                )
+                .await;
+        }
+
         self.default_executor
             .execute(
                 || async {
@@ -421,6 +516,10 @@ impl LlmBackend for TogetherAiBackend {
 
     fn backend_name(&self) -> &str {
         "together_ai"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        self.config.streaming
     }
 
     fn model_name(&self) -> &str {

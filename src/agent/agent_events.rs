@@ -12,6 +12,9 @@ pub struct PendingToolCall {
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     Thinking,
+    StreamStarted,
+    TextDelta(String),
+    ThinkingDelta(String),
     AssistantThinking(String),
     AssistantThought(String),
     ToolCalls(Vec<PendingToolCall>),

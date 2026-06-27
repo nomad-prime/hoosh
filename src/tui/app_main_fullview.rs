@@ -3,6 +3,7 @@ use crate::tui::app_loop_fullview::run_event_loop;
 use crate::tui::terminal::lifecycle_fullview::{init_terminal_fullview, restore_terminal_fullview};
 
 pub async fn run_with_session_fullview(mut session: AgentSession) -> anyhow::Result<()> {
+    session.app_state.fullview = true;
     let mut terminal = init_terminal_fullview()?;
 
     let terminal = match terminal.clear() {

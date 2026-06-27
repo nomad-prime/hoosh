@@ -18,6 +18,7 @@ pub struct OllamaConfig {
     pub model: String,
     pub base_url: String,
     pub temperature: Option<f32>,
+    pub streaming: bool,
 }
 
 impl Default for OllamaConfig {
@@ -27,6 +28,7 @@ impl Default for OllamaConfig {
             model: DEFAULT_OLLAMA_MODEL.to_string(),
             base_url: DEFAULT_OLLAMA_BASE_URL.to_string(),
             temperature: None,
+            streaming: true,
         }
     }
 }
@@ -144,6 +146,24 @@ struct OllamaToolFunction {
     name: String,
     #[serde(default)]
     arguments: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaStreamChunk {
+    #[serde(default)]
+    message: Option<StreamMessage>,
+    #[serde(default)]
+    prompt_eval_count: Option<u32>,
+    #[serde(default)]
+    eval_count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamMessage {
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    tool_calls: Option<Vec<OllamaToolCall>>,
 }
 
 impl OllamaToolCall {
@@ -293,6 +313,78 @@ impl OllamaBackend {
         Ok(response.with_tokens(input_tokens, output_tokens))
     }
 
+    async fn send_message_with_tools_streaming_attempt(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: &tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    ) -> Result<LlmResponse, LlmError> {
+        let tool_schemas = tools.get_tool_schemas();
+        let mut request = self.create_request_with_tools(conversation, tool_schemas);
+        request.stream = true;
+        let url = format!("{}/api/chat", self.config.base_url);
+
+        crate::backends::stream::emit_stream_started(event_tx);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| LlmError::NetworkError {
+                message: e.to_string(),
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(LlmError::Other {
+                message: format!("Ollama API error {}:", status.as_u16()) + &error_text,
+            });
+        }
+
+        let mut reader = crate::backends::stream::LineReader::new(response.bytes_stream());
+        let mut text = String::new();
+        let mut tool_calls: Vec<ToolCall> = Vec::new();
+        let mut input_tokens = 0usize;
+        let mut output_tokens = 0usize;
+
+        while let Some(line) = reader.next_line().await? {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let Ok(chunk) = serde_json::from_str::<OllamaStreamChunk>(&line) else {
+                continue;
+            };
+            if let Some(message) = chunk.message {
+                if !message.content.is_empty() {
+                    crate::backends::stream::emit_text_delta(event_tx, &message.content);
+                    text.push_str(&message.content);
+                }
+                if let Some(calls) = message.tool_calls {
+                    for call in &calls {
+                        tool_calls.push(call.to_standard_tool_call(tool_calls.len()));
+                    }
+                }
+            }
+            if let Some(count) = chunk.prompt_eval_count {
+                input_tokens = count as usize;
+            }
+            if let Some(count) = chunk.eval_count {
+                output_tokens = count as usize;
+            }
+        }
+
+        let response = if tool_calls.is_empty() {
+            LlmResponse::content_only(text)
+        } else {
+            LlmResponse::with_tool_calls(Some(text), tool_calls)
+        };
+
+        Ok(response.with_tokens(input_tokens, output_tokens))
+    }
+
     fn create_request(&self, message: &str) -> ChatRequest {
         let options = self.create_model_options();
 
@@ -396,6 +488,21 @@ impl LlmBackend for OllamaBackend {
         tools: &ToolRegistry,
         event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<LlmResponse, LlmError> {
+        if self.config.streaming
+            && let Some(tx) = event_tx.clone()
+        {
+            return self
+                .default_executor
+                .execute(
+                    || async {
+                        self.send_message_with_tools_streaming_attempt(conversation, tools, &tx)
+                            .await
+                    },
+                    event_tx,
+                )
+                .await;
+        }
+
         self.default_executor
             .execute(
                 || async {
@@ -409,6 +516,10 @@ impl LlmBackend for OllamaBackend {
 
     fn backend_name(&self) -> &str {
         &self.config.name
+    }
+
+    fn supports_streaming(&self) -> bool {
+        self.config.streaming
     }
 
     fn model_name(&self) -> &str {

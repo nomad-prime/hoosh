@@ -8,6 +8,7 @@ use crate::tui::components::mode_indicator::ModeIndicator;
 use crate::tui::components::permission_dialog::PermissionDialog;
 use crate::tui::components::queued_prompts::QueuedPromptsComponent;
 use crate::tui::components::status_bar::StatusBar;
+use crate::tui::components::streaming_response::StreamingResponseComponent;
 use crate::tui::components::subagent_results::SubagentResultsComponent;
 use crate::tui::components::todo_list::TodoListComponent;
 use crate::tui::layout::ComponentDescriptor;
@@ -18,6 +19,7 @@ pub trait AppLayoutBuilder {
     fn active_tool_calls(self, height: u16, visible: bool) -> Self;
     fn subagent_results(self, height: u16, visible: bool) -> Self;
     fn bash_results(self, height: u16, visible: bool) -> Self;
+    fn streaming_response(self, height: u16, visible: bool) -> Self;
     fn todo_list(self, height: u16, visible: bool) -> Self;
     fn queued_prompts(self, height: u16, visible: bool) -> Self;
     fn input_field(self, height: u16) -> Self;
@@ -49,6 +51,13 @@ impl AppLayoutBuilder for LayoutBuilder<AppState> {
     fn bash_results(self, height: u16, visible: bool) -> Self {
         self.component(
             ComponentDescriptor::new(height, Some(Box::new(BashResultsComponent)))
+                .with_visibility(visible),
+        )
+    }
+
+    fn streaming_response(self, height: u16, visible: bool) -> Self {
+        self.component(
+            ComponentDescriptor::new(height, Some(Box::new(StreamingResponseComponent)))
                 .with_visibility(visible),
         )
     }

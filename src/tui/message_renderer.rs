@@ -193,7 +193,15 @@ impl MessageRenderer {
             .collect()
     }
 
-    /// Wraps styled lines to fit within terminal width while preserving formatting
+    pub fn markdown_to_wrapped_lines(
+        &self,
+        markdown: &str,
+        terminal_width: usize,
+    ) -> Vec<Line<'static>> {
+        let rendered = self.markdown_renderer.render(markdown);
+        self.wrap_styled_lines(rendered, terminal_width)
+    }
+
     fn wrap_styled_lines(
         &self,
         lines: Vec<Line<'static>>,

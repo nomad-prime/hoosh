@@ -74,6 +74,13 @@ pub trait LlmBackend: Send + Sync {
     fn backend_name(&self) -> &str;
     fn model_name(&self) -> &str;
 
+    /// Whether this backend can stream incremental text/thinking deltas through
+    /// the event channel. Streaming is only taken when this is true *and* the
+    /// caller passes an `event_tx`. Defaults to false so mocks stay buffered.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
     async fn initialize(&self) -> Result<()> {
         Ok(())
     }
@@ -144,6 +151,8 @@ pub use together_ai::TogetherAiConfig;
 
 pub mod executor;
 pub use executor::RequestExecutor;
+
+pub mod stream;
 
 pub mod strategy;
 pub use strategy::RetryStrategy;

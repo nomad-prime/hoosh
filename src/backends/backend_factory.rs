@@ -35,6 +35,7 @@ impl BackendFactory for TogetherAiBackend {
             api_key,
             model,
             base_url,
+            streaming: config.streaming.unwrap_or(true),
         };
 
         Ok(Box::new(TogetherAiBackend::new(together_config)?))
@@ -63,6 +64,7 @@ impl BackendFactory for AnthropicBackend {
             model,
             base_url,
             thinking_budget: config.thinking_budget,
+            streaming: config.streaming.unwrap_or(true),
         };
 
         Ok(Box::new(AnthropicBackend::new(anthropic_config)?))
@@ -102,6 +104,7 @@ impl BackendFactory for OpenAICompatibleBackend {
             pricing_endpoint: config.pricing_endpoint.clone(),
             thinking_budget: config.thinking_budget,
             reasoning_effort: config.reasoning_effort,
+            streaming: config.streaming.unwrap_or(true),
         };
 
         Ok(Box::new(OpenAICompatibleBackend::new(openai_config)?))
@@ -128,6 +131,7 @@ impl BackendFactory for OllamaBackend {
             model,
             base_url,
             temperature: config.temperature,
+            streaming: config.streaming.unwrap_or(true),
         };
 
         Ok(Box::new(OllamaBackend::new(ollama_config)?))

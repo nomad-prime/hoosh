@@ -61,6 +61,15 @@ impl AppLayout for Layout<AppState> {
             acc + height
         });
 
+        // Calculate streaming-response preview visibility and height
+        let streaming_lines = if app.fullview {
+            Vec::new()
+        } else {
+            crate::tui::components::streaming_response::streaming_lines(app, terminal_width)
+        };
+        let streaming_response_visible = !streaming_lines.is_empty();
+        let streaming_response_height = streaming_lines.len() as u16;
+
         // Calculate todo list visibility and height
         let todo_list_visible = !app.todos.is_empty();
         // No border needed, just the number of todos
@@ -90,9 +99,13 @@ impl AppLayout for Layout<AppState> {
             .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
             .subagent_results(subagent_results_height, subagent_results_visible)
             .bash_results(bash_results_height, bash_results_visible)
+            .streaming_response(streaming_response_height, streaming_response_visible)
             .spacer_if(
                 1,
-                active_tool_calls_visible || subagent_results_visible || bash_results_visible,
+                active_tool_calls_visible
+                    || subagent_results_visible
+                    || bash_results_visible
+                    || streaming_response_visible,
             )
             .status_bar()
             .todo_list(todo_list_height, todo_list_visible)

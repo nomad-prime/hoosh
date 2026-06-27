@@ -316,6 +316,14 @@ pub(crate) async fn handle_cancel_task(
         app.hide_approval_dialog();
         app.hide_tool_permission_dialog();
 
+        // Keep whatever text had already streamed in so the user doesn't lose
+        // what they were reading when they interrupted.
+        if let Some(partial) = app.streaming_text.take()
+            && !partial.trim().is_empty()
+        {
+            app.add_final_response(partial.trim_end());
+        }
+
         let kind = {
             let mut conv = context.conversation_state.conversation.lock().await;
             conv.cancel_in_flight_turn()

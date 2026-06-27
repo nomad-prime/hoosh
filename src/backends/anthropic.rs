@@ -13,6 +13,7 @@ pub struct AnthropicConfig {
     pub model: String,
     pub base_url: String,
     pub thinking_budget: Option<u32>,
+    pub streaming: bool,
 }
 
 impl Default for AnthropicConfig {
@@ -22,6 +23,7 @@ impl Default for AnthropicConfig {
             model: "claude-sonnet-4.5".to_string(),
             base_url: "https://api.anthropic.com/v1".to_string(),
             thinking_budget: None,
+            streaming: true,
         }
     }
 }
@@ -52,6 +54,8 @@ struct MessagesRequest {
     tools: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    stream: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -274,6 +278,7 @@ impl AnthropicBackend {
             temperature,
             tools: None,
             thinking,
+            stream: false,
         }
     }
 
@@ -341,6 +346,7 @@ impl AnthropicBackend {
             temperature,
             tools: if has_tools { Some(tool_schemas) } else { None },
             thinking,
+            stream: false,
         }
     }
 
@@ -453,6 +459,70 @@ impl AnthropicBackend {
         Ok(self.extract_llm_response(response))
     }
 
+    async fn send_message_with_tools_streaming_attempt(
+        &self,
+        conversation: &Conversation,
+        tools: &ToolRegistry,
+        event_tx: &tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    ) -> Result<LlmResponse, LlmError> {
+        if self.config.api_key.is_empty() {
+            return Err(LlmError::AuthenticationError {
+                message: "Anthropic API key not configured. Set it with: hoosh config set anthropic_api_key <your_key>".to_string()
+            });
+        }
+
+        let mut request = self.create_request_with_tools(conversation, tools);
+        request.stream = true;
+
+        crate::backends::stream::emit_stream_started(event_tx);
+
+        let url = format!("{}/messages", self.config.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.config.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| LlmError::NetworkError {
+                message: e.to_string(),
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let headers = response.headers().clone();
+            let error_text = response.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let retry_after = headers
+                    .get("retry-after")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+                return Err(LlmError::RateLimit {
+                    retry_after,
+                    message: error_text,
+                });
+            }
+            return Err(Self::http_error_to_llm_error(status, error_text));
+        }
+
+        let mut reader = crate::backends::stream::LineReader::new(response.bytes_stream());
+        let mut acc = StreamAccumulator::default();
+        while let Some(line) = reader.next_line().await? {
+            let Some(data) = crate::backends::stream::sse_data(&line) else {
+                continue;
+            };
+            let Ok(event) = serde_json::from_str::<StreamEvent>(data) else {
+                continue;
+            };
+            acc.apply(event, event_tx);
+        }
+
+        Ok(acc.into_response())
+    }
+
     fn extract_text_from_response(&self, response: MessagesResponse) -> Option<String> {
         let mut text_parts = Vec::new();
         for block in response.content {
@@ -520,6 +590,188 @@ impl AnthropicBackend {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum StreamEvent {
+    MessageStart {
+        message: StreamStartMessage,
+    },
+    ContentBlockStart {
+        index: usize,
+        content_block: StreamContentBlock,
+    },
+    ContentBlockDelta {
+        index: usize,
+        delta: StreamDelta,
+    },
+    MessageDelta {
+        usage: StreamUsage,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamStartMessage {
+    usage: StreamUsage,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StreamUsage {
+    #[serde(default)]
+    input_tokens: u32,
+    #[serde(default)]
+    output_tokens: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum StreamContentBlock {
+    Text,
+    Thinking,
+    ToolUse {
+        id: String,
+        name: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum StreamDelta {
+    TextDelta {
+        text: String,
+    },
+    ThinkingDelta {
+        thinking: String,
+    },
+    InputJsonDelta {
+        partial_json: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+enum BlockAcc {
+    Text(String),
+    Thinking(String),
+    ToolUse {
+        id: String,
+        name: String,
+        json: String,
+    },
+    Ignored,
+}
+
+#[derive(Default)]
+struct StreamAccumulator {
+    blocks: std::collections::BTreeMap<usize, BlockAcc>,
+    input_tokens: usize,
+    output_tokens: usize,
+}
+
+impl StreamAccumulator {
+    fn apply(
+        &mut self,
+        event: StreamEvent,
+        event_tx: &tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>,
+    ) {
+        match event {
+            StreamEvent::MessageStart { message } => {
+                self.input_tokens = message.usage.input_tokens as usize;
+            }
+            StreamEvent::ContentBlockStart {
+                index,
+                content_block,
+            } => {
+                let acc = match content_block {
+                    StreamContentBlock::Text => BlockAcc::Text(String::new()),
+                    StreamContentBlock::Thinking => BlockAcc::Thinking(String::new()),
+                    StreamContentBlock::ToolUse { id, name } => BlockAcc::ToolUse {
+                        id,
+                        name,
+                        json: String::new(),
+                    },
+                    StreamContentBlock::Other => BlockAcc::Ignored,
+                };
+                self.blocks.insert(index, acc);
+            }
+            StreamEvent::ContentBlockDelta { index, delta } => match delta {
+                StreamDelta::TextDelta { text } => {
+                    crate::backends::stream::emit_text_delta(event_tx, &text);
+                    if let Some(BlockAcc::Text(buf)) = self.blocks.get_mut(&index) {
+                        buf.push_str(&text);
+                    }
+                }
+                StreamDelta::ThinkingDelta { thinking } => {
+                    crate::backends::stream::emit_thinking_delta(event_tx, &thinking);
+                    if let Some(BlockAcc::Thinking(buf)) = self.blocks.get_mut(&index) {
+                        buf.push_str(&thinking);
+                    }
+                }
+                StreamDelta::InputJsonDelta { partial_json } => {
+                    if let Some(BlockAcc::ToolUse { json, .. }) = self.blocks.get_mut(&index) {
+                        json.push_str(&partial_json);
+                    }
+                }
+                StreamDelta::Other => {}
+            },
+            StreamEvent::MessageDelta { usage } => {
+                self.output_tokens = usage.output_tokens as usize;
+            }
+            StreamEvent::Other => {}
+        }
+    }
+
+    fn into_response(self) -> LlmResponse {
+        let mut text_parts = Vec::new();
+        let mut thinking_parts = Vec::new();
+        let mut tool_calls = Vec::new();
+
+        for (_, block) in self.blocks {
+            match block {
+                BlockAcc::Text(t) if !t.is_empty() => text_parts.push(t),
+                BlockAcc::Thinking(t) if !t.is_empty() => thinking_parts.push(t),
+                BlockAcc::ToolUse { id, name, json } => {
+                    let arguments = if json.trim().is_empty() {
+                        "{}".to_string()
+                    } else {
+                        json
+                    };
+                    tool_calls.push(ToolCall {
+                        id,
+                        r#type: "function".to_string(),
+                        function: crate::agent::ToolFunction { name, arguments },
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        let thinking = if thinking_parts.is_empty() {
+            None
+        } else {
+            Some(thinking_parts.join("\n"))
+        };
+
+        if !tool_calls.is_empty() {
+            let content = if text_parts.is_empty() {
+                None
+            } else {
+                Some(text_parts.join("\n"))
+            };
+            LlmResponse::with_tool_calls(content, tool_calls)
+                .with_tokens(self.input_tokens, self.output_tokens)
+                .with_thinking(thinking)
+        } else {
+            LlmResponse::content_only(text_parts.join("\n"))
+                .with_tokens(self.input_tokens, self.output_tokens)
+                .with_thinking(thinking)
+        }
+    }
+}
+
 #[async_trait]
 impl LlmBackend for AnthropicBackend {
     async fn send_message(&self, message: &str) -> Result<String> {
@@ -565,6 +817,21 @@ impl LlmBackend for AnthropicBackend {
         tools: &ToolRegistry,
         event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::agent::AgentEvent>>,
     ) -> Result<LlmResponse, LlmError> {
+        if self.config.streaming
+            && let Some(tx) = event_tx.clone()
+        {
+            return self
+                .default_executor
+                .execute(
+                    || async {
+                        self.send_message_with_tools_streaming_attempt(conversation, tools, &tx)
+                            .await
+                    },
+                    event_tx,
+                )
+                .await;
+        }
+
         self.default_executor
             .execute(
                 || async {
@@ -578,6 +845,10 @@ impl LlmBackend for AnthropicBackend {
 
     fn backend_name(&self) -> &str {
         "anthropic"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        self.config.streaming
     }
 
     fn model_name(&self) -> &str {
@@ -675,6 +946,47 @@ mod tests {
         assert_eq!(max_tokens, 8092);
         assert_eq!(temperature, Some(0.7));
         assert!(thinking.is_none());
+    }
+
+    fn apply_stream(events: &[&str]) -> LlmResponse {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut acc = StreamAccumulator::default();
+        for e in events {
+            let event: StreamEvent = serde_json::from_str(e).expect("event");
+            acc.apply(event, &tx);
+        }
+        acc.into_response()
+    }
+
+    #[test]
+    fn streaming_assembles_text_thinking_and_tokens() {
+        let resp = apply_stream(&[
+            r#"{"type":"message_start","message":{"usage":{"input_tokens":10,"output_tokens":1}}}"#,
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}"#,
+            r#"{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}"#,
+            r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The answer"}}"#,
+            r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" is 42."}}"#,
+            r#"{"type":"message_delta","usage":{"output_tokens":7}}"#,
+        ]);
+        assert_eq!(resp.content.as_deref(), Some("The answer is 42."));
+        assert_eq!(resp.thinking.as_deref(), Some("hmm"));
+        assert_eq!(resp.input_tokens, Some(10));
+        assert_eq!(resp.output_tokens, Some(7));
+    }
+
+    #[test]
+    fn streaming_assembles_tool_use_from_input_json_deltas() {
+        let resp = apply_stream(&[
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"read"}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"a.txt\"}"}}"#,
+        ]);
+        let calls = resp.tool_calls.expect("tool calls");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "toolu_1");
+        assert_eq!(calls[0].function.name, "read");
+        assert_eq!(calls[0].function.arguments, "{\"path\":\"a.txt\"}");
     }
 
     #[test]

@@ -223,9 +223,55 @@ fn set_input_text_with_empty_clears_input() {
 }
 
 #[test]
-fn app_state_tick_animation_increments() {
+fn text_deltas_accumulate_into_streaming_buffer() {
+    let mut state = AppState::new();
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("Hello ".into()));
+    state.handle_agent_event(AgentEvent::TextDelta("world".into()));
+    assert_eq!(state.streaming_text.as_deref(), Some("Hello world"));
+}
+
+#[test]
+fn visible_streaming_text_shows_partial_trailing_line() {
+    let mut state = AppState::new();
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("line one\npartial".into()));
+    assert_eq!(state.visible_streaming_text(), Some("line one\npartial"));
+}
+
+#[test]
+fn visible_streaming_text_shows_text_before_first_newline() {
+    let mut state = AppState::new();
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("no newline yet".into()));
+    assert_eq!(state.visible_streaming_text(), Some("no newline yet"));
+}
+
+#[test]
+fn visible_streaming_text_is_none_when_empty() {
+    let mut state = AppState::new();
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    assert_eq!(state.visible_streaming_text(), None);
+}
+
+#[test]
+fn final_response_clears_streaming_buffer() {
+    let mut state = AppState::new();
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("partial".into()));
+    state.handle_agent_event(AgentEvent::FinalResponse("partial answer".into()));
+    assert!(state.streaming_text.is_none());
+}
+
+#[test]
+fn app_state_tick_animation_increments_after_interval() {
     let mut state = AppState::new();
     let initial = state.animation_frame;
+
+    state.tick_animation();
+    assert_eq!(state.animation_frame, initial, "no tick before the interval");
+
+    state.last_animation_tick = std::time::Instant::now() - std::time::Duration::from_millis(150);
     state.tick_animation();
     assert_eq!(state.animation_frame, initial.wrapping_add(1));
 }

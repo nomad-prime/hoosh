@@ -229,6 +229,9 @@ pub struct AppState {
     pub attachment_view: Option<AttachmentViewState>,
     pub paste_detector: PasteDetector,
     pub display_compact: bool,
+    pub streaming_text: Option<String>,
+    pub last_animation_tick: Instant,
+    pub fullview: bool,
 }
 
 /// Format a short status/error string as a `  ⎿  [lowercased message]` line.
@@ -300,6 +303,9 @@ impl AppState {
             attachment_view: None,
             paste_detector: PasteDetector::new(),
             display_compact: false,
+            streaming_text: None,
+            last_animation_tick: Instant::now(),
+            fullview: false,
         }
     }
 
@@ -309,7 +315,10 @@ impl AppState {
     }
 
     pub fn tick_animation(&mut self) {
-        self.animation_frame = self.animation_frame.wrapping_add(1);
+        if self.last_animation_tick.elapsed() >= std::time::Duration::from_millis(100) {
+            self.animation_frame = self.animation_frame.wrapping_add(1);
+            self.last_animation_tick = Instant::now();
+        }
     }
 
     pub fn register_completer(&mut self, completer: Box<dyn Completer>) {
@@ -679,7 +688,17 @@ impl AppState {
                 let mut rng = rand::thread_rng();
                 self.current_thinking_spinner = rng.gen_range(0..7);
             }
+            AgentEvent::StreamStarted => {
+                self.streaming_text = Some(String::new());
+            }
+            AgentEvent::TextDelta(delta) => {
+                self.streaming_text
+                    .get_or_insert_with(String::new)
+                    .push_str(&delta);
+            }
+            AgentEvent::ThinkingDelta(_) => {}
             AgentEvent::AssistantThought(content) => {
+                self.streaming_text = None;
                 self.add_thought(&content);
             }
             AgentEvent::AssistantThinking(content) => {
@@ -715,10 +734,12 @@ impl AppState {
             }
             AgentEvent::FinalResponse(content) => {
                 self.agent_state = AgentState::Idle;
+                self.streaming_text = None;
                 self.add_final_response(&content);
             }
             AgentEvent::Error(error) => {
                 self.agent_state = AgentState::Idle;
+                self.streaming_text = None;
                 self.add_error(&error);
             }
             AgentEvent::MaxStepsReached(max_steps) => {
@@ -905,6 +926,15 @@ impl AppState {
                 .add_modifier(Modifier::ITALIC),
         ));
         self.add_styled_line(styled_line);
+    }
+
+    pub fn visible_streaming_text(&self) -> Option<&str> {
+        let buf = self.streaming_text.as_deref()?;
+        if buf.trim().is_empty() {
+            None
+        } else {
+            Some(buf)
+        }
     }
 
     pub fn add_final_response(&mut self, content: &str) {

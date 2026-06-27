@@ -136,6 +136,9 @@ pub struct BackendConfig {
     pub thinking_budget: Option<u32>,
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
+    /// Stream responses token-by-token. Defaults to enabled when unset.
+    #[serde(default)]
+    pub streaming: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +174,9 @@ impl BackendConfig {
         }
         if other.reasoning_effort.is_some() {
             self.reasoning_effort = other.reasoning_effort;
+        }
+        if other.streaming.is_some() {
+            self.streaming = other.streaming;
         }
     }
 }
@@ -437,6 +443,7 @@ impl AppConfig {
                 pricing_endpoint: None,
                 thinking_budget: None,
                 reasoning_effort: None,
+                streaming: None,
             });
 
         match key {
