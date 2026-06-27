@@ -15,13 +15,6 @@ use ratatui::widgets::ScrollbarState;
 use std::collections::VecDeque;
 use std::time::Instant;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum InputMode {
-    Normal,
-    AttachmentList,
-    AttachmentView,
-}
-
 #[derive(Clone)]
 pub enum MessageLine {
     Plain(String),
@@ -176,18 +169,86 @@ impl CompletionState {
     }
 }
 
-pub struct AttachmentViewState {
-    pub attachment_id: usize,
-    pub editor: TextArea,
-    pub is_modified: bool,
-}
-
 /// The two modal dialogs the agent loop can raise: tool approval and the
 /// richer tool-permission prompt. At most one is shown at a time.
 #[derive(Default)]
 pub struct DialogState {
     pub approval: Option<ApprovalDialogState>,
     pub permission: Option<ToolPermissionDialogState>,
+}
+
+/// Text and image attachments queued on the current draft, each with a
+/// monotonic id used to match `[attachment-N]` / `[pasted image-N]` markers.
+pub struct AttachmentState {
+    pub text: Vec<TextAttachment>,
+    pub images: Vec<ImageAttachment>,
+    pub next_text_id: usize,
+    pub next_image_id: usize,
+}
+
+impl Default for AttachmentState {
+    fn default() -> Self {
+        Self {
+            text: Vec::new(),
+            images: Vec::new(),
+            next_text_id: 1,
+            next_image_id: 1,
+        }
+    }
+}
+
+impl AttachmentState {
+    pub fn add_text(&mut self, content: String) -> usize {
+        let id = self.next_text_id;
+        self.next_text_id += 1;
+        self.text.push(TextAttachment::new(id, content));
+        id
+    }
+
+    pub fn add_image(&mut self, media_type: String, data: Vec<u8>) -> usize {
+        let id = self.next_image_id;
+        self.next_image_id += 1;
+        self.images.push(ImageAttachment::new(id, media_type, data));
+        id
+    }
+
+    pub fn delete_text(&mut self, id: usize) -> bool {
+        if let Some(index) = self.text.iter().position(|a| a.id == id) {
+            self.text.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get_text(&self, id: usize) -> Option<&TextAttachment> {
+        self.text.iter().find(|a| a.id == id)
+    }
+
+    pub fn get_text_mut(&mut self, id: usize) -> Option<&mut TextAttachment> {
+        self.text.iter_mut().find(|a| a.id == id)
+    }
+
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.images.clear();
+        self.next_text_id = 1;
+        self.next_image_id = 1;
+    }
+
+    pub fn drain_images(&mut self) -> Vec<crate::agent::Attachment> {
+        let out = self
+            .images
+            .drain(..)
+            .map(|att| crate::agent::Attachment {
+                kind: crate::agent::AttachmentKind::Image,
+                media_type: att.media_type,
+                data: att.data,
+            })
+            .collect();
+        self.next_image_id = 1;
+        out
+    }
 }
 
 pub struct AppState {
@@ -221,12 +282,7 @@ pub struct AppState {
     pub tools: ToolCallView,
     pub todos: Vec<TodoItem>,
     pub scroll: ScrollState,
-    pub attachments: Vec<TextAttachment>,
-    pub next_attachment_id: usize,
-    pub image_attachments: Vec<ImageAttachment>,
-    pub next_image_attachment_id: usize,
-    pub input_mode: InputMode,
-    pub attachment_view: Option<AttachmentViewState>,
+    pub attachments: AttachmentState,
     pub paste_detector: PasteDetector,
     pub display_compact: bool,
     pub fullview: bool,
@@ -463,12 +519,7 @@ impl AppState {
             tools: ToolCallView::default(),
             todos: Vec::new(),
             scroll: ScrollState::default(),
-            attachments: Vec::new(),
-            next_attachment_id: 1,
-            image_attachments: Vec::new(),
-            next_image_attachment_id: 1,
-            input_mode: InputMode::Normal,
-            attachment_view: None,
+            attachments: AttachmentState::default(),
             paste_detector: PasteDetector::new(),
             display_compact: false,
             fullview: false,
@@ -1241,70 +1292,44 @@ impl AppState {
             anyhow::bail!("Content too small for attachment (must be >200 chars)");
         }
 
-        let id = self.next_attachment_id;
-        self.next_attachment_id += 1;
-
-        let attachment = TextAttachment::new(id, content);
-        self.attachments.push(attachment);
-
-        Ok(id)
+        Ok(self.attachments.add_text(content))
     }
 
     pub fn delete_attachment(&mut self, id: usize) -> Result<()> {
-        let index = self
-            .attachments
-            .iter()
-            .position(|a| a.id == id)
-            .ok_or_else(|| anyhow::anyhow!("Attachment not found: {}", id))?;
-
-        self.attachments.remove(index);
-        Ok(())
+        if self.attachments.delete_text(id) {
+            Ok(())
+        } else {
+            anyhow::bail!("Attachment not found: {}", id)
+        }
     }
 
     pub fn clear_attachments(&mut self) {
         self.attachments.clear();
-        self.next_attachment_id = 1;
-        self.image_attachments.clear();
-        self.next_image_attachment_id = 1;
     }
 
     /// Park a pasted image on the draft. Returns the assigned id so the caller
     /// can insert the matching `[pasted image-N]` marker into the input.
     pub fn add_image_attachment(&mut self, data: Vec<u8>, media_type: String) -> usize {
-        let id = self.next_image_attachment_id;
-        self.next_image_attachment_id += 1;
-        self.image_attachments
-            .push(ImageAttachment::new(id, media_type, data));
-        id
+        self.attachments.add_image(media_type, data)
     }
 
     /// Drain the image attachments queued by the user, converting them to
     /// [`crate::agent::Attachment`] for the conversation.
     pub fn drain_image_attachments(&mut self) -> Vec<crate::agent::Attachment> {
-        let out = self
-            .image_attachments
-            .drain(..)
-            .map(|att| crate::agent::Attachment {
-                kind: crate::agent::AttachmentKind::Image,
-                media_type: att.media_type,
-                data: att.data,
-            })
-            .collect();
-        self.next_image_attachment_id = 1;
-        out
+        self.attachments.drain_images()
     }
 
     pub fn get_attachment(&self, id: usize) -> Option<&TextAttachment> {
-        self.attachments.iter().find(|a| a.id == id)
+        self.attachments.get_text(id)
     }
 
     pub fn get_attachment_mut(&mut self, id: usize) -> Option<&mut TextAttachment> {
-        self.attachments.iter_mut().find(|a| a.id == id)
+        self.attachments.get_text_mut(id)
     }
 
     pub fn expand_attachments(&self, input: &str) -> String {
         let mut expanded = input.to_string();
-        for attachment in &self.attachments {
+        for attachment in &self.attachments.text {
             let token = format!("[pasted text-{}]", attachment.id);
             expanded = expanded.replace(&token, &attachment.content);
         }
@@ -1334,7 +1359,7 @@ mod image_attachment_tests {
         let id2 = state.add_image_attachment(vec![4, 5, 6], "image/jpeg".to_string());
         assert_eq!(id1, 1);
         assert_eq!(id2, 2);
-        assert_eq!(state.image_attachments.len(), 2);
+        assert_eq!(state.attachments.images.len(), 2);
     }
 
     #[test]
@@ -1348,8 +1373,8 @@ mod image_attachment_tests {
         assert_eq!(out[0].kind, AttachmentKind::Image);
         assert_eq!(out[0].media_type, "image/png");
         assert_eq!(out[0].data, vec![1, 2, 3]);
-        assert!(state.image_attachments.is_empty());
-        assert_eq!(state.next_image_attachment_id, 1);
+        assert!(state.attachments.images.is_empty());
+        assert_eq!(state.attachments.next_image_id, 1);
     }
 
     #[test]
@@ -1357,8 +1382,8 @@ mod image_attachment_tests {
         let mut state = AppState::new();
         state.add_image_attachment(vec![1], "image/png".to_string());
         state.clear_attachments();
-        assert!(state.image_attachments.is_empty());
-        assert_eq!(state.next_image_attachment_id, 1);
+        assert!(state.attachments.images.is_empty());
+        assert_eq!(state.attachments.next_image_id, 1);
     }
 }
 
@@ -1374,8 +1399,8 @@ mod attachment_tests {
         let result = state.create_attachment(content.clone());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
-        assert_eq!(state.attachments.len(), 1);
-        assert_eq!(state.next_attachment_id, 2);
+        assert_eq!(state.attachments.text.len(), 1);
+        assert_eq!(state.attachments.next_text_id, 2);
     }
 
     #[test]
@@ -1389,8 +1414,8 @@ mod attachment_tests {
         assert_eq!(id1, 1);
         assert_eq!(id2, 2);
         assert_eq!(id3, 3);
-        assert_eq!(state.attachments.len(), 3);
-        assert_eq!(state.next_attachment_id, 4);
+        assert_eq!(state.attachments.text.len(), 3);
+        assert_eq!(state.attachments.next_text_id, 4);
     }
 
     #[test]
@@ -1406,7 +1431,7 @@ mod attachment_tests {
                 .to_string()
                 .contains("too small for attachment")
         );
-        assert_eq!(state.attachments.len(), 0);
+        assert_eq!(state.attachments.text.len(), 0);
     }
 
     #[test]
@@ -1417,7 +1442,7 @@ mod attachment_tests {
         let result = state.create_attachment(huge_content);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("exceeds 5MB"));
-        assert_eq!(state.attachments.len(), 0);
+        assert_eq!(state.attachments.text.len(), 0);
     }
 
     #[test]
@@ -1461,7 +1486,7 @@ mod attachment_tests {
 
         let result = state.delete_attachment(id);
         assert!(result.is_ok());
-        assert_eq!(state.attachments.len(), 0);
+        assert_eq!(state.attachments.text.len(), 0);
     }
 
     #[test]
@@ -1482,7 +1507,7 @@ mod attachment_tests {
 
         state.delete_attachment(id2).unwrap();
 
-        assert_eq!(state.attachments.len(), 2);
+        assert_eq!(state.attachments.text.len(), 2);
         assert!(state.get_attachment(id1).is_some());
         assert!(state.get_attachment(id2).is_none());
         assert!(state.get_attachment(id3).is_some());
@@ -1497,8 +1522,8 @@ mod attachment_tests {
 
         state.clear_attachments();
 
-        assert_eq!(state.attachments.len(), 0);
-        assert_eq!(state.next_attachment_id, 1);
+        assert_eq!(state.attachments.text.len(), 0);
+        assert_eq!(state.attachments.next_text_id, 1);
     }
 
     #[test]
