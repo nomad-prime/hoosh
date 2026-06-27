@@ -633,6 +633,55 @@ fn complete_single_tool_call_includes_continuation_in_full_mode() {
 }
 
 #[test]
+fn batch_completion_collapses_to_single_summary_in_scrollback() {
+    let mut state = AppState::new();
+    for (id, name) in [
+        ("c1", "Read(a.txt)"),
+        ("c2", "Read(b.txt)"),
+        ("c3", "Read(c.txt)"),
+    ] {
+        state.add_active_tool_call(id.to_string(), name.to_string(), ToolRender::Standard);
+        state.update_tool_call_status(id, ToolCallStatus::Completed);
+    }
+    state.complete_active_tool_calls();
+
+    let rendered = rendered_text(&mut state);
+    assert!(rendered.contains("Reading 3 files"), "got: {rendered}");
+    assert!(rendered.contains("a.txt, b.txt, c.txt"), "got: {rendered}");
+    assert!(!rendered.contains("Read(a.txt)"), "got: {rendered}");
+    assert!(state.active_tool_calls.is_empty());
+}
+
+#[test]
+fn expanded_batch_completion_keeps_per_call_lines() {
+    let mut state = AppState::new();
+    for (id, name) in [("c1", "Read(a.txt)"), ("c2", "Read(b.txt)")] {
+        state.add_active_tool_call(id.to_string(), name.to_string(), ToolRender::Standard);
+        state.update_tool_call_status(id, ToolCallStatus::Completed);
+    }
+    state.tool_calls_expanded = true;
+    state.complete_active_tool_calls();
+
+    let rendered = rendered_text(&mut state);
+    assert!(rendered.contains("Read(a.txt)"), "got: {rendered}");
+    assert!(rendered.contains("Read(b.txt)"), "got: {rendered}");
+}
+
+#[test]
+fn errored_batch_completion_stays_per_call() {
+    let mut state = AppState::new();
+    state.add_active_tool_call("c1".into(), "Read(a.txt)".into(), ToolRender::Standard);
+    state.update_tool_call_status("c1", ToolCallStatus::Completed);
+    state.add_active_tool_call("c2".into(), "Read(b.txt)".into(), ToolRender::Standard);
+    state.update_tool_call_status("c2", ToolCallStatus::Error("boom".into()));
+    state.complete_active_tool_calls();
+
+    let rendered = rendered_text(&mut state);
+    assert!(rendered.contains("Read(a.txt)"), "got: {rendered}");
+    assert!(rendered.contains("boom"), "got: {rendered}");
+}
+
+#[test]
 fn save_memory_renders_as_single_collapsed_line_in_full_mode() {
     let mut state = AppState::new();
     state.add_active_tool_call(

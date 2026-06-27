@@ -604,6 +604,7 @@ fn create_input_handlers(
         handlers.push(Box::new(handlers::ScrollHandler::new()));
     }
 
+    handlers.push(Box::new(handlers::ToolExpandHandler::new()));
     handlers.push(Box::new(handlers::SubmitHandler::new()));
     handlers.push(Box::new(handlers::PasteHandler::new()));
     handlers.push(Box::new(handlers::TextInputHandler::new()));

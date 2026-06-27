@@ -216,6 +216,7 @@ pub struct AppState {
     pub output_tokens: usize,
     pub total_cost: f64,
     pub active_tool_calls: Vec<ActiveToolCall>,
+    pub tool_calls_expanded: bool,
     pub todos: Vec<TodoItem>,
     pub vertical_scroll: usize,
     pub vertical_scroll_state: ScrollbarState,
@@ -293,6 +294,7 @@ impl AppState {
             output_tokens: 0,
             total_cost: 0.0,
             active_tool_calls: Vec::new(),
+            tool_calls_expanded: false,
             todos: Vec::new(),
             vertical_scroll: 0,
             vertical_scroll_state: ScrollbarState::default(),
@@ -586,7 +588,30 @@ impl AppState {
             .find(|tc| tc.tool_call_id == tool_call_id)
     }
 
+    fn collapsed_scrollback_eligible(&self) -> bool {
+        !self.tool_calls_expanded
+            && self.active_tool_calls.len() >= 2
+            && self.active_tool_calls.iter().all(|tc| {
+                tc.render == ToolRender::Standard && !matches!(tc.status, ToolCallStatus::Error(_))
+            })
+    }
+
+    fn complete_collapsed(&mut self, tool_calls: &[ActiveToolCall]) {
+        use super::tool_phrase::{aggregate_phrase, target_basenames};
+
+        let phrase = aggregate_phrase(tool_calls);
+        self.add_tool_completion_header(glyphs::TOOL_COMPLETED, &phrase, false);
+        self.add_tool_continuation(&target_basenames(tool_calls).join(", "));
+        self.active_tool_calls.clear();
+    }
+
     pub fn complete_active_tool_calls(&mut self) {
+        if self.collapsed_scrollback_eligible() {
+            let tool_calls = self.active_tool_calls.clone();
+            self.complete_collapsed(&tool_calls);
+            return;
+        }
+
         let tool_calls = self.active_tool_calls.clone();
 
         for tool_call in &tool_calls {
@@ -685,6 +710,19 @@ impl AppState {
 
     pub fn clear_active_tool_calls(&mut self) {
         self.active_tool_calls.clear();
+        self.tool_calls_expanded = false;
+    }
+
+    pub fn tool_calls_collapsed(&self) -> bool {
+        if self.active_tool_calls.len() < 2 || self.tool_calls_expanded {
+            return false;
+        }
+        !self.active_tool_calls.iter().any(|tc| {
+            matches!(
+                tc.status,
+                ToolCallStatus::AwaitingApproval | ToolCallStatus::Error(_)
+            )
+        })
     }
 
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
@@ -721,6 +759,9 @@ impl AppState {
                 self.agent_state = AgentState::ExecutingTools;
                 let mut rng = rand::thread_rng();
                 self.current_executing_spinner = rng.gen_range(0..7);
+                if self.active_tool_calls.is_empty() {
+                    self.tool_calls_expanded = false;
+                }
                 for call in tool_call_info {
                     self.add_active_tool_call(call.id, call.display_name, call.render);
                 }

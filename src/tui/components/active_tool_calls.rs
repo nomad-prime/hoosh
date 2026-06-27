@@ -1,5 +1,6 @@
 use crate::tui::app_state::{AppState, ToolCallStatus};
 use crate::tui::component::Component;
+use crate::tui::tool_phrase::{aggregate_phrase, target_basenames};
 use crate::tui::{glyphs, palette};
 use ratatui::{
     buffer::Buffer,
@@ -16,6 +17,11 @@ impl Component for ActiveToolCallsComponent {
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
         if state.active_tool_calls.is_empty() {
+            return;
+        }
+
+        if state.tool_calls_collapsed() {
+            self.render_collapsed(state, area, buf);
             return;
         }
 
@@ -94,4 +100,81 @@ impl Component for ActiveToolCallsComponent {
         let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);
     }
+}
+
+impl ActiveToolCallsComponent {
+    fn render_collapsed(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        let calls = &state.active_tool_calls;
+        let all_done = calls.iter().all(|tc| {
+            matches!(
+                tc.status,
+                ToolCallStatus::Completed | ToolCallStatus::Error(_)
+            )
+        });
+
+        let indicator = if all_done {
+            Span::styled(
+                glyphs::TOOL_COMPLETED,
+                Style::default().fg(palette::TOOL_STATUS_COMPLETED),
+            )
+        } else {
+            let sweep = glyphs::TOOL_EXECUTING_SWEEP;
+            let frame = sweep[state.animation_frame % sweep.len()];
+            Span::styled(frame, Style::default().fg(palette::TOOL_STATUS_EXECUTING))
+        };
+
+        let timer = calls
+            .first()
+            .map(|tc| tc.elapsed_time())
+            .unwrap_or_default();
+
+        let summary = Line::from(vec![
+            indicator,
+            Span::raw(" "),
+            Span::raw(format!("{}… ", aggregate_phrase(calls))),
+            Span::styled(
+                format!("({})", timer),
+                Style::default().fg(palette::SUBDUED_TEXT),
+            ),
+            Span::styled(
+                " (ctrl+o to expand)",
+                Style::default().fg(palette::DIMMED_TEXT),
+            ),
+        ]);
+
+        let targets = truncate_targets(&target_basenames(calls), area.width as usize);
+        let detail = Line::from(vec![
+            Span::raw("  "),
+            Span::styled("⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
+            Span::styled(targets, Style::default().fg(palette::SECONDARY_TEXT)),
+        ]);
+
+        Paragraph::new(vec![summary, detail]).render(area, buf);
+    }
+}
+
+fn truncate_targets(basenames: &[String], max_width: usize) -> String {
+    const PREFIX_WIDTH: usize = 4;
+    let budget = max_width.saturating_sub(PREFIX_WIDTH).max(8);
+    let joined = basenames.join(", ");
+    if joined.chars().count() <= budget {
+        return joined;
+    }
+
+    let mut shown = Vec::new();
+    let mut width = 0;
+    for (i, name) in basenames.iter().enumerate() {
+        let sep = if i == 0 { 0 } else { 2 };
+        if width + sep + name.chars().count() > budget {
+            break;
+        }
+        width += sep + name.chars().count();
+        shown.push(name.clone());
+    }
+
+    let remaining = basenames.len() - shown.len();
+    if shown.is_empty() {
+        return format!("{} files", basenames.len());
+    }
+    format!("{} +{} more", shown.join(", "), remaining)
 }

@@ -6,6 +6,7 @@ pub mod quit_handler;
 pub mod scroll_handler;
 pub mod submit_handler;
 pub mod text_input_handler;
+pub mod tool_expand_handler;
 
 pub use approval_handler::ApprovalHandler;
 pub use completion_handler::CompletionHandler;
@@ -15,3 +16,4 @@ pub use quit_handler::QuitHandler;
 pub use scroll_handler::ScrollHandler;
 pub use submit_handler::SubmitHandler;
 pub use text_input_handler::TextInputHandler;
+pub use tool_expand_handler::ToolExpandHandler;

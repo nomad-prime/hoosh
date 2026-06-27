@@ -14,14 +14,18 @@ impl AppLayout for Layout<AppState> {
             || app.is_completing();
 
         let active_tool_calls_visible = !app.active_tool_calls.is_empty();
-        let active_tool_calls_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
-            let mut height = 1u16;
+        let active_tool_calls_height = if app.tool_calls_collapsed() {
+            2
+        } else {
+            app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+                let mut height = 1u16;
 
-            if tc.result_summary.is_some() {
-                height += 1;
-            }
-            acc + height
-        });
+                if tc.result_summary.is_some() {
+                    height += 1;
+                }
+                acc + height
+            })
+        };
 
         // Calculate subagent results visibility and height
         let has_subagent_tasks = app.active_tool_calls.iter().any(|tc| tc.is_subagent_task);
