@@ -4,11 +4,11 @@ use crate::tui::layout::Layout;
 use crate::tui::layout_builder::LayoutBuilder;
 
 pub trait AppLayout {
-    fn create(app: &AppState, terminal_width: u16) -> Self;
+    fn create(app: &AppState, terminal_width: u16, terminal_height: u16) -> Self;
 }
 
 impl AppLayout for Layout<AppState> {
-    fn create(app: &AppState, terminal_width: u16) -> Self {
+    fn create(app: &AppState, terminal_width: u16, _terminal_height: u16) -> Self {
         let has_overlay = app.is_showing_tool_permission_dialog()
             || app.is_showing_approval_dialog()
             || app.is_completing();
@@ -62,13 +62,9 @@ impl AppLayout for Layout<AppState> {
         });
 
         // Calculate streaming-response preview visibility and height
-        let streaming_lines = if app.fullview {
-            Vec::new()
-        } else {
-            crate::tui::components::streaming_response::streaming_lines(app, terminal_width)
-        };
-        let streaming_response_visible = !streaming_lines.is_empty();
-        let streaming_response_height = streaming_lines.len() as u16;
+        let streaming_response_visible =
+            !app.fullview && app.visible_streaming_text().is_some();
+        let streaming_response_height = u16::from(streaming_response_visible);
 
         // Calculate todo list visibility and height
         let todo_list_visible = !app.todos.is_empty();

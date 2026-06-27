@@ -117,7 +117,8 @@ fn render_frame(
     message_renderer.render_pending_messages(app, terminal)?;
 
     let terminal_width = terminal.get_viewport_area().width;
-    let layout = Layout::create(app, terminal_width);
+    let terminal_height = terminal.size()?.height;
+    let layout = Layout::create(app, terminal_width, terminal_height);
     resize_terminal(terminal, layout.total_height())?;
 
     terminal.draw(|frame| {
@@ -318,7 +319,11 @@ pub(crate) async fn handle_cancel_task(
 
         // Keep whatever text had already streamed in so the user doesn't lose
         // what they were reading when they interrupted.
-        if let Some(partial) = app.streaming_text.take()
+        if app.stream_to_scrollback {
+            if app.streaming_text.is_some() {
+                app.streaming_finalize = true;
+            }
+        } else if let Some(partial) = app.streaming_text.take()
             && !partial.trim().is_empty()
         {
             app.add_final_response(partial.trim_end());

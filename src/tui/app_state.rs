@@ -232,6 +232,9 @@ pub struct AppState {
     pub streaming_text: Option<String>,
     pub last_animation_tick: Instant,
     pub fullview: bool,
+    pub stream_to_scrollback: bool,
+    pub streaming_committed: usize,
+    pub streaming_finalize: bool,
 }
 
 /// Format a short status/error string as a `  ⎿  [lowercased message]` line.
@@ -306,6 +309,9 @@ impl AppState {
             streaming_text: None,
             last_animation_tick: Instant::now(),
             fullview: false,
+            stream_to_scrollback: false,
+            streaming_committed: 0,
+            streaming_finalize: false,
         }
     }
 
@@ -690,6 +696,8 @@ impl AppState {
             }
             AgentEvent::StreamStarted => {
                 self.streaming_text = Some(String::new());
+                self.streaming_committed = 0;
+                self.streaming_finalize = false;
             }
             AgentEvent::TextDelta(delta) => {
                 self.streaming_text
@@ -698,8 +706,13 @@ impl AppState {
             }
             AgentEvent::ThinkingDelta(_) => {}
             AgentEvent::AssistantThought(content) => {
-                self.streaming_text = None;
-                self.add_thought(&content);
+                if self.stream_to_scrollback && self.streaming_text.is_some() {
+                    self.streaming_text = Some(content);
+                    self.streaming_finalize = true;
+                } else {
+                    self.streaming_text = None;
+                    self.add_thought(&content);
+                }
             }
             AgentEvent::AssistantThinking(content) => {
                 self.add_thinking(&content);
@@ -734,12 +747,17 @@ impl AppState {
             }
             AgentEvent::FinalResponse(content) => {
                 self.agent_state = AgentState::Idle;
-                self.streaming_text = None;
-                self.add_final_response(&content);
+                if self.stream_to_scrollback && self.streaming_text.is_some() {
+                    self.streaming_text = Some(content);
+                    self.streaming_finalize = true;
+                } else {
+                    self.streaming_text = None;
+                    self.add_final_response(&content);
+                }
             }
             AgentEvent::Error(error) => {
                 self.agent_state = AgentState::Idle;
-                self.streaming_text = None;
+                self.streaming_finalize = true;
                 self.add_error(&error);
             }
             AgentEvent::MaxStepsReached(max_steps) => {
@@ -935,6 +953,48 @@ impl AppState {
         } else {
             Some(buf)
         }
+    }
+
+    pub fn flush_streaming_to_scrollback(&mut self, width: u16) {
+        if !self.stream_to_scrollback {
+            return;
+        }
+        let Some(text) = self.streaming_text.clone() else {
+            return;
+        };
+        let finalize = self.streaming_finalize;
+        if text.trim().is_empty() && !finalize {
+            return;
+        }
+
+        let rendered = crate::tui::message_renderer::MessageRenderer::new()
+            .markdown_to_wrapped_lines(&text, width.max(1) as usize);
+        let stable = if finalize {
+            rendered.len()
+        } else {
+            rendered.len().saturating_sub(1)
+        };
+
+        if self.streaming_committed == 0 && stable > 0 {
+            self.add_message_line(MessageLine::Plain(String::new()));
+        }
+        for line in rendered.iter().take(stable).skip(self.streaming_committed) {
+            self.add_message_line(MessageLine::Styled(line.clone()));
+        }
+        self.streaming_committed = stable;
+
+        if finalize {
+            self.streaming_text = None;
+            self.streaming_committed = 0;
+            self.streaming_finalize = false;
+        }
+    }
+
+    pub fn streaming_live_line(&self, width: u16) -> Option<ratatui::text::Line<'static>> {
+        let text = self.visible_streaming_text()?;
+        let rendered = crate::tui::message_renderer::MessageRenderer::new()
+            .markdown_to_wrapped_lines(text, width.max(1) as usize);
+        rendered.into_iter().last()
     }
 
     pub fn add_final_response(&mut self, content: &str) {

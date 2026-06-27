@@ -104,7 +104,7 @@ fn render_frame(
     terminal.draw(|frame| {
         let area = frame.area();
         let terminal_width = area.width;
-        let layout = Layout::create(app, terminal_width);
+        let layout = Layout::create(app, terminal_width, area.height);
         let ui_height = layout.total_height();
 
         let message_area = ratatui::layout::Rect {

@@ -22,6 +22,7 @@ pub async fn run_event_loop(
     let mut agent_task: Option<JoinHandle<()>> = None;
 
     let message_renderer = MessageRenderer::new();
+    app.stream_to_scrollback = true;
 
     loop {
         render_frame(app, &mut terminal, &message_renderer)?;
@@ -58,10 +59,12 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     message_renderer: &MessageRenderer,
 ) -> Result<()> {
+    app.flush_streaming_to_scrollback(terminal.size()?.width);
     message_renderer.render_pending_messages(app, terminal)?;
 
     let terminal_width = terminal.get_viewport_area().width;
-    let layout = Layout::create(app, terminal_width);
+    let terminal_height = terminal.size()?.height;
+    let layout = Layout::create(app, terminal_width, terminal_height);
     resize_terminal_inline(terminal, layout.total_height())?;
 
     terminal.draw(|frame| {

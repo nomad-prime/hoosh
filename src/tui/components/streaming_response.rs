@@ -1,7 +1,6 @@
 use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
 use crate::tui::markdown::MarkdownRenderer;
-use crate::tui::message_renderer::MessageRenderer;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -10,23 +9,9 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 
-pub const MAX_STREAM_LINES: usize = 12;
-
 const FADE_CHARS: usize = 28;
 const FADE_DIM: u8 = 60;
 const FADE_FULL: u8 = 190;
-
-pub fn streaming_lines(app: &AppState, width: u16) -> Vec<Line<'static>> {
-    let Some(text) = app.visible_streaming_text() else {
-        return Vec::new();
-    };
-
-    let mut wrapped =
-        MessageRenderer::new().markdown_to_wrapped_lines(text, (width as usize).max(1));
-    wrapped.insert(0, Line::from(""));
-    let start = wrapped.len().saturating_sub(MAX_STREAM_LINES);
-    wrapped.split_off(start)
-}
 
 pub fn streaming_markdown_lines(app: &AppState) -> Vec<Line<'static>> {
     let Some(text) = app.visible_streaming_text() else {
@@ -59,8 +44,7 @@ fn fade_tail(lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
                 let dist = (len - 1 - idx) + suffix;
                 let style = if dist < FADE_CHARS {
                     let t = dist as f32 / FADE_CHARS as f32;
-                    let v = FADE_DIM as f32 + (FADE_FULL - FADE_DIM) as f32 * t;
-                    let v = v as u8;
+                    let v = (FADE_DIM as f32 + (FADE_FULL - FADE_DIM) as f32 * t) as u8;
                     span.style.fg(Color::Rgb(v, v, v))
                 } else {
                     span.style
@@ -104,11 +88,9 @@ impl Component for StreamingResponseComponent {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        let lines = streaming_lines(state, area.width);
-        if lines.is_empty() {
+        let Some(line) = state.streaming_live_line(area.width) else {
             return;
-        }
-
-        Paragraph::new(fade_tail(lines)).render(area, buf);
+        };
+        Paragraph::new(fade_tail(vec![line])).render(area, buf);
     }
 }
