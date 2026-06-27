@@ -9,6 +9,7 @@ use crate::permissions::ToolPermissionDescriptor;
 pub enum ToolRender {
     Standard,
     Inline { prefix: &'static str },
+    Subagent,
 }
 
 /// Context provided to tools during execution

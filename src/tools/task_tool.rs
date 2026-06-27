@@ -1,7 +1,9 @@
 use crate::backends::LlmBackend;
 use crate::permissions::{PermissionManager, ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::task_management::{AgentType, TaskDefinition, TaskManager};
-use crate::tools::{Tool, ToolError, ToolRegistry, ToolResult, create_subagent_registry};
+use crate::tools::{
+    Tool, ToolError, ToolRegistry, ToolRender, ToolResult, create_subagent_registry,
+};
 use async_trait::async_trait;
 use capitalize::Capitalize;
 use serde::Deserialize;
@@ -178,6 +180,10 @@ impl Tool for TaskTool {
         } else {
             "Task(?)".to_string()
         }
+    }
+
+    fn render_strategy(&self) -> ToolRender {
+        ToolRender::Subagent
     }
 
     fn result_summary(&self, result: &str) -> String {

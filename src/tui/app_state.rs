@@ -588,14 +588,6 @@ impl AppState {
             .find(|tc| tc.tool_call_id == tool_call_id)
     }
 
-    fn collapsed_scrollback_eligible(&self) -> bool {
-        !self.tool_calls_expanded
-            && self.active_tool_calls.len() >= 2
-            && self.active_tool_calls.iter().all(|tc| {
-                tc.render == ToolRender::Standard && !matches!(tc.status, ToolCallStatus::Error(_))
-            })
-    }
-
     fn complete_collapsed(&mut self, tool_calls: &[ActiveToolCall]) {
         use super::tool_phrase::{aggregate_phrase, target_basenames};
 
@@ -606,7 +598,7 @@ impl AppState {
     }
 
     pub fn complete_active_tool_calls(&mut self) {
-        if self.collapsed_scrollback_eligible() {
+        if self.tool_calls_collapsed() {
             let tool_calls = self.active_tool_calls.clone();
             self.complete_collapsed(&tool_calls);
             return;
@@ -615,38 +607,60 @@ impl AppState {
         let tool_calls = self.active_tool_calls.clone();
 
         for tool_call in &tool_calls {
-            let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
-
-            if let ToolRender::Inline { prefix } = tool_call.render
-                && !is_error
-            {
-                let body = tool_call.result_summary.as_deref().unwrap_or("?");
-                self.add_inline_tool_line(prefix, body);
-                continue;
-            }
-
-            let glyph = if is_error {
-                glyphs::TOOL_ERROR
-            } else {
-                glyphs::TOOL_COMPLETED
-            };
-            self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
-
-            if !self.display_compact
-                && let Some(summary) = &tool_call.result_summary
-            {
-                self.add_tool_continuation(summary);
-            }
-
-            // Preview is now displayed immediately when ToolPreview event is received,
-            // so we don't display it again here
-
-            if let ToolCallStatus::Error(err) = &tool_call.status {
-                self.add_error(err);
-            }
+            self.render_completed_tool_call(tool_call);
         }
 
         self.active_tool_calls.clear();
+    }
+
+    fn render_completed_tool_call(&mut self, tool_call: &ActiveToolCall) {
+        let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
+
+        if let ToolRender::Inline { prefix } = tool_call.render
+            && !is_error
+        {
+            let body = tool_call.result_summary.as_deref().unwrap_or("?");
+            self.add_inline_tool_line(prefix, body);
+            return;
+        }
+
+        let glyph = if is_error {
+            glyphs::TOOL_ERROR
+        } else {
+            glyphs::TOOL_COMPLETED
+        };
+        self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
+
+        // Subagent summaries are pure status (tool count, tokens, elapsed) so
+        // they survive compact mode — without them a finished subagent looks
+        // indistinguishable from a zero-result call.
+        if tool_call.is_subagent_task {
+            if let (Some(tool_uses), Some(tokens)) =
+                (tool_call.total_tool_uses, tool_call.total_tokens)
+            {
+                let tokens_formatted = if tokens >= 1000 {
+                    format!("{:.1}k", tokens as f64 / 1000.0)
+                } else {
+                    tokens.to_string()
+                };
+
+                let completion_text = format!(
+                    "Done ({} tool uses · {} tokens · {})",
+                    tool_uses,
+                    tokens_formatted,
+                    tool_call.elapsed_time()
+                );
+                self.add_tool_continuation(&completion_text);
+            }
+        } else if !self.display_compact
+            && let Some(summary) = &tool_call.result_summary
+        {
+            self.add_tool_continuation(summary);
+        }
+
+        if let ToolCallStatus::Error(err) = &tool_call.status {
+            self.add_error(err);
+        }
     }
 
     pub fn complete_single_tool_call(&mut self, tool_call_id: &str) {
@@ -656,55 +670,7 @@ impl AppState {
             .position(|tc| tc.tool_call_id == tool_call_id)
         {
             let tool_call = self.active_tool_calls.remove(index);
-
-            let is_error = matches!(tool_call.status, ToolCallStatus::Error(_));
-
-            if let ToolRender::Inline { prefix } = tool_call.render
-                && !is_error
-            {
-                let body = tool_call.result_summary.as_deref().unwrap_or("?");
-                self.add_inline_tool_line(prefix, body);
-                return;
-            }
-
-            let glyph = if is_error {
-                glyphs::TOOL_ERROR
-            } else {
-                glyphs::TOOL_COMPLETED
-            };
-            self.add_tool_completion_header(glyph, &tool_call.display_name, is_error);
-
-            // For subagent tasks, show completion stats. Subagent summaries are
-            // pure status (tool count, tokens, elapsed) so they survive compact
-            // mode — without them a finished subagent looks indistinguishable
-            // from a zero-result call.
-            if tool_call.is_subagent_task {
-                if let (Some(tool_uses), Some(tokens)) =
-                    (tool_call.total_tool_uses, tool_call.total_tokens)
-                {
-                    let tokens_formatted = if tokens >= 1000 {
-                        format!("{:.1}k", tokens as f64 / 1000.0)
-                    } else {
-                        tokens.to_string()
-                    };
-
-                    let completion_text = format!(
-                        "Done ({} tool uses · {} tokens · {})",
-                        tool_uses,
-                        tokens_formatted,
-                        tool_call.elapsed_time()
-                    );
-                    self.add_tool_continuation(&completion_text);
-                }
-            } else if !self.display_compact
-                && let Some(summary) = &tool_call.result_summary
-            {
-                self.add_tool_continuation(summary);
-            }
-
-            if let ToolCallStatus::Error(err) = &tool_call.status {
-                self.add_error(err);
-            }
+            self.render_completed_tool_call(&tool_call);
         }
     }
 
@@ -717,11 +683,12 @@ impl AppState {
         if self.active_tool_calls.len() < 2 || self.tool_calls_expanded {
             return false;
         }
-        !self.active_tool_calls.iter().any(|tc| {
-            matches!(
-                tc.status,
-                ToolCallStatus::AwaitingApproval | ToolCallStatus::Error(_)
-            )
+        self.active_tool_calls.iter().all(|tc| {
+            tc.render == ToolRender::Standard
+                && !matches!(
+                    tc.status,
+                    ToolCallStatus::AwaitingApproval | ToolCallStatus::Error(_)
+                )
         })
     }
 

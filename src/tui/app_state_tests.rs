@@ -817,3 +817,89 @@ fn app_state_add_retry_failure() {
 
     assert_eq!(state.messages.len(), 1);
 }
+
+fn executing_call(id: &str, render: ToolRender) -> ActiveToolCall {
+    ActiveToolCall {
+        tool_call_id: id.to_string(),
+        display_name: format!("call {id}"),
+        render,
+        status: ToolCallStatus::Executing,
+        preview: None,
+        budget_pct: None,
+        result_summary: None,
+        subagent_steps: Vec::new(),
+        is_subagent_task: false,
+        bash_output_lines: Vec::new(),
+        is_bash_streaming: false,
+        start_time: Instant::now(),
+        total_tool_uses: None,
+        total_tokens: None,
+    }
+}
+
+#[test]
+fn standard_batch_collapses() {
+    let mut state = AppState::new();
+    state.active_tool_calls = vec![
+        executing_call("a", ToolRender::Standard),
+        executing_call("b", ToolRender::Standard),
+    ];
+    assert!(state.tool_calls_collapsed());
+}
+
+#[test]
+fn subagent_batch_does_not_collapse() {
+    let mut state = AppState::new();
+    state.active_tool_calls = vec![
+        executing_call("a", ToolRender::Subagent),
+        executing_call("b", ToolRender::Subagent),
+    ];
+    assert!(
+        !state.tool_calls_collapsed(),
+        "concurrent subagents must keep their individual rows and completion stats"
+    );
+}
+
+#[test]
+fn mixed_standard_and_subagent_does_not_collapse() {
+    let mut state = AppState::new();
+    state.active_tool_calls = vec![
+        executing_call("a", ToolRender::Standard),
+        executing_call("b", ToolRender::Subagent),
+    ];
+    assert!(!state.tool_calls_collapsed());
+}
+
+#[test]
+fn subagent_completion_preserves_individual_stats() {
+    let mut state = AppState::new();
+    let mut a = executing_call("a", ToolRender::Subagent);
+    a.is_subagent_task = true;
+    a.status = ToolCallStatus::Completed;
+    a.total_tool_uses = Some(3);
+    a.total_tokens = Some(1500);
+    let mut b = executing_call("b", ToolRender::Subagent);
+    b.is_subagent_task = true;
+    b.status = ToolCallStatus::Completed;
+    b.total_tool_uses = Some(2);
+    b.total_tokens = Some(900);
+    state.active_tool_calls = vec![a, b];
+
+    state.complete_active_tool_calls();
+
+    let rendered = state
+        .messages
+        .iter()
+        .map(|m| match m {
+            MessageLine::Plain(t) => t.clone(),
+            MessageLine::Styled(line) => line.spans.iter().map(|s| s.content.as_ref()).collect(),
+            MessageLine::Markdown(t) => t.clone(),
+            MessageLine::Thinking(t) => t.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains("3 tool uses") && rendered.contains("2 tool uses"),
+        "each subagent should report its own stats, got:\n{rendered}"
+    );
+}
