@@ -1,56 +1,27 @@
 use super::app_state::ActiveToolCall;
+use crate::tools::ToolCategory;
 
-struct Category {
-    gerund: &'static str,
-    noun_singular: &'static str,
-    noun_plural: &'static str,
+fn gerund(category: ToolCategory) -> &'static str {
+    match category {
+        ToolCategory::Read => "reading",
+        ToolCategory::Search => "searching for",
+        ToolCategory::Find => "finding",
+        ToolCategory::Edit => "editing",
+        ToolCategory::List => "listing",
+        ToolCategory::Run | ToolCategory::Subagent | ToolCategory::Other => "running",
+    }
 }
 
-fn category_for(display_name: &str) -> Category {
-    let token = display_name.split(['(', ' ']).next().unwrap_or("").trim();
-
-    match token {
-        "Read" => Category {
-            gerund: "reading",
-            noun_singular: "file",
-            noun_plural: "files",
-        },
-        "Grep" | "Search" => Category {
-            gerund: "searching for",
-            noun_singular: "pattern",
-            noun_plural: "patterns",
-        },
-        "Glob" | "Find" => Category {
-            gerund: "finding",
-            noun_singular: "file",
-            noun_plural: "files",
-        },
-        "Edit" | "Write" | "Update" => Category {
-            gerund: "editing",
-            noun_singular: "file",
-            noun_plural: "files",
-        },
-        "Bash" | "Run" => Category {
-            gerund: "running",
-            noun_singular: "command",
-            noun_plural: "commands",
-        },
-        "List" | "LS" => Category {
-            gerund: "listing",
-            noun_singular: "directory",
-            noun_plural: "directories",
-        },
-        "Task" | "Agent" => Category {
-            gerund: "running",
-            noun_singular: "agent",
-            noun_plural: "agents",
-        },
-        _ => Category {
-            gerund: "running",
-            noun_singular: "tool",
-            noun_plural: "tools",
-        },
-    }
+fn noun(category: ToolCategory, count: usize) -> &'static str {
+    let (singular, plural) = match category {
+        ToolCategory::Read | ToolCategory::Find | ToolCategory::Edit => ("file", "files"),
+        ToolCategory::Search => ("pattern", "patterns"),
+        ToolCategory::List => ("directory", "directories"),
+        ToolCategory::Run => ("command", "commands"),
+        ToolCategory::Subagent => ("agent", "agents"),
+        ToolCategory::Other => ("tool", "tools"),
+    };
+    if count == 1 { singular } else { plural }
 }
 
 fn capitalize_first(s: &str) -> String {
@@ -62,27 +33,19 @@ fn capitalize_first(s: &str) -> String {
 }
 
 pub fn aggregate_phrase(calls: &[ActiveToolCall]) -> String {
-    let mut counts: Vec<(Category, usize)> = Vec::new();
+    let mut counts: Vec<(ToolCategory, usize)> = Vec::new();
 
     for call in calls {
-        let cat = category_for(&call.display_name);
-        if let Some(entry) = counts.iter_mut().find(|(c, _)| c.gerund == cat.gerund) {
+        if let Some(entry) = counts.iter_mut().find(|(c, _)| *c == call.category) {
             entry.1 += 1;
         } else {
-            counts.push((cat, 1));
+            counts.push((call.category, 1));
         }
     }
 
     let segments: Vec<String> = counts
         .iter()
-        .map(|(cat, count)| {
-            let noun = if *count == 1 {
-                cat.noun_singular
-            } else {
-                cat.noun_plural
-            };
-            format!("{} {} {}", cat.gerund, count, noun)
-        })
+        .map(|(cat, count)| format!("{} {} {}", gerund(*cat), count, noun(*cat, *count)))
         .collect();
 
     capitalize_first(&segments.join(", "))

@@ -1,5 +1,5 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
+use crate::tools::{Tool, ToolCategory, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use colored::Colorize;
 use serde::Deserialize;
@@ -138,6 +138,10 @@ impl Tool for EditFileTool {
 
     fn name(&self) -> &'static str {
         "edit_file"
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Edit
     }
 
     fn display_name(&self) -> &'static str {

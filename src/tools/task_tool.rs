@@ -2,7 +2,7 @@ use crate::backends::LlmBackend;
 use crate::permissions::{PermissionManager, ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::task_management::{AgentType, TaskDefinition, TaskManager};
 use crate::tools::{
-    Tool, ToolError, ToolRegistry, ToolRender, ToolResult, create_subagent_registry,
+    Tool, ToolCategory, ToolError, ToolRegistry, ToolRender, ToolResult, create_subagent_registry,
 };
 use async_trait::async_trait;
 use capitalize::Capitalize;
@@ -184,6 +184,10 @@ impl Tool for TaskTool {
 
     fn render_strategy(&self) -> ToolRender {
         ToolRender::Subagent
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Subagent
     }
 
     fn result_summary(&self, result: &str) -> String {

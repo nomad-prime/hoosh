@@ -1,5 +1,5 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
+use crate::tools::{Tool, ToolCategory, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -116,6 +116,10 @@ impl Tool for ReadFileTool {
 
     fn name(&self) -> &'static str {
         Self::NAME
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Read
     }
 
     fn display_name(&self) -> &'static str {

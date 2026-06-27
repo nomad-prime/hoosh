@@ -5,8 +5,8 @@ use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
-use crate::tools::ToolRender;
 use crate::tools::todo_write::{TodoItem, TodoStatus};
+use crate::tools::{ToolCategory, ToolRender};
 use crate::tui::{glyphs, palette};
 use anyhow::Result;
 use rand::Rng;
@@ -50,6 +50,7 @@ pub struct ActiveToolCall {
     pub tool_call_id: String,
     pub display_name: String,
     pub render: ToolRender,
+    pub category: ToolCategory,
     pub status: ToolCallStatus,
     pub preview: Option<String>,
     pub result_summary: Option<String>,
@@ -551,11 +552,13 @@ impl AppState {
         tool_call_id: String,
         display_name: String,
         render: ToolRender,
+        category: ToolCategory,
     ) {
         self.active_tool_calls.push(ActiveToolCall {
             tool_call_id,
             display_name,
             render,
+            category,
             status: ToolCallStatus::Starting,
             preview: None,
             result_summary: None,
@@ -730,7 +733,12 @@ impl AppState {
                     self.tool_calls_expanded = false;
                 }
                 for call in tool_call_info {
-                    self.add_active_tool_call(call.id, call.display_name, call.render);
+                    self.add_active_tool_call(
+                        call.id,
+                        call.display_name,
+                        call.render,
+                        call.category,
+                    );
                 }
             }
             AgentEvent::ToolExecutionStarted { tool_call_id, .. } => {

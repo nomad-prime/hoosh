@@ -2,7 +2,7 @@ use crate::agent::AgentEvent;
 use crate::permissions::BashPatternMatcher;
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
 use crate::tools::bash::BashCommandPatternRegistry;
-use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
+use crate::tools::{Tool, ToolCategory, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -312,6 +312,10 @@ impl Tool for BashTool {
 
     fn name(&self) -> &'static str {
         "bash"
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Run
     }
 
     fn display_name(&self) -> &'static str {

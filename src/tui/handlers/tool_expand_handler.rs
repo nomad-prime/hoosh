@@ -45,7 +45,7 @@ impl InputHandler for ToolExpandHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::ToolRender;
+    use crate::tools::{ToolCategory, ToolRender};
     use crate::tui::app_state::{ActiveToolCall, ToolCallStatus};
     use crossterm::event::KeyEvent;
     use std::time::Instant;
@@ -59,6 +59,7 @@ mod tests {
             tool_call_id: "id".into(),
             display_name: "Read(a.rs)".into(),
             render: ToolRender::Standard,
+            category: ToolCategory::Read,
             status: ToolCallStatus::Executing,
             preview: None,
             result_summary: None,

@@ -12,6 +12,21 @@ pub enum ToolRender {
     Subagent,
 }
 
+/// Semantic action a tool performs, used to group concurrent calls into a
+/// human-readable phrase. Carried with the call so the UI never has to recover
+/// it by parsing display strings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolCategory {
+    Read,
+    Search,
+    Find,
+    Edit,
+    Run,
+    List,
+    Subagent,
+    Other,
+}
+
 /// Context provided to tools during execution
 /// Allows tools to access metadata about their execution and communicate with the parent agent
 #[derive(Clone)]
@@ -72,6 +87,10 @@ pub trait Tool: Send + Sync {
 
     fn render_strategy(&self) -> ToolRender {
         ToolRender::Standard
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Other
     }
 
     fn is_hidden(&self) -> bool {

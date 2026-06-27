@@ -1,5 +1,5 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolResult};
+use crate::tools::{Tool, ToolCategory, ToolError, ToolExecutionContext, ToolResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -260,6 +260,10 @@ impl GrepTool {
 impl Tool for GrepTool {
     fn name(&self) -> &'static str {
         "grep"
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Search
     }
 
     fn display_name(&self) -> &'static str {

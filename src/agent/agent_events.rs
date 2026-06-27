@@ -1,12 +1,13 @@
 use crate::permissions::ToolPermissionDescriptor;
-use crate::tools::ToolRender;
 use crate::tools::todo_write::TodoItem;
+use crate::tools::{ToolCategory, ToolRender};
 
 #[derive(Debug, Clone)]
 pub struct PendingToolCall {
     pub id: String,
     pub display_name: String,
     pub render: ToolRender,
+    pub category: ToolCategory,
 }
 
 #[derive(Debug, Clone)]
