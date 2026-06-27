@@ -15,7 +15,7 @@ impl Component for ApprovalDialog {
     type State = AppState;
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        if let Some(dialog_state) = &state.approval_dialog_state {
+        if let Some(dialog_state) = &state.dialogs.approval {
             // Build the dialog content
             let mut lines = vec![];
 

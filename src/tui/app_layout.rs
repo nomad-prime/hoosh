@@ -114,7 +114,8 @@ impl AppLayout for Layout<AppState> {
 
         if app.is_showing_tool_permission_dialog() {
             let lines = app
-                .tool_permission_dialog_state
+                .dialogs
+                .permission
                 .as_ref()
                 .map(|state| {
                     // breakdown:

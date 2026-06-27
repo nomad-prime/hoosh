@@ -38,7 +38,7 @@ impl InputHandler for PermissionHandler {
         let key = key_event.code;
         let modifiers = key_event.modifiers;
 
-        if let Some(dialog_state) = &app.tool_permission_dialog_state {
+        if let Some(dialog_state) = &app.dialogs.permission {
             let descriptor = dialog_state.descriptor.clone();
             let request_id = dialog_state.request_id.clone();
             let selected_option = dialog_state

@@ -182,6 +182,14 @@ pub struct AttachmentViewState {
     pub is_modified: bool,
 }
 
+/// The two modal dialogs the agent loop can raise: tool approval and the
+/// richer tool-permission prompt. At most one is shown at a time.
+#[derive(Default)]
+pub struct DialogState {
+    pub approval: Option<ApprovalDialogState>,
+    pub permission: Option<ToolPermissionDialogState>,
+}
+
 pub struct AppState {
     pub input: TextArea,
     pub messages: VecDeque<MessageLine>,
@@ -203,8 +211,7 @@ pub struct AppState {
     pub max_messages: usize,
     pub completion_state: Option<CompletionState>,
     pub completers: Vec<Box<dyn Completer>>,
-    pub tool_permission_dialog_state: Option<ToolPermissionDialogState>,
-    pub approval_dialog_state: Option<ApprovalDialogState>,
+    pub dialogs: DialogState,
     pub autopilot_enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub animation: AnimationState,
     pub prompt_history: PromptHistory,
@@ -446,8 +453,7 @@ impl AppState {
             max_messages: 100_000,
             completion_state: None,
             completers: Vec::new(),
-            tool_permission_dialog_state: None,
-            approval_dialog_state: None,
+            dialogs: DialogState::default(),
             autopilot_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             animation: AnimationState::default(),
             prompt_history: PromptHistory::new(1000),
@@ -495,11 +501,11 @@ impl AppState {
     }
 
     pub fn is_showing_tool_permission_dialog(&self) -> bool {
-        self.tool_permission_dialog_state.is_some()
+        self.dialogs.permission.is_some()
     }
 
     pub fn is_showing_approval_dialog(&self) -> bool {
-        self.approval_dialog_state.is_some()
+        self.dialogs.approval.is_some()
     }
 
     pub fn toggle_autopilot(&mut self) {
@@ -511,21 +517,21 @@ impl AppState {
     }
 
     pub fn show_approval_dialog(&mut self, tool_call_id: String, tool_name: String) {
-        self.approval_dialog_state = Some(ApprovalDialogState::new(tool_call_id, tool_name));
+        self.dialogs.approval = Some(ApprovalDialogState::new(tool_call_id, tool_name));
     }
 
     pub fn hide_approval_dialog(&mut self) {
-        self.approval_dialog_state = None;
+        self.dialogs.approval = None;
     }
 
     pub fn select_next_approval_option(&mut self) {
-        if let Some(dialog) = &mut self.approval_dialog_state {
+        if let Some(dialog) = &mut self.dialogs.approval {
             dialog.selected_index = (dialog.selected_index + 1) % 2; // 0 = Approve, 1 = Reject
         }
     }
 
     pub fn select_prev_approval_option(&mut self) {
-        if let Some(dialog) = &mut self.approval_dialog_state {
+        if let Some(dialog) = &mut self.dialogs.approval {
             dialog.selected_index = (dialog.selected_index + 1) % 2; // Same as next for 2 options
         }
     }
@@ -547,7 +553,7 @@ impl AppState {
             _ => vec![PermissionOption::YesOnce, PermissionOption::No],
         };
 
-        self.tool_permission_dialog_state = Some(ToolPermissionDialogState {
+        self.dialogs.permission = Some(ToolPermissionDialogState {
             descriptor,
             request_id,
             selected_index: 0,
@@ -556,7 +562,7 @@ impl AppState {
     }
 
     pub fn select_next_tool_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.tool_permission_dialog_state
+        if let Some(dialog) = &mut self.dialogs.permission
             && !dialog.options.is_empty()
         {
             dialog.selected_index = (dialog.selected_index + 1) % dialog.options.len();
@@ -564,7 +570,7 @@ impl AppState {
     }
 
     pub fn select_prev_tool_permission_option(&mut self) {
-        if let Some(dialog) = &mut self.tool_permission_dialog_state
+        if let Some(dialog) = &mut self.dialogs.permission
             && !dialog.options.is_empty()
         {
             if dialog.selected_index == 0 {
@@ -576,7 +582,7 @@ impl AppState {
     }
 
     pub fn hide_tool_permission_dialog(&mut self) {
-        self.tool_permission_dialog_state = None;
+        self.dialogs.permission = None;
     }
 
     pub fn start_completion(&mut self, completer_index: usize) {

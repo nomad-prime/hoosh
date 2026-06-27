@@ -163,8 +163,8 @@ fn app_state_new_initializes_correctly() {
     assert_eq!(state.max_messages, 100_000);
     assert!(state.messages.is_empty());
     assert!(state.completion_state.is_none());
-    assert!(state.approval_dialog_state.is_none());
-    assert!(state.tool_permission_dialog_state.is_none());
+    assert!(state.dialogs.approval.is_none());
+    assert!(state.dialogs.permission.is_none());
     assert!(
         !state
             .autopilot_enabled
@@ -385,7 +385,7 @@ fn app_state_show_approval_dialog() {
     state.show_approval_dialog("call1".to_string(), "bash".to_string());
 
     assert!(state.is_showing_approval_dialog());
-    let dialog = state.approval_dialog_state.as_ref().unwrap();
+    let dialog = state.dialogs.approval.as_ref().unwrap();
     assert_eq!(dialog.tool_call_id, "call1");
     assert_eq!(dialog.tool_name, "bash");
 }
@@ -406,16 +406,10 @@ fn app_state_select_approval_options() {
     state.show_approval_dialog("call1".to_string(), "bash".to_string());
 
     state.select_next_approval_option();
-    assert_eq!(
-        state.approval_dialog_state.as_ref().unwrap().selected_index,
-        1
-    );
+    assert_eq!(state.dialogs.approval.as_ref().unwrap().selected_index, 1);
 
     state.select_next_approval_option();
-    assert_eq!(
-        state.approval_dialog_state.as_ref().unwrap().selected_index,
-        0
-    );
+    assert_eq!(state.dialogs.approval.as_ref().unwrap().selected_index, 0);
 }
 
 #[test]

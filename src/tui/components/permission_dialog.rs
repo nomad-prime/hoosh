@@ -15,7 +15,7 @@ impl Component for PermissionDialog {
     type State = AppState;
 
     fn render(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        if let Some(dialog_state) = &state.tool_permission_dialog_state {
+        if let Some(dialog_state) = &state.dialogs.permission {
             let descriptor = &dialog_state.descriptor;
 
             // 1. Calculate height of "Fixed Chrome" (Borders, Buttons, Prompt, Help)

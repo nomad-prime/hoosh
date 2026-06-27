@@ -38,7 +38,7 @@ impl InputHandler for ApprovalHandler {
         let key = key_event.code;
         let modifiers = key_event.modifiers;
         // should_handle already checked if approval dialog is showing
-        if let Some(dialog_state) = &app.approval_dialog_state {
+        if let Some(dialog_state) = &app.dialogs.approval {
             let tool_call_id = dialog_state.tool_call_id.clone();
             let selected_index = dialog_state.selected_index;
 
