@@ -17,7 +17,8 @@ impl Component for BashResultsComponent {
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
         // Only render if there are active bash streaming tasks
         let bash_tasks: Vec<_> = state
-            .active_tool_calls
+            .tools
+            .active
             .iter()
             .filter(|tc| tc.is_bash_streaming)
             .collect();

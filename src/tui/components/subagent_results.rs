@@ -17,7 +17,8 @@ impl Component for SubagentResultsComponent {
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
         // Only render if there are active subagent tasks
         let subagent_tasks: Vec<_> = state
-            .active_tool_calls
+            .tools
+            .active
             .iter()
             .filter(|tc| tc.is_subagent_task)
             .collect();

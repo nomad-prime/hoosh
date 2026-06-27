@@ -499,8 +499,8 @@ fn app_state_add_active_tool_call() {
         ToolCategory::Other,
     );
 
-    assert_eq!(state.active_tool_calls.len(), 1);
-    let tool = &state.active_tool_calls[0];
+    assert_eq!(state.tools.active.len(), 1);
+    let tool = &state.tools.active[0];
     assert_eq!(tool.tool_call_id, "call1");
     assert_eq!(tool.display_name, "bash");
     assert_eq!(tool.status, ToolCallStatus::Starting);
@@ -517,7 +517,7 @@ fn app_state_update_tool_call_status() {
     );
 
     state.update_tool_call_status("call1", ToolCallStatus::Executing);
-    assert_eq!(state.active_tool_calls[0].status, ToolCallStatus::Executing);
+    assert_eq!(state.tools.active[0].status, ToolCallStatus::Executing);
 }
 
 #[test]
@@ -532,7 +532,7 @@ fn app_state_set_tool_call_result() {
 
     state.set_tool_call_result("call1", "success".to_string());
     assert_eq!(
-        state.active_tool_calls[0].result_summary,
+        state.tools.active[0].result_summary,
         Some("success".to_string())
     );
 }
@@ -564,7 +564,7 @@ fn app_state_complete_single_tool_call() {
     state.set_tool_call_result("call1", "result".to_string());
 
     state.complete_single_tool_call("call1");
-    assert!(state.active_tool_calls.is_empty());
+    assert!(state.tools.active.is_empty());
     assert!(state.has_pending_messages());
 }
 
@@ -663,7 +663,7 @@ fn batch_completion_collapses_to_single_summary_in_scrollback() {
     assert!(rendered.contains("Reading 3 files"), "got: {rendered}");
     assert!(rendered.contains("a.txt, b.txt, c.txt"), "got: {rendered}");
     assert!(!rendered.contains("Read(a.txt)"), "got: {rendered}");
-    assert!(state.active_tool_calls.is_empty());
+    assert!(state.tools.active.is_empty());
 }
 
 #[test]
@@ -678,7 +678,7 @@ fn expanded_batch_completion_keeps_per_call_lines() {
         );
         state.update_tool_call_status(id, ToolCallStatus::Completed);
     }
-    state.tool_calls_expanded = true;
+    state.tools.expanded = true;
     state.complete_active_tool_calls();
 
     let rendered = rendered_text(&mut state);
@@ -784,7 +784,7 @@ fn app_state_clear_active_tool_calls() {
     );
 
     state.clear_active_tool_calls();
-    assert!(state.active_tool_calls.is_empty());
+    assert!(state.tools.active.is_empty());
 }
 
 #[test]
@@ -929,7 +929,7 @@ fn executing_call(id: &str, render: ToolRender) -> ActiveToolCall {
 #[test]
 fn standard_batch_collapses() {
     let mut state = AppState::new();
-    state.active_tool_calls = vec![
+    state.tools.active = vec![
         executing_call("a", ToolRender::Standard),
         executing_call("b", ToolRender::Standard),
     ];
@@ -939,7 +939,7 @@ fn standard_batch_collapses() {
 #[test]
 fn subagent_batch_does_not_collapse() {
     let mut state = AppState::new();
-    state.active_tool_calls = vec![
+    state.tools.active = vec![
         executing_call("a", ToolRender::Subagent),
         executing_call("b", ToolRender::Subagent),
     ];
@@ -952,7 +952,7 @@ fn subagent_batch_does_not_collapse() {
 #[test]
 fn mixed_standard_and_subagent_does_not_collapse() {
     let mut state = AppState::new();
-    state.active_tool_calls = vec![
+    state.tools.active = vec![
         executing_call("a", ToolRender::Standard),
         executing_call("b", ToolRender::Subagent),
     ];
@@ -972,7 +972,7 @@ fn subagent_completion_preserves_individual_stats() {
     b.status = ToolCallStatus::Completed;
     b.total_tool_uses = Some(2);
     b.total_tokens = Some(900);
-    state.active_tool_calls = vec![a, b];
+    state.tools.active = vec![a, b];
 
     state.complete_active_tool_calls();
 

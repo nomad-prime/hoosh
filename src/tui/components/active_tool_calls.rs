@@ -16,7 +16,7 @@ impl Component for ActiveToolCallsComponent {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        if state.active_tool_calls.is_empty() {
+        if state.tools.active.is_empty() {
             return;
         }
 
@@ -27,7 +27,7 @@ impl Component for ActiveToolCallsComponent {
 
         let mut lines = Vec::new();
 
-        for tool_call in &state.active_tool_calls {
+        for tool_call in &state.tools.active {
             // Static glyphs are padded to three cells so the tool-name column
             // stays aligned with the animated executing rows.
             let status_indicator = match &tool_call.status {
@@ -104,7 +104,7 @@ impl Component for ActiveToolCallsComponent {
 
 impl ActiveToolCallsComponent {
     fn render_collapsed(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
-        let calls = &state.active_tool_calls;
+        let calls = &state.tools.active;
         let all_done = calls.iter().all(|tc| {
             matches!(
                 tc.status,

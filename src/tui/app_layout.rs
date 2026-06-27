@@ -13,11 +13,11 @@ impl AppLayout for Layout<AppState> {
             || app.is_showing_approval_dialog()
             || app.is_completing();
 
-        let active_tool_calls_visible = !app.active_tool_calls.is_empty();
+        let active_tool_calls_visible = !app.tools.active.is_empty();
         let active_tool_calls_height = if app.tool_calls_collapsed() {
             2
         } else {
-            app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+            app.tools.active.iter().fold(0u16, |acc, tc| {
                 let mut height = 1u16;
 
                 if tc.result_summary.is_some() {
@@ -28,9 +28,9 @@ impl AppLayout for Layout<AppState> {
         };
 
         // Calculate subagent results visibility and height
-        let has_subagent_tasks = app.active_tool_calls.iter().any(|tc| tc.is_subagent_task);
+        let has_subagent_tasks = app.tools.active.iter().any(|tc| tc.is_subagent_task);
         let subagent_results_visible = has_subagent_tasks;
-        let subagent_results_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+        let subagent_results_height = app.tools.active.iter().fold(0u16, |acc, tc| {
             if !tc.is_subagent_task || tc.subagent_steps.is_empty() {
                 return acc;
             }
@@ -47,9 +47,9 @@ impl AppLayout for Layout<AppState> {
         });
 
         // Calculate bash results visibility and height
-        let has_bash_tasks = app.active_tool_calls.iter().any(|tc| tc.is_bash_streaming);
+        let has_bash_tasks = app.tools.active.iter().any(|tc| tc.is_bash_streaming);
         let bash_results_visible = has_bash_tasks;
-        let bash_results_height = app.active_tool_calls.iter().fold(0u16, |acc, tc| {
+        let bash_results_height = app.tools.active.iter().fold(0u16, |acc, tc| {
             if !tc.is_bash_streaming || tc.bash_output_lines.is_empty() {
                 return acc;
             }

@@ -338,7 +338,7 @@ pub(crate) async fn handle_cancel_task(
             CancelKind::Tool { .. } => {
                 use ratatui::style::Style;
                 use ratatui::text::{Line, Span};
-                let cancelled = std::mem::take(&mut app.active_tool_calls);
+                let cancelled = std::mem::take(&mut app.tools.active);
                 for tc in &cancelled {
                     app.add_message("".to_string());
                     app.add_styled_line(Line::from(vec![

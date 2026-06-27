@@ -211,8 +211,7 @@ pub struct AppState {
     pub clipboard: ClipboardManager,
     pub current_retry_status: Option<String>,
     pub metrics: MetricsState,
-    pub active_tool_calls: Vec<ActiveToolCall>,
-    pub tool_calls_expanded: bool,
+    pub tools: ToolCallView,
     pub todos: Vec<TodoItem>,
     pub scroll: ScrollState,
     pub attachments: Vec<TextAttachment>,
@@ -275,6 +274,37 @@ impl MetricsState {
 
     pub fn has_usage(&self) -> bool {
         self.input_tokens > 0 || self.output_tokens > 0
+    }
+}
+
+/// The set of tool calls executing in the current turn, plus whether the user
+/// has expanded a collapsed batch.
+#[derive(Default)]
+pub struct ToolCallView {
+    pub active: Vec<ActiveToolCall>,
+    pub expanded: bool,
+}
+
+impl ToolCallView {
+    pub fn clear(&mut self) {
+        self.active.clear();
+        self.expanded = false;
+    }
+
+    /// True when a batch of 2+ standard tool calls should render as a single
+    /// aggregate line. Subagents and any awaiting/errored call opt the whole
+    /// batch out so their individual rows and stats are preserved.
+    pub fn collapsed(&self) -> bool {
+        if self.active.len() < 2 || self.expanded {
+            return false;
+        }
+        self.active.iter().all(|tc| {
+            tc.render == ToolRender::Standard
+                && !matches!(
+                    tc.status,
+                    ToolCallStatus::AwaitingApproval | ToolCallStatus::Error(_)
+                )
+        })
     }
 }
 
@@ -424,8 +454,7 @@ impl AppState {
             clipboard: ClipboardManager::new(),
             current_retry_status: None,
             metrics: MetricsState::default(),
-            active_tool_calls: Vec::new(),
-            tool_calls_expanded: false,
+            tools: ToolCallView::default(),
             todos: Vec::new(),
             scroll: ScrollState::default(),
             attachments: Vec::new(),
@@ -674,7 +703,7 @@ impl AppState {
         render: ToolRender,
         category: ToolCategory,
     ) {
-        self.active_tool_calls.push(ActiveToolCall {
+        self.tools.active.push(ActiveToolCall {
             tool_call_id,
             display_name,
             render,
@@ -706,7 +735,8 @@ impl AppState {
     }
 
     pub fn get_active_tool_call_mut(&mut self, tool_call_id: &str) -> Option<&mut ActiveToolCall> {
-        self.active_tool_calls
+        self.tools
+            .active
             .iter_mut()
             .find(|tc| tc.tool_call_id == tool_call_id)
     }
@@ -717,23 +747,23 @@ impl AppState {
         let phrase = aggregate_phrase(tool_calls);
         self.add_tool_completion_header(glyphs::TOOL_COMPLETED, &phrase, false);
         self.add_tool_continuation(&target_basenames(tool_calls).join(", "));
-        self.active_tool_calls.clear();
+        self.tools.active.clear();
     }
 
     pub fn complete_active_tool_calls(&mut self) {
         if self.tool_calls_collapsed() {
-            let tool_calls = self.active_tool_calls.clone();
+            let tool_calls = self.tools.active.clone();
             self.complete_collapsed(&tool_calls);
             return;
         }
 
-        let tool_calls = self.active_tool_calls.clone();
+        let tool_calls = self.tools.active.clone();
 
         for tool_call in &tool_calls {
             self.render_completed_tool_call(tool_call);
         }
 
-        self.active_tool_calls.clear();
+        self.tools.active.clear();
     }
 
     fn render_completed_tool_call(&mut self, tool_call: &ActiveToolCall) {
@@ -788,31 +818,22 @@ impl AppState {
 
     pub fn complete_single_tool_call(&mut self, tool_call_id: &str) {
         if let Some(index) = self
-            .active_tool_calls
+            .tools
+            .active
             .iter()
             .position(|tc| tc.tool_call_id == tool_call_id)
         {
-            let tool_call = self.active_tool_calls.remove(index);
+            let tool_call = self.tools.active.remove(index);
             self.render_completed_tool_call(&tool_call);
         }
     }
 
     pub fn clear_active_tool_calls(&mut self) {
-        self.active_tool_calls.clear();
-        self.tool_calls_expanded = false;
+        self.tools.clear();
     }
 
     pub fn tool_calls_collapsed(&self) -> bool {
-        if self.active_tool_calls.len() < 2 || self.tool_calls_expanded {
-            return false;
-        }
-        self.active_tool_calls.iter().all(|tc| {
-            tc.render == ToolRender::Standard
-                && !matches!(
-                    tc.status,
-                    ToolCallStatus::AwaitingApproval | ToolCallStatus::Error(_)
-                )
-        })
+        self.tools.collapsed()
     }
 
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
@@ -928,8 +949,8 @@ impl AppState {
 
     fn on_tool_calls(&mut self, calls: Vec<crate::agent::PendingToolCall>) {
         self.agent_state = AgentState::ExecutingTools;
-        if self.active_tool_calls.is_empty() {
-            self.tool_calls_expanded = false;
+        if self.tools.active.is_empty() {
+            self.tools.expanded = false;
         }
         for call in calls {
             self.add_active_tool_call(call.id, call.display_name, call.render, call.category);

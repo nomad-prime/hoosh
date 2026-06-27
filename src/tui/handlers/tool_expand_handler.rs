@@ -33,8 +33,8 @@ impl InputHandler for ToolExpandHandler {
         let is_ctrl_o =
             key.code == KeyCode::Char('o') && key.modifiers.contains(KeyModifiers::CONTROL);
 
-        if is_ctrl_o && app.active_tool_calls.len() >= 2 {
-            app.tool_calls_expanded = !app.tool_calls_expanded;
+        if is_ctrl_o && app.tools.active.len() >= 2 {
+            app.tools.expanded = !app.tools.expanded;
             return KeyHandlerResult::Handled;
         }
 
@@ -78,24 +78,24 @@ mod tests {
     async fn ctrl_o_toggles_expansion_with_a_batch() {
         let mut handler = ToolExpandHandler::new();
         let mut app = AppState::new();
-        app.active_tool_calls = vec![active_call(), active_call()];
+        app.tools.active = vec![active_call(), active_call()];
 
         let result = handler.handle_event(&ctrl_o(), &mut app, true).await;
         assert!(matches!(result, KeyHandlerResult::Handled));
-        assert!(app.tool_calls_expanded);
+        assert!(app.tools.expanded);
 
         handler.handle_event(&ctrl_o(), &mut app, true).await;
-        assert!(!app.tool_calls_expanded);
+        assert!(!app.tools.expanded);
     }
 
     #[tokio::test]
     async fn ctrl_o_ignored_with_single_call() {
         let mut handler = ToolExpandHandler::new();
         let mut app = AppState::new();
-        app.active_tool_calls = vec![active_call()];
+        app.tools.active = vec![active_call()];
 
         let result = handler.handle_event(&ctrl_o(), &mut app, true).await;
         assert!(matches!(result, KeyHandlerResult::NotHandled));
-        assert!(!app.tool_calls_expanded);
+        assert!(!app.tools.expanded);
     }
 }
