@@ -154,6 +154,10 @@ pub trait Tool: Send + Sync {
         phrasing::GENERIC
     }
 
+    fn output_is_log(&self) -> bool {
+        false
+    }
+
     fn is_hidden(&self) -> bool {
         false
     }

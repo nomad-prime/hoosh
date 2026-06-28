@@ -318,6 +318,10 @@ impl Tool for BashTool {
         phrasing::RUN
     }
 
+    fn output_is_log(&self) -> bool {
+        true
+    }
+
     fn display_name(&self) -> &'static str {
         "bash"
     }

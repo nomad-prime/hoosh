@@ -1,18 +1,31 @@
 use super::*;
 use crate::agent::{Conversation, ConversationMessage};
 use crate::context_management::LogCompressionConfig;
+use crate::tools::{BuiltinToolProvider, ToolRegistry};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 fn compressor() -> LogCompressor {
     LogCompressor::new(LogCompressionConfig::default())
 }
 
+fn strategy() -> LogCompressionStrategy {
+    let registry =
+        ToolRegistry::new().with_provider(Arc::new(BuiltinToolProvider::new(PathBuf::from("."))));
+    LogCompressionStrategy::new(LogCompressionConfig::default(), Arc::new(registry))
+}
+
 fn tool_result(content: &str) -> ConversationMessage {
+    tool_result_named("bash", content)
+}
+
+fn tool_result_named(name: &str, content: &str) -> ConversationMessage {
     ConversationMessage {
         role: "tool".to_string(),
         content: Some(content.to_string()),
         tool_calls: None,
         tool_call_id: Some("call_1".to_string()),
-        name: None,
+        name: Some(name.to_string()),
         attachments: Vec::new(),
     }
 }
@@ -125,13 +138,31 @@ async fn strategy_compresses_tool_results_in_place() {
     });
     conversation.messages.push(tool_result(&big_log));
 
-    let strategy = LogCompressionStrategy::new(LogCompressionConfig::default());
+    let strategy = strategy();
     let result = strategy.apply(&mut conversation).await.unwrap();
 
     assert_eq!(result, StrategyResult::Applied);
     let compressed = conversation.messages[1].content.as_ref().unwrap();
     assert!(compressed.len() < big_log.len());
     assert!(compressed.contains("ERROR fatal crash in handler"));
+}
+
+#[tokio::test]
+async fn strategy_preserves_read_file_output() {
+    let mut lines: Vec<String> = (0..200).map(|i| format!("INFO step {i} ok")).collect();
+    lines.insert(90, "ERROR fatal crash in handler".to_string());
+    let file = lines.join("\n");
+
+    let mut conversation = Conversation::new();
+    conversation
+        .messages
+        .push(tool_result_named("read_file", &file));
+
+    let strategy = strategy();
+    let result = strategy.apply(&mut conversation).await.unwrap();
+
+    assert_eq!(result, StrategyResult::NoChange);
+    assert_eq!(conversation.messages[0].content.as_ref().unwrap(), &file);
 }
 
 #[tokio::test]
@@ -151,7 +182,7 @@ async fn strategy_ignores_non_tool_messages() {
         attachments: Vec::new(),
     });
 
-    let strategy = LogCompressionStrategy::new(LogCompressionConfig::default());
+    let strategy = strategy();
     let result = strategy.apply(&mut conversation).await.unwrap();
 
     assert_eq!(result, StrategyResult::NoChange);

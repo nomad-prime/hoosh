@@ -288,7 +288,7 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
     );
 
     // Setup context management
-    let context_manager = setup_context_manager(&config);
+    let context_manager = setup_context_manager(&config, &tool_registry);
 
     // Register command completer after session is initialized
     let command_completer = CommandCompleter::new(Arc::clone(&command_registry));
@@ -613,7 +613,10 @@ fn create_input_handlers(
     handlers
 }
 
-fn setup_context_manager(config: &AppConfig) -> Arc<ContextManager> {
+fn setup_context_manager(
+    config: &AppConfig,
+    tool_registry: &Arc<ToolRegistry>,
+) -> Arc<ContextManager> {
     let context_manager_config = config.get_context_manager_config();
     let token_accountant = Arc::new(crate::context_management::TokenAccountant::new());
 
@@ -632,7 +635,8 @@ fn setup_context_manager(config: &AppConfig) -> Arc<ContextManager> {
     // Apply log compression SECOND to semantically shrink build/test output
     // before the dumb truncation backstop runs.
     if let Some(log_compression_config) = context_manager_config.log_compression {
-        let log_compression_strategy = LogCompressionStrategy::new(log_compression_config);
+        let log_compression_strategy =
+            LogCompressionStrategy::new(log_compression_config, Arc::clone(tool_registry));
         context_manager_builder =
             context_manager_builder.add_strategy(Box::new(log_compression_strategy));
     }

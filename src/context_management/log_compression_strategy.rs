@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use anyhow::Result;
@@ -8,6 +8,7 @@ use regex::Regex;
 
 use crate::agent::{Conversation, ConversationMessage};
 use crate::context_management::{ContextManagementStrategy, LogCompressionConfig, StrategyResult};
+use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogFormat {
@@ -629,17 +630,24 @@ fn dedupe_similar(lines: Vec<&LogLine>) -> Vec<&LogLine> {
 
 pub struct LogCompressionStrategy {
     compressor: LogCompressor,
+    tool_registry: Arc<ToolRegistry>,
 }
 
 impl LogCompressionStrategy {
-    pub fn new(config: LogCompressionConfig) -> Self {
+    pub fn new(config: LogCompressionConfig, tool_registry: Arc<ToolRegistry>) -> Self {
         Self {
             compressor: LogCompressor::new(config),
+            tool_registry,
         }
     }
 
     fn is_tool_result(message: &ConversationMessage) -> bool {
         message.role == "tool" && message.tool_call_id.is_some()
+    }
+
+    fn produces_log_output(&self, name: Option<&str>) -> bool {
+        name.and_then(|n| self.tool_registry.get_tool(n))
+            .is_some_and(|tool| tool.output_is_log())
     }
 }
 
@@ -649,6 +657,9 @@ impl ContextManagementStrategy for LogCompressionStrategy {
         let mut any_compressed = false;
         for message in conversation.messages.iter_mut() {
             if !Self::is_tool_result(message) {
+                continue;
+            }
+            if !self.produces_log_output(message.name.as_deref()) {
                 continue;
             }
             let Some(content) = &message.content else {
