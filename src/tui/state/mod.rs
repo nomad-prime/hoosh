@@ -7,7 +7,6 @@ mod dialog_state;
 mod message_line;
 mod metrics_state;
 mod scroll_state;
-mod streaming_state;
 mod tool_call_view;
 
 pub use active_tool_call::{ActiveToolCall, BashOutputLine, SubagentStepSummary, ToolCallStatus};
@@ -21,5 +20,4 @@ pub use dialog_state::{
 pub use message_line::MessageLine;
 pub use metrics_state::MetricsState;
 pub use scroll_state::ScrollState;
-pub use streaming_state::StreamingState;
 pub use tool_call_view::ToolCallView;

@@ -3,6 +3,7 @@ use crossterm::event;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
+use super::events::AgentState;
 use super::message_renderer::MessageRenderer;
 use super::state::AppState;
 use crate::agent::AgentEvent;
@@ -22,7 +23,6 @@ pub async fn run_event_loop(
     let mut agent_task: Option<JoinHandle<()>> = None;
 
     let message_renderer = MessageRenderer::new();
-    app.streaming.to_scrollback = true;
 
     loop {
         render_frame(app, &mut terminal, &message_renderer)?;
@@ -34,7 +34,11 @@ pub async fn run_event_loop(
 
         app.tick_animation();
 
-        let poll_ms = if app.streaming.is_active() { 16 } else { 100 };
+        let poll_ms = if app.agent_state == AgentState::Idle {
+            100
+        } else {
+            50
+        };
         if event::poll(Duration::from_millis(poll_ms))? {
             let event = event::read()?;
             handle_user_input(&event, app, &mut agent_task, &mut context).await?;
@@ -59,8 +63,6 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     message_renderer: &MessageRenderer,
 ) -> Result<()> {
-    app.streaming.advance_reveal();
-    app.flush_streaming_to_scrollback(terminal.size()?.width);
     message_renderer.render_pending_messages(app, terminal)?;
 
     let terminal_width = terminal.get_viewport_area().width;

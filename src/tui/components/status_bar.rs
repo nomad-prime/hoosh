@@ -64,10 +64,6 @@ impl Component for StatusBar {
                         (String::new(), palette::STATUS_IDLE)
                     }
                 }
-                AgentState::Thinking if state.visible_streaming_text().is_some() => {
-                    // The streamed text is the feedback; drop the spinner.
-                    (String::new(), palette::STATUS_PROCESSING)
-                }
                 AgentState::Thinking | AgentState::ExecutingTools => (
                     radio_wave(state.animation.frame),
                     palette::STATUS_PROCESSING,

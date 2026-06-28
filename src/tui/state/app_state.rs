@@ -52,7 +52,6 @@ pub struct AppState {
     pub paste_detector: PasteDetector,
     pub display_compact: bool,
     pub fullview: bool,
-    pub streaming: StreamingState,
 }
 
 /// Format a short status/error string as a `  ⎿  [lowercased message]` line.
@@ -72,18 +71,6 @@ pub fn format_inline_status(message: &str) -> String {
 
 pub fn format_tool_continuation(content: &str) -> String {
     format!("  ⎿ {}", content)
-}
-
-fn hold_unfinished_block(text: &str) -> String {
-    let boundary = text.rfind("\n\n").map(|i| i + 2).unwrap_or(0);
-    let tail = &text[boundary..];
-    let unfinished = tail.lines().any(|l| l.trim_start().starts_with('|'))
-        || tail.matches("```").count() % 2 == 1;
-    if unfinished {
-        text[..boundary].to_string()
-    } else {
-        text.to_string()
-    }
 }
 
 impl AppState {
@@ -120,7 +107,6 @@ impl AppState {
             paste_detector: PasteDetector::new(),
             display_compact: false,
             fullview: false,
-            streaming: StreamingState::default(),
         }
     }
 
@@ -512,8 +498,7 @@ impl AppState {
     pub fn handle_agent_event(&mut self, event: AgentEvent) {
         match event {
             AgentEvent::Thinking => self.on_thinking(),
-            AgentEvent::StreamStarted => self.on_stream_started(),
-            AgentEvent::TextDelta(delta) => self.on_text_delta(delta),
+            AgentEvent::StreamStarted | AgentEvent::TextDelta(_) => {}
             AgentEvent::AssistantThought(content) => self.on_assistant_thought(content),
             AgentEvent::AssistantThinking(content) => self.add_thinking(&content),
             AgentEvent::ToolCalls(calls) => self.on_tool_calls(calls),
@@ -603,21 +588,8 @@ impl AppState {
         self.agent_state = AgentState::Thinking;
     }
 
-    fn on_stream_started(&mut self) {
-        self.streaming.start();
-    }
-
-    fn on_text_delta(&mut self, delta: String) {
-        self.streaming.push_delta(&delta);
-    }
-
     fn on_assistant_thought(&mut self, content: String) {
-        if self.streaming.to_scrollback && self.streaming.is_active() {
-            self.streaming.replace_final(content);
-        } else {
-            self.streaming.text = None;
-            self.add_thought(&content);
-        }
+        self.add_thought(&content);
     }
 
     fn on_tool_calls(&mut self, calls: Vec<crate::agent::PendingToolCall>) {
@@ -637,17 +609,11 @@ impl AppState {
 
     fn on_final_response(&mut self, content: String) {
         self.agent_state = AgentState::Idle;
-        if self.streaming.to_scrollback && self.streaming.is_active() {
-            self.streaming.replace_final(content);
-        } else {
-            self.streaming.text = None;
-            self.add_final_response(&content);
-        }
+        self.add_final_response(&content);
     }
 
     fn on_error(&mut self, error: String) {
         self.agent_state = AgentState::Idle;
-        self.streaming.finalize = true;
         self.seal_exploration_run();
         self.add_error(&error);
     }
@@ -803,64 +769,6 @@ impl AppState {
                 .add_modifier(Modifier::ITALIC),
         ));
         self.add_styled_line(styled_line);
-    }
-
-    pub fn visible_streaming_text(&self) -> Option<&str> {
-        self.streaming.visible_text()
-    }
-
-    pub fn flush_streaming_to_scrollback(&mut self, width: u16) {
-        if !self.streaming.to_scrollback {
-            return;
-        }
-        if self.streaming.text.is_none() {
-            return;
-        }
-        let full = self.streaming.revealed_slice().to_string();
-        let finalize = self.streaming.finalize && self.streaming.revealed_complete();
-
-        let render_src = if finalize {
-            full.clone()
-        } else {
-            hold_unfinished_block(&full)
-        };
-        let keep_last = !finalize && render_src.len() == full.len();
-        if render_src.trim().is_empty() && !finalize {
-            return;
-        }
-
-        let rendered = crate::tui::message_renderer::MessageRenderer::new()
-            .markdown_to_wrapped_lines(&render_src, width.max(1) as usize);
-        let stable = if keep_last {
-            rendered.len().saturating_sub(1)
-        } else {
-            rendered.len()
-        };
-
-        if stable > self.streaming.committed {
-            self.seal_exploration_run();
-        }
-
-        if self.streaming.committed == 0 && stable > 0 {
-            self.add_message_line(MessageLine::Plain(String::new()));
-        }
-        for line in rendered.iter().take(stable).skip(self.streaming.committed) {
-            self.add_message_line(MessageLine::Styled(line.clone()));
-        }
-        self.streaming.committed = stable;
-
-        if finalize {
-            self.streaming.text = None;
-            self.streaming.committed = 0;
-            self.streaming.finalize = false;
-        }
-    }
-
-    pub fn streaming_live_line(&self, width: u16) -> Option<ratatui::text::Line<'static>> {
-        let text = self.visible_streaming_text()?;
-        let rendered = crate::tui::message_renderer::MessageRenderer::new()
-            .markdown_to_wrapped_lines(text, width.max(1) as usize);
-        rendered.into_iter().last()
     }
 
     pub fn add_final_response(&mut self, content: &str) {

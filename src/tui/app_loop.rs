@@ -114,7 +114,6 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     message_renderer: &MessageRenderer,
 ) -> Result<()> {
-    app.streaming.advance_reveal();
     message_renderer.render_pending_messages(app, terminal)?;
 
     let terminal_width = terminal.get_viewport_area().width;
@@ -317,18 +316,6 @@ pub(crate) async fn handle_cancel_task(
         app.agent_state = super::events::AgentState::Idle;
         app.hide_approval_dialog();
         app.hide_tool_permission_dialog();
-
-        // Keep whatever text had already streamed in so the user doesn't lose
-        // what they were reading when they interrupted.
-        if app.streaming.to_scrollback {
-            if app.streaming.is_active() {
-                app.streaming.finalize = true;
-            }
-        } else if let Some(partial) = app.streaming.text.take()
-            && !partial.trim().is_empty()
-        {
-            app.add_final_response(partial.trim_end());
-        }
 
         let kind = {
             let mut conv = context.conversation_state.conversation.lock().await;

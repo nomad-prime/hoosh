@@ -98,7 +98,6 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     _message_renderer: &MessageRenderer,
 ) -> Result<()> {
-    app.streaming.advance_reveal();
     let has_pending = app.has_pending_messages();
     let _ = app.drain_pending_messages();
 
@@ -218,11 +217,6 @@ fn calculate_wrapped_line_count(app: &AppState, content_width: usize) -> usize {
         };
     }
 
-    if let Some(text) = app.visible_streaming_text() {
-        let rendered = markdown_renderer.render(text);
-        total_lines += 1 + calculate_wrapped_lines_for_styled_lines(&rendered, content_width);
-    }
-
     total_lines
 }
 
@@ -303,8 +297,6 @@ fn render_messages_fullview(
             }
         }
     }
-
-    all_lines.extend(crate::tui::components::streaming_response::streaming_markdown_lines(app));
 
     let viewport_height = area.height as usize;
 
