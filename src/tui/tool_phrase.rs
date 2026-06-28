@@ -1,28 +1,5 @@
 use super::app_state::ActiveToolCall;
-use crate::tools::ToolCategory;
-
-fn gerund(category: ToolCategory) -> &'static str {
-    match category {
-        ToolCategory::Read => "reading",
-        ToolCategory::Search => "searching for",
-        ToolCategory::Find => "finding",
-        ToolCategory::Edit => "editing",
-        ToolCategory::List => "listing",
-        ToolCategory::Run | ToolCategory::Subagent | ToolCategory::Other => "running",
-    }
-}
-
-fn noun(category: ToolCategory, count: usize) -> &'static str {
-    let (singular, plural) = match category {
-        ToolCategory::Read | ToolCategory::Find | ToolCategory::Edit => ("file", "files"),
-        ToolCategory::Search => ("pattern", "patterns"),
-        ToolCategory::List => ("directory", "directories"),
-        ToolCategory::Run => ("command", "commands"),
-        ToolCategory::Subagent => ("agent", "agents"),
-        ToolCategory::Other => ("tool", "tools"),
-    };
-    if count == 1 { singular } else { plural }
-}
+use crate::tools::CategoryPhrasing;
 
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
@@ -33,19 +10,27 @@ fn capitalize_first(s: &str) -> String {
 }
 
 pub fn aggregate_phrase(calls: &[ActiveToolCall]) -> String {
-    let mut counts: Vec<(ToolCategory, usize)> = Vec::new();
+    phrase_with(calls, |p| p.gerund)
+}
+
+pub fn completed_phrase(calls: &[ActiveToolCall]) -> String {
+    phrase_with(calls, |p| p.past)
+}
+
+fn phrase_with(calls: &[ActiveToolCall], verb: fn(&CategoryPhrasing) -> &'static str) -> String {
+    let mut counts: Vec<(CategoryPhrasing, usize)> = Vec::new();
 
     for call in calls {
-        if let Some(entry) = counts.iter_mut().find(|(c, _)| *c == call.category) {
+        if let Some(entry) = counts.iter_mut().find(|(p, _)| *p == call.phrasing) {
             entry.1 += 1;
         } else {
-            counts.push((call.category, 1));
+            counts.push((call.phrasing, 1));
         }
     }
 
     let segments: Vec<String> = counts
         .iter()
-        .map(|(cat, count)| format!("{} {} {}", gerund(*cat), count, noun(*cat, *count)))
+        .map(|(p, count)| format!("{} {} {}", verb(p), count, p.noun(*count)))
         .collect();
 
     capitalize_first(&segments.join(", "))

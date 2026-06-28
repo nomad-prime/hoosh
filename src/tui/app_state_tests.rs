@@ -1,4 +1,5 @@
 use super::*;
+use crate::tools::phrasing;
 
 #[test]
 fn completion_state_new_initializes_correctly() {
@@ -91,7 +92,7 @@ fn active_tool_call_add_subagent_step() {
         tool_call_id: "call1".to_string(),
         display_name: "test".to_string(),
         render: ToolRender::Standard,
-        category: ToolCategory::Other,
+        phrasing: phrasing::GENERIC,
         status: ToolCallStatus::Starting,
         preview: None,
         budget_pct: None,
@@ -122,7 +123,7 @@ fn active_tool_call_add_bash_output_line() {
         tool_call_id: "call1".to_string(),
         display_name: "bash".to_string(),
         render: ToolRender::Standard,
-        category: ToolCategory::Other,
+        phrasing: phrasing::GENERIC,
         status: ToolCallStatus::Executing,
         preview: None,
         result_summary: None,
@@ -490,7 +491,7 @@ fn app_state_add_active_tool_call() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
 
     assert_eq!(state.tools.active.len(), 1);
@@ -507,7 +508,7 @@ fn app_state_update_tool_call_status() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
 
     state.update_tool_call_status("call1", ToolCallStatus::Executing);
@@ -521,7 +522,7 @@ fn app_state_set_tool_call_result() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
 
     state.set_tool_call_result("call1", "success".to_string());
@@ -538,7 +539,7 @@ fn app_state_get_active_tool_call_mut() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
 
     let tool = state.get_active_tool_call_mut("call1");
@@ -553,7 +554,7 @@ fn app_state_complete_single_tool_call() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.set_tool_call_result("call1", "result".to_string());
 
@@ -614,7 +615,7 @@ fn complete_single_tool_call_skips_continuation_in_compact_mode() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.set_tool_call_result("call1", "unique-result-marker".to_string());
     state.complete_single_tool_call("call1");
@@ -628,7 +629,7 @@ fn complete_single_tool_call_includes_continuation_in_full_mode() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.set_tool_call_result("call1", "unique-result-marker".to_string());
     state.complete_single_tool_call("call1");
@@ -647,14 +648,14 @@ fn batch_completion_collapses_to_single_summary_in_scrollback() {
             id.to_string(),
             name.to_string(),
             ToolRender::Standard,
-            ToolCategory::Read,
+            phrasing::READ,
         );
         state.update_tool_call_status(id, ToolCallStatus::Completed);
     }
     state.complete_active_tool_calls();
 
     let rendered = rendered_text(&mut state);
-    assert!(rendered.contains("Reading 3 files"), "got: {rendered}");
+    assert!(rendered.contains("Read 3 files"), "got: {rendered}");
     assert!(rendered.contains("a.txt, b.txt, c.txt"), "got: {rendered}");
     assert!(!rendered.contains("Read(a.txt)"), "got: {rendered}");
     assert!(state.tools.active.is_empty());
@@ -668,7 +669,7 @@ fn expanded_batch_completion_keeps_per_call_lines() {
             id.to_string(),
             name.to_string(),
             ToolRender::Standard,
-            ToolCategory::Other,
+            phrasing::GENERIC,
         );
         state.update_tool_call_status(id, ToolCallStatus::Completed);
     }
@@ -687,14 +688,14 @@ fn errored_batch_completion_stays_per_call() {
         "c1".into(),
         "Read(a.txt)".into(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.update_tool_call_status("c1", ToolCallStatus::Completed);
     state.add_active_tool_call(
         "c2".into(),
         "Read(b.txt)".into(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.update_tool_call_status("c2", ToolCallStatus::Error("boom".into()));
     state.complete_active_tool_calls();
@@ -713,7 +714,7 @@ fn save_memory_renders_as_single_collapsed_line_in_full_mode() {
         ToolRender::Inline {
             prefix: "Saved memory: ",
         },
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.set_tool_call_result("call1", "user_prefers_rust".to_string());
     state.update_tool_call_status("call1", ToolCallStatus::Completed);
@@ -734,7 +735,7 @@ fn save_memory_renders_as_single_collapsed_line_in_compact_mode() {
         ToolRender::Inline {
             prefix: "Saved memory: ",
         },
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.set_tool_call_result("call1", "user_prefers_rust".to_string());
     state.update_tool_call_status("call1", ToolCallStatus::Completed);
@@ -753,7 +754,7 @@ fn save_memory_error_falls_through_to_standard_render() {
         ToolRender::Inline {
             prefix: "Saved memory: ",
         },
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.update_tool_call_status("call1", ToolCallStatus::Error("disk full".to_string()));
     state.complete_single_tool_call("call1");
@@ -768,13 +769,13 @@ fn app_state_clear_active_tool_calls() {
         "call1".to_string(),
         "bash".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
     state.add_active_tool_call(
         "call2".to_string(),
         "python".to_string(),
         ToolRender::Standard,
-        ToolCategory::Other,
+        phrasing::GENERIC,
     );
 
     state.clear_active_tool_calls();
@@ -905,7 +906,7 @@ fn executing_call(id: &str, render: ToolRender) -> ActiveToolCall {
         tool_call_id: id.to_string(),
         display_name: format!("call {id}"),
         render,
-        category: ToolCategory::Other,
+        phrasing: phrasing::GENERIC,
         status: ToolCallStatus::Executing,
         preview: None,
         budget_pct: None,

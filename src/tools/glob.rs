@@ -1,5 +1,5 @@
 use crate::permissions::{ToolPermissionBuilder, ToolPermissionDescriptor};
-use crate::tools::{Tool, ToolCategory, ToolError, ToolExecutionContext, ToolResult};
+use crate::tools::{CategoryPhrasing, Tool, ToolError, ToolExecutionContext, ToolResult, phrasing};
 use async_trait::async_trait;
 use glob::Pattern;
 use ignore::WalkBuilder;
@@ -96,8 +96,8 @@ impl Tool for GlobTool {
         "glob"
     }
 
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Find
+    fn phrasing(&self) -> CategoryPhrasing {
+        phrasing::FIND
     }
 
     fn display_name(&self) -> &'static str {

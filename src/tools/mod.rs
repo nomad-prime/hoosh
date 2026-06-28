@@ -12,19 +12,80 @@ pub enum ToolRender {
     Subagent,
 }
 
-/// Semantic action a tool performs, used to group concurrent calls into a
-/// human-readable phrase. Carried with the call so the UI never has to recover
-/// it by parsing display strings.
+/// How a tool's concurrent calls read when grouped into a human-readable phrase,
+/// in each grammatical form the UI needs. Carried with the call so the UI never
+/// has to recover it by parsing display strings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ToolCategory {
-    Read,
-    Search,
-    Find,
-    Edit,
-    Run,
-    List,
-    Subagent,
-    Other,
+pub struct CategoryPhrasing {
+    pub gerund: &'static str,
+    pub past: &'static str,
+    pub singular: &'static str,
+    pub plural: &'static str,
+}
+
+impl CategoryPhrasing {
+    pub fn noun(&self, count: usize) -> &'static str {
+        if count == 1 {
+            self.singular
+        } else {
+            self.plural
+        }
+    }
+}
+
+/// Shared phrasing buckets. Tools that perform the same kind of action return
+/// the same const so their calls aggregate together without drift.
+pub mod phrasing {
+    use super::CategoryPhrasing;
+
+    pub const READ: CategoryPhrasing = CategoryPhrasing {
+        gerund: "reading",
+        past: "read",
+        singular: "file",
+        plural: "files",
+    };
+    pub const SEARCH: CategoryPhrasing = CategoryPhrasing {
+        gerund: "searching for",
+        past: "searched for",
+        singular: "pattern",
+        plural: "patterns",
+    };
+    pub const FIND: CategoryPhrasing = CategoryPhrasing {
+        gerund: "finding",
+        past: "found",
+        singular: "file",
+        plural: "files",
+    };
+    pub const EDIT: CategoryPhrasing = CategoryPhrasing {
+        gerund: "editing",
+        past: "edited",
+        singular: "file",
+        plural: "files",
+    };
+    pub const LIST: CategoryPhrasing = CategoryPhrasing {
+        gerund: "listing",
+        past: "listed",
+        singular: "directory",
+        plural: "directories",
+    };
+    pub const RUN: CategoryPhrasing = CategoryPhrasing {
+        gerund: "running",
+        past: "ran",
+        singular: "command",
+        plural: "commands",
+    };
+    pub const SUBAGENT: CategoryPhrasing = CategoryPhrasing {
+        gerund: "running",
+        past: "ran",
+        singular: "agent",
+        plural: "agents",
+    };
+    pub const GENERIC: CategoryPhrasing = CategoryPhrasing {
+        gerund: "running",
+        past: "ran",
+        singular: "tool",
+        plural: "tools",
+    };
 }
 
 /// Context provided to tools during execution
@@ -89,8 +150,8 @@ pub trait Tool: Send + Sync {
         ToolRender::Standard
     }
 
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Other
+    fn phrasing(&self) -> CategoryPhrasing {
+        phrasing::GENERIC
     }
 
     fn is_hidden(&self) -> bool {

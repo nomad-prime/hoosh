@@ -18,7 +18,7 @@ pub struct StatusBar;
 /// the row an organic, irregular pulse rather than a uniform sweep.
 fn radio_wave(frame: usize) -> String {
     const LEVELS: [char; 4] = ['⣀', '⣤', '⣶', '⣿'];
-    const WIDTH: usize = 9;
+    const WIDTH: usize = 3;
 
     let triangle = |phase: usize, period: usize| {
         let half = period / 2;

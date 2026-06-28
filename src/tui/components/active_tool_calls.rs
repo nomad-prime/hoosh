@@ -1,6 +1,6 @@
 use crate::tui::app_state::{AppState, ToolCallStatus};
 use crate::tui::component::Component;
-use crate::tui::tool_phrase::{aggregate_phrase, target_basenames};
+use crate::tui::tool_phrase::{aggregate_phrase, completed_phrase, target_basenames};
 use crate::tui::{glyphs, palette};
 use ratatui::{
     buffer::Buffer,
@@ -128,10 +128,16 @@ impl ActiveToolCallsComponent {
             .map(|tc| tc.elapsed_time())
             .unwrap_or_default();
 
+        let phrase = if all_done {
+            format!("{} ", completed_phrase(calls))
+        } else {
+            format!("{}… ", aggregate_phrase(calls))
+        };
+
         let summary = Line::from(vec![
             indicator,
             Span::raw(" "),
-            Span::raw(format!("{}… ", aggregate_phrase(calls))),
+            Span::raw(phrase),
             Span::styled(
                 format!("({})", timer),
                 Style::default().fg(palette::SUBDUED_TEXT),

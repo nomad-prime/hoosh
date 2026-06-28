@@ -6,7 +6,7 @@ use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
 use crate::tools::todo_write::{TodoItem, TodoStatus};
-use crate::tools::{ToolCategory, ToolRender};
+use crate::tools::{CategoryPhrasing, ToolRender};
 use crate::tui::{glyphs, palette};
 use anyhow::Result;
 use ratatui::style::{Modifier, Style};
@@ -42,7 +42,7 @@ pub struct ActiveToolCall {
     pub tool_call_id: String,
     pub display_name: String,
     pub render: ToolRender,
-    pub category: ToolCategory,
+    pub phrasing: CategoryPhrasing,
     pub status: ToolCallStatus,
     pub preview: Option<String>,
     pub result_summary: Option<String>,
@@ -758,13 +758,13 @@ impl AppState {
         tool_call_id: String,
         display_name: String,
         render: ToolRender,
-        category: ToolCategory,
+        phrasing: CategoryPhrasing,
     ) {
         self.tools.active.push(ActiveToolCall {
             tool_call_id,
             display_name,
             render,
-            category,
+            phrasing,
             status: ToolCallStatus::Starting,
             preview: None,
             result_summary: None,
@@ -799,9 +799,9 @@ impl AppState {
     }
 
     fn complete_collapsed(&mut self, tool_calls: &[ActiveToolCall]) {
-        use super::tool_phrase::{aggregate_phrase, target_basenames};
+        use super::tool_phrase::{completed_phrase, target_basenames};
 
-        let phrase = aggregate_phrase(tool_calls);
+        let phrase = completed_phrase(tool_calls);
         self.add_tool_completion_header(glyphs::TOOL_COMPLETED, &phrase, false);
         self.add_tool_continuation(&target_basenames(tool_calls).join(", "));
         self.tools.active.clear();
@@ -1010,7 +1010,7 @@ impl AppState {
             self.tools.expanded = false;
         }
         for call in calls {
-            self.add_active_tool_call(call.id, call.display_name, call.render, call.category);
+            self.add_active_tool_call(call.id, call.display_name, call.render, call.phrasing);
         }
     }
 

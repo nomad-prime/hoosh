@@ -1,14 +1,14 @@
 use super::*;
-use crate::tools::{ToolCategory, ToolRender};
+use crate::tools::{CategoryPhrasing, ToolRender, phrasing};
 use crate::tui::app_state::{ActiveToolCall, ToolCallStatus};
 use std::time::Instant;
 
-fn call(display_name: &str, category: ToolCategory) -> ActiveToolCall {
+fn call(display_name: &str, phrasing: CategoryPhrasing) -> ActiveToolCall {
     ActiveToolCall {
         tool_call_id: display_name.to_string(),
         display_name: display_name.to_string(),
         render: ToolRender::Standard,
-        category,
+        phrasing,
         status: ToolCallStatus::Executing,
         preview: None,
         result_summary: None,
@@ -25,16 +25,16 @@ fn call(display_name: &str, category: ToolCategory) -> ActiveToolCall {
 
 #[test]
 fn single_read_uses_singular_noun() {
-    let calls = vec![call("Read(src/main.rs)", ToolCategory::Read)];
+    let calls = vec![call("Read(src/main.rs)", phrasing::READ)];
     assert_eq!(aggregate_phrase(&calls), "Reading 1 file");
 }
 
 #[test]
 fn multiple_reads_pluralize() {
     let calls = vec![
-        call("Read(a.rs)", ToolCategory::Read),
-        call("Read(b.rs)", ToolCategory::Read),
-        call("Read(c.rs)", ToolCategory::Read),
+        call("Read(a.rs)", phrasing::READ),
+        call("Read(b.rs)", phrasing::READ),
+        call("Read(c.rs)", phrasing::READ),
     ];
     assert_eq!(aggregate_phrase(&calls), "Reading 3 files");
 }
@@ -42,9 +42,9 @@ fn multiple_reads_pluralize() {
 #[test]
 fn mixed_batch_preserves_first_seen_order() {
     let calls = vec![
-        call("Grep(needle)", ToolCategory::Search),
-        call("Read(a.rs)", ToolCategory::Read),
-        call("Read(b.rs)", ToolCategory::Read),
+        call("Grep(needle)", phrasing::SEARCH),
+        call("Read(a.rs)", phrasing::READ),
+        call("Read(b.rs)", phrasing::READ),
     ];
     assert_eq!(
         aggregate_phrase(&calls),
@@ -55,8 +55,8 @@ fn mixed_batch_preserves_first_seen_order() {
 #[test]
 fn list_directory_pluralizes_irregularly() {
     let calls = vec![
-        call("List(src)", ToolCategory::List),
-        call("List(tests)", ToolCategory::List),
+        call("List(src)", phrasing::LIST),
+        call("List(tests)", phrasing::LIST),
     ];
     assert_eq!(aggregate_phrase(&calls), "Listing 2 directories");
 }
@@ -64,23 +64,46 @@ fn list_directory_pluralizes_irregularly() {
 #[test]
 fn subagents_aggregate_as_agents() {
     let calls = vec![
-        call("Explore (find X)", ToolCategory::Subagent),
-        call("Explore (find Y)", ToolCategory::Subagent),
+        call("Explore (find X)", phrasing::SUBAGENT),
+        call("Explore (find Y)", phrasing::SUBAGENT),
     ];
     assert_eq!(aggregate_phrase(&calls), "Running 2 agents");
 }
 
 #[test]
 fn unknown_tool_falls_back_to_generic_phrase() {
-    let calls = vec![call("Frobnicate(x)", ToolCategory::Other)];
+    let calls = vec![call("Frobnicate(x)", phrasing::GENERIC)];
     assert_eq!(aggregate_phrase(&calls), "Running 1 tool");
+}
+
+#[test]
+fn completed_batch_uses_past_tense() {
+    let calls = vec![
+        call("Grep(a)", phrasing::SEARCH),
+        call("Grep(b)", phrasing::SEARCH),
+        call("Read(x.rs)", phrasing::READ),
+        call("Read(y.rs)", phrasing::READ),
+        call("Read(z.rs)", phrasing::READ),
+        call("Read(w.rs)", phrasing::READ),
+        call("List(src)", phrasing::LIST),
+    ];
+    assert_eq!(
+        completed_phrase(&calls),
+        "Searched for 2 patterns, read 4 files, listed 1 directory"
+    );
+}
+
+#[test]
+fn completed_single_read_uses_past_tense() {
+    let calls = vec![call("Read(src/main.rs)", phrasing::READ)];
+    assert_eq!(completed_phrase(&calls), "Read 1 file");
 }
 
 #[test]
 fn basenames_strip_directories() {
     let calls = vec![
-        call("Read(/Users/dev/proj/MEMORY.md)", ToolCategory::Read),
-        call("Read(src/tools/read_file.rs)", ToolCategory::Read),
+        call("Read(/Users/dev/proj/MEMORY.md)", phrasing::READ),
+        call("Read(src/tools/read_file.rs)", phrasing::READ),
     ];
     assert_eq!(
         target_basenames(&calls),
@@ -90,6 +113,6 @@ fn basenames_strip_directories() {
 
 #[test]
 fn basename_without_parens_returns_display_name() {
-    let calls = vec![call("Bash", ToolCategory::Run)];
+    let calls = vec![call("Bash", phrasing::RUN)];
     assert_eq!(target_basenames(&calls), vec!["Bash".to_string()]);
 }

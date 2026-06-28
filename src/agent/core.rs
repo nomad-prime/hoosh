@@ -392,14 +392,14 @@ impl Agent {
                 let render = tool
                     .map(|t| t.render_strategy())
                     .unwrap_or(ToolRender::Standard);
-                let category = tool
-                    .map(|t| t.category())
-                    .unwrap_or(crate::tools::ToolCategory::Other);
+                let phrasing = tool
+                    .map(|t| t.phrasing())
+                    .unwrap_or(crate::tools::phrasing::GENERIC);
                 Some(crate::agent::agent_events::PendingToolCall {
                     id: tc.id.clone(),
                     display_name,
                     render,
-                    category,
+                    phrasing,
                 })
             })
             .collect();

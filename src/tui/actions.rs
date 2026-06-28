@@ -170,9 +170,9 @@ fn emit_mention_events(
         let render = tool
             .map(|t| t.render_strategy())
             .unwrap_or(ToolRender::Standard);
-        let category = tool
-            .map(|t| t.category())
-            .unwrap_or(crate::tools::ToolCategory::Other);
+        let phrasing = tool
+            .map(|t| t.phrasing())
+            .unwrap_or(crate::tools::phrasing::GENERIC);
         let summary = match mention.result() {
             Ok(output) => tool
                 .map(|t| t.result_summary(output))
@@ -184,7 +184,7 @@ fn emit_mention_events(
             id: id.clone(),
             display_name,
             render,
-            category,
+            phrasing,
         });
         results.push((id, tool_name.to_string(), summary));
     }
