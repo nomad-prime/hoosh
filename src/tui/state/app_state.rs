@@ -1,255 +1,20 @@
-use super::clipboard::ClipboardManager;
-use super::events::AgentState;
-use super::input::{ImageAttachment, PasteDetector, TextArea, TextAttachment};
+use super::tool_call_view::is_exploration_batch;
+use super::*;
 use crate::agent::AgentEvent;
 use crate::completion::Completer;
 use crate::history::PromptHistory;
 use crate::permissions::ToolPermissionDescriptor;
 use crate::tools::todo_write::{TodoItem, TodoStatus};
 use crate::tools::{CategoryPhrasing, ToolRender};
+use crate::tui::clipboard::ClipboardManager;
+use crate::tui::events::AgentState;
+use crate::tui::input::{PasteDetector, TextArea, TextAttachment};
 use crate::tui::{glyphs, palette};
 use anyhow::Result;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::ScrollbarState;
 use std::collections::VecDeque;
 use std::time::Instant;
-
-#[derive(Clone)]
-pub enum MessageLine {
-    Plain(String),
-    Styled(Line<'static>),
-    Markdown(String),
-    Thinking(String),
-}
-
-#[derive(Clone, Debug)]
-pub struct SubagentStepSummary {
-    pub step_number: usize,
-    pub action_type: String,
-    pub description: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct BashOutputLine {
-    pub line_number: usize,
-    pub content: String,
-    pub stream_type: String, // "stdout" or "stderr"
-}
-
-#[derive(Clone, Debug)]
-pub struct ActiveToolCall {
-    pub tool_call_id: String,
-    pub display_name: String,
-    pub render: ToolRender,
-    pub phrasing: CategoryPhrasing,
-    pub status: ToolCallStatus,
-    pub preview: Option<String>,
-    pub result_summary: Option<String>,
-    pub subagent_steps: Vec<SubagentStepSummary>,
-    pub is_subagent_task: bool,
-    pub bash_output_lines: Vec<BashOutputLine>,
-    pub is_bash_streaming: bool,
-    pub start_time: Instant,
-    pub budget_pct: Option<f32>,
-    pub total_tool_uses: Option<usize>,
-    pub total_tokens: Option<usize>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ToolCallStatus {
-    Starting,
-    AwaitingApproval,
-    Executing,
-    Completed,
-    Error(String),
-}
-
-impl ActiveToolCall {
-    pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
-        self.subagent_steps.push(step);
-    }
-
-    pub fn add_bash_output_line(&mut self, line: BashOutputLine) {
-        self.bash_output_lines.push(line);
-        self.is_bash_streaming = true;
-    }
-
-    pub fn elapsed_time(&self) -> String {
-        let elapsed = self.start_time.elapsed();
-        let total_secs = elapsed.as_secs();
-
-        if total_secs < 60 {
-            format!("{}s", total_secs)
-        } else {
-            let mins = total_secs / 60;
-            let secs = total_secs % 60;
-            format!("{}m{}s", mins, secs)
-        }
-    }
-}
-
-pub struct CompletionState {
-    pub candidates: Vec<String>,
-    pub selected_index: usize,
-    pub scroll_offset: usize,
-    pub query: String,
-    pub completer_index: usize,
-}
-
-pub struct ToolPermissionDialogState {
-    pub descriptor: ToolPermissionDescriptor,
-    pub request_id: String,
-    pub selected_index: usize,
-    pub options: Vec<PermissionOption>,
-}
-
-pub struct ApprovalDialogState {
-    pub tool_call_id: String,
-    pub tool_name: String,
-    pub selected_index: usize,
-}
-
-impl ApprovalDialogState {
-    pub fn new(tool_call_id: String, tool_name: String) -> Self {
-        Self {
-            tool_call_id,
-            tool_name,
-            selected_index: 0, // 0 = Approve, 1 = Reject
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum PermissionOption {
-    YesOnce,
-    No,
-    TrustProject(std::path::PathBuf),
-}
-
-impl CompletionState {
-    pub fn new(completer_index: usize) -> Self {
-        Self {
-            candidates: Vec::new(),
-            selected_index: 0,
-            scroll_offset: 0,
-            query: String::new(),
-            completer_index,
-        }
-    }
-
-    pub fn selected_item(&self) -> Option<&str> {
-        self.candidates.get(self.selected_index).map(|s| s.as_str())
-    }
-
-    pub fn select_next(&mut self) {
-        if !self.candidates.is_empty() {
-            self.selected_index = (self.selected_index + 1) % self.candidates.len();
-            self.update_scroll_offset(10);
-        }
-    }
-
-    pub fn select_prev(&mut self) {
-        if !self.candidates.is_empty() {
-            if self.selected_index == 0 {
-                self.selected_index = self.candidates.len() - 1;
-            } else {
-                self.selected_index -= 1;
-            }
-            self.update_scroll_offset(10);
-        }
-    }
-
-    fn update_scroll_offset(&mut self, visible_items: usize) {
-        if self.selected_index < self.scroll_offset {
-            self.scroll_offset = self.selected_index;
-        } else if self.selected_index >= self.scroll_offset + visible_items {
-            self.scroll_offset = self.selected_index.saturating_sub(visible_items - 1);
-        }
-    }
-}
-
-/// The two modal dialogs the agent loop can raise: tool approval and the
-/// richer tool-permission prompt. At most one is shown at a time.
-#[derive(Default)]
-pub struct DialogState {
-    pub approval: Option<ApprovalDialogState>,
-    pub permission: Option<ToolPermissionDialogState>,
-}
-
-/// Text and image attachments queued on the current draft, each with a
-/// monotonic id used to match `[attachment-N]` / `[pasted image-N]` markers.
-pub struct AttachmentState {
-    pub text: Vec<TextAttachment>,
-    pub images: Vec<ImageAttachment>,
-    pub next_text_id: usize,
-    pub next_image_id: usize,
-}
-
-impl Default for AttachmentState {
-    fn default() -> Self {
-        Self {
-            text: Vec::new(),
-            images: Vec::new(),
-            next_text_id: 1,
-            next_image_id: 1,
-        }
-    }
-}
-
-impl AttachmentState {
-    pub fn add_text(&mut self, content: String) -> usize {
-        let id = self.next_text_id;
-        self.next_text_id += 1;
-        self.text.push(TextAttachment::new(id, content));
-        id
-    }
-
-    pub fn add_image(&mut self, media_type: String, data: Vec<u8>) -> usize {
-        let id = self.next_image_id;
-        self.next_image_id += 1;
-        self.images.push(ImageAttachment::new(id, media_type, data));
-        id
-    }
-
-    pub fn delete_text(&mut self, id: usize) -> bool {
-        if let Some(index) = self.text.iter().position(|a| a.id == id) {
-            self.text.remove(index);
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn get_text(&self, id: usize) -> Option<&TextAttachment> {
-        self.text.iter().find(|a| a.id == id)
-    }
-
-    pub fn get_text_mut(&mut self, id: usize) -> Option<&mut TextAttachment> {
-        self.text.iter_mut().find(|a| a.id == id)
-    }
-
-    pub fn clear(&mut self) {
-        self.text.clear();
-        self.images.clear();
-        self.next_text_id = 1;
-        self.next_image_id = 1;
-    }
-
-    pub fn drain_images(&mut self) -> Vec<crate::agent::Attachment> {
-        let out = self
-            .images
-            .drain(..)
-            .map(|att| crate::agent::Attachment {
-                kind: crate::agent::AttachmentKind::Image,
-                media_type: att.media_type,
-                data: att.data,
-            })
-            .collect();
-        self.next_image_id = 1;
-        out
-    }
-}
 
 pub struct AppState {
     pub input: TextArea,
@@ -280,6 +45,7 @@ pub struct AppState {
     pub current_retry_status: Option<String>,
     pub metrics: MetricsState,
     pub tools: ToolCallView,
+    pub pending_exploration: Vec<ActiveToolCall>,
     pub todos: Vec<TodoItem>,
     pub scroll: ScrollState,
     pub attachments: AttachmentState,
@@ -287,188 +53,6 @@ pub struct AppState {
     pub display_compact: bool,
     pub fullview: bool,
     pub streaming: StreamingState,
-}
-
-/// Frame counter and spinner cadence for the TUI's animations, advanced on a
-/// fixed 100ms tick decoupled from the event-loop rate.
-pub struct AnimationState {
-    pub frame: usize,
-    pub last_tick: Instant,
-}
-
-impl Default for AnimationState {
-    fn default() -> Self {
-        Self {
-            frame: 0,
-            last_tick: Instant::now(),
-        }
-    }
-}
-
-impl AnimationState {
-    pub fn tick(&mut self) {
-        if self.last_tick.elapsed() >= std::time::Duration::from_millis(100) {
-            self.frame = self.frame.wrapping_add(1);
-            self.last_tick = Instant::now();
-        }
-    }
-}
-
-/// Cumulative token counts and cost for the current conversation.
-#[derive(Default)]
-pub struct MetricsState {
-    pub input_tokens: usize,
-    pub output_tokens: usize,
-    pub total_cost: f64,
-}
-
-impl MetricsState {
-    pub fn record(&mut self, input_tokens: usize, output_tokens: usize, cost: Option<f64>) {
-        self.input_tokens = input_tokens;
-        self.output_tokens = output_tokens;
-        if let Some(call_cost) = cost {
-            self.total_cost += call_cost;
-        }
-    }
-
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-
-    pub fn has_usage(&self) -> bool {
-        self.input_tokens > 0 || self.output_tokens > 0
-    }
-}
-
-/// The set of tool calls executing in the current turn, plus whether the user
-/// has expanded a collapsed batch.
-#[derive(Default)]
-pub struct ToolCallView {
-    pub active: Vec<ActiveToolCall>,
-    pub expanded: bool,
-}
-
-impl ToolCallView {
-    pub fn clear(&mut self) {
-        self.active.clear();
-        self.expanded = false;
-    }
-
-    /// True when a batch of 2+ standard tool calls should render as a single
-    /// aggregate line. Subagents and any awaiting/errored call opt the whole
-    /// batch out so their individual rows and stats are preserved.
-    pub fn collapsed(&self) -> bool {
-        if self.active.len() < 2 || self.expanded {
-            return false;
-        }
-        self.active.iter().all(|tc| {
-            tc.render == ToolRender::Standard
-                && !matches!(
-                    tc.status,
-                    ToolCallStatus::AwaitingApproval | ToolCallStatus::Error(_)
-                )
-        })
-    }
-}
-
-/// Live token-by-token streaming buffer for the in-progress assistant reply.
-#[derive(Default)]
-pub struct StreamingState {
-    pub text: Option<String>,
-    /// Number of fully-rendered lines already flushed to scrollback.
-    pub committed: usize,
-    /// Set when the buffer holds the final text and should be flushed in full.
-    pub finalize: bool,
-    /// Append committed lines to scrollback (inline mode) vs. overlay (fullview).
-    pub to_scrollback: bool,
-}
-
-impl StreamingState {
-    fn start(&mut self) {
-        self.text = Some(String::new());
-        self.committed = 0;
-        self.finalize = false;
-    }
-
-    fn push_delta(&mut self, delta: &str) {
-        self.text.get_or_insert_with(String::new).push_str(delta);
-    }
-
-    fn replace_final(&mut self, content: String) {
-        self.text = Some(content);
-        self.finalize = true;
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.text.is_some()
-    }
-
-    pub fn visible_text(&self) -> Option<&str> {
-        let buf = self.text.as_deref()?;
-        if buf.trim().is_empty() {
-            None
-        } else {
-            Some(buf)
-        }
-    }
-}
-
-/// Vertical scrollback position and the geometry the scrollbar widget needs.
-#[derive(Default)]
-pub struct ScrollState {
-    pub offset: usize,
-    pub bar: ScrollbarState,
-    pub content_length: usize,
-    pub viewport_length: usize,
-}
-
-impl ScrollState {
-    pub fn max_offset(&self) -> usize {
-        self.content_length.saturating_sub(self.viewport_length)
-    }
-
-    pub fn at_bottom(&self) -> bool {
-        self.offset >= self.max_offset()
-    }
-
-    pub fn page(&self) -> usize {
-        self.viewport_length.saturating_sub(1)
-    }
-
-    pub fn half_page(&self) -> usize {
-        self.viewport_length / 2
-    }
-
-    pub fn up(&mut self, lines: usize) {
-        self.set_offset(self.offset.saturating_sub(lines));
-    }
-
-    pub fn down(&mut self, lines: usize) {
-        self.set_offset(self.offset.saturating_add(lines));
-    }
-
-    pub fn scroll_to_bottom(&mut self) {
-        self.set_offset(self.max_offset());
-    }
-
-    /// Re-clamp the offset after the content or viewport size changed.
-    pub fn clamp(&mut self) {
-        self.set_offset(self.offset);
-    }
-
-    fn set_offset(&mut self, offset: usize) {
-        self.offset = offset.min(self.max_offset());
-        self.bar = self.bar.position(self.offset);
-    }
-
-    /// Push the current geometry into the scrollbar widget state.
-    pub fn sync_bar(&mut self) {
-        self.bar = self
-            .bar
-            .content_length(self.content_length)
-            .viewport_content_length(self.viewport_length)
-            .position(self.offset);
-    }
 }
 
 /// Format a short status/error string as a `  ⎿  [lowercased message]` line.
@@ -517,6 +101,7 @@ impl AppState {
             current_retry_status: None,
             metrics: MetricsState::default(),
             tools: ToolCallView::default(),
+            pending_exploration: Vec::new(),
             todos: Vec::new(),
             scroll: ScrollState::default(),
             attachments: AttachmentState::default(),
@@ -799,28 +384,46 @@ impl AppState {
     }
 
     fn complete_collapsed(&mut self, tool_calls: &[ActiveToolCall]) {
-        use super::tool_phrase::{completed_phrase, target_basenames};
+        use crate::tui::tool_phrase::{completed_phrase, target_basenames};
 
         let phrase = completed_phrase(tool_calls);
         self.add_tool_completion_header(glyphs::TOOL_COMPLETED, &phrase, false);
         self.add_tool_continuation(&target_basenames(tool_calls).join(", "));
-        self.tools.active.clear();
     }
 
     pub fn complete_active_tool_calls(&mut self) {
-        if self.tool_calls_collapsed() {
-            let tool_calls = self.tools.active.clone();
-            self.complete_collapsed(&tool_calls);
+        let tool_calls = self.tools.active.clone();
+
+        if !self.tools.expanded && is_exploration_batch(&tool_calls) {
+            self.pending_exploration.extend(tool_calls);
+            self.tools.active.clear();
             return;
         }
 
-        let tool_calls = self.tools.active.clone();
+        self.seal_exploration_run();
+
+        if self.tool_calls_collapsed() {
+            self.complete_collapsed(&tool_calls);
+            self.tools.active.clear();
+            return;
+        }
 
         for tool_call in &tool_calls {
             self.render_completed_tool_call(tool_call);
         }
 
         self.tools.active.clear();
+    }
+
+    /// Commit any deferred read-only exploration batches as a single rolled-up
+    /// summary. Sealed when the agent emits prose, errors, or runs a tool that
+    /// isn't pure exploration.
+    fn seal_exploration_run(&mut self) {
+        if self.pending_exploration.is_empty() {
+            return;
+        }
+        let calls = std::mem::take(&mut self.pending_exploration);
+        self.complete_collapsed(&calls);
     }
 
     fn render_completed_tool_call(&mut self, tool_call: &ActiveToolCall) {
@@ -887,6 +490,7 @@ impl AppState {
 
     pub fn clear_active_tool_calls(&mut self) {
         self.tools.clear();
+        self.pending_exploration.clear();
     }
 
     pub fn tool_calls_collapsed(&self) -> bool {
@@ -992,6 +596,7 @@ impl AppState {
     }
 
     fn on_text_delta(&mut self, delta: String) {
+        self.seal_exploration_run();
         self.streaming.push_delta(&delta);
     }
 
@@ -1032,11 +637,13 @@ impl AppState {
     fn on_error(&mut self, error: String) {
         self.agent_state = AgentState::Idle;
         self.streaming.finalize = true;
+        self.seal_exploration_run();
         self.add_error(&error);
     }
 
     fn on_max_steps_reached(&mut self, max_steps: usize) {
         self.agent_state = AgentState::Idle;
+        self.seal_exploration_run();
         self.add_message(format!(
             "   Maximum conversation steps ({}) reached, stopping.",
             max_steps
@@ -1044,6 +651,7 @@ impl AppState {
     }
 
     fn on_tool_calls_rejected(&mut self, rejected: &[String], reason: &str) {
+        self.seal_exploration_run();
         for rtc in rejected {
             self.add_tool_call(rtc);
             self.add_status_message(reason);
@@ -1145,12 +753,14 @@ impl AppState {
         if trimmed.is_empty() {
             return;
         }
+        self.seal_exploration_run();
         self.add_message("\n".to_string());
         self.add_message_line(MessageLine::Thinking(trimmed.to_string()));
     }
 
     pub fn add_thought(&mut self, content: &str) {
         if !content.is_empty() {
+            self.seal_exploration_run();
             let msg_line = MessageLine::Markdown(content.to_string());
 
             self.add_message("\n".to_string());
@@ -1231,6 +841,7 @@ impl AppState {
     }
 
     pub fn add_final_response(&mut self, content: &str) {
+        self.seal_exploration_run();
         // Add blank line before response
         self.add_message("\n".to_string());
 
@@ -1239,6 +850,7 @@ impl AppState {
     }
 
     pub fn add_user_input(&mut self, input: &str) {
+        self.seal_exploration_run();
         self.add_message(format!("\n> {}", input));
     }
 

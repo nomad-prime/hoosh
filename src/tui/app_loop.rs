@@ -5,9 +5,9 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
-use super::app_state::AppState;
 use super::input_handler::InputHandler;
 use super::message_renderer::MessageRenderer;
+use super::state::AppState;
 use crate::agent::{AgentEvent, CancelKind, Conversation};
 use crate::agent_definition::AgentDefinitionManager;
 use crate::backends::LlmBackend;
@@ -357,7 +357,7 @@ pub(crate) async fn handle_cancel_task(
                 use ratatui::text::{Line, Span};
                 app.clear_active_tool_calls();
                 app.add_styled_line(Line::from(Span::styled(
-                    super::app_state::format_inline_status("retracted, hoosh did not see this"),
+                    super::state::format_inline_status("retracted, hoosh did not see this"),
                     Style::default()
                         .fg(super::colors::palette::DIMMED_TEXT)
                         .add_modifier(Modifier::ITALIC),

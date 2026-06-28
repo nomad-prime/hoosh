@@ -1,5 +1,5 @@
-use crate::tui::app_state::{AppState, ToolCallStatus};
 use crate::tui::component::Component;
+use crate::tui::state::{AppState, ToolCallStatus};
 use crate::tui::tool_phrase::{aggregate_phrase, completed_phrase, target_basenames};
 use crate::tui::{glyphs, palette};
 use ratatui::{

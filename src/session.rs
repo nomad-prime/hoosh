@@ -30,10 +30,10 @@ use crate::tools::todo_state::TodoState;
 use crate::tui::app_loop::{
     ConversationState, EventChannels, EventLoopContext, RuntimeState, SystemResources,
 };
-use crate::tui::app_state::AppState;
 use crate::tui::handlers;
 use crate::tui::header;
 use crate::tui::input_handler::InputHandler;
+use crate::tui::state::AppState;
 
 /// Represents the fully initialized session resources needed to run the agent
 pub struct AgentSession {

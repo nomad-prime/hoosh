@@ -1,6 +1,6 @@
-use super::app_state::{AppState, MessageLine};
 use super::colors::palette;
 use super::markdown::MarkdownRenderer;
+use super::state::{AppState, MessageLine};
 use crate::tui::terminal::HooshTerminal;
 use anyhow::Result;
 use ratatui::style::{Modifier, Style};

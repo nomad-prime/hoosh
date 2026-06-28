@@ -1,4 +1,3 @@
-use crate::tui::app_state::AppState;
 use crate::tui::components::active_tool_calls::ActiveToolCallsComponent;
 use crate::tui::components::approval_dialog::ApprovalDialog;
 use crate::tui::components::bash_results::BashResultsComponent;
@@ -13,6 +12,7 @@ use crate::tui::components::subagent_results::SubagentResultsComponent;
 use crate::tui::components::todo_list::TodoListComponent;
 use crate::tui::layout::ComponentDescriptor;
 use crate::tui::layout_builder::LayoutBuilder;
+use crate::tui::state::AppState;
 
 pub trait AppLayoutBuilder {
     fn status_bar(self) -> Self;

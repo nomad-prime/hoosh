@@ -1,6 +1,6 @@
-use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
 use crate::tui::palette;
+use crate::tui::state::AppState;
 use ratatui::text::Span;
 use ratatui::{
     buffer::Buffer,

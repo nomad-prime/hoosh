@@ -1,6 +1,6 @@
 use super::*;
 use crate::tools::{CategoryPhrasing, ToolRender, phrasing};
-use crate::tui::app_state::{ActiveToolCall, ToolCallStatus};
+use crate::tui::state::{ActiveToolCall, ToolCallStatus};
 use std::time::Instant;
 
 fn call(display_name: &str, phrasing: CategoryPhrasing) -> ActiveToolCall {

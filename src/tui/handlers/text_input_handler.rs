@@ -1,6 +1,6 @@
-use crate::tui::app_state::AppState;
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::input_handler::InputHandler;
+use crate::tui::state::AppState;
 use async_trait::async_trait;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 

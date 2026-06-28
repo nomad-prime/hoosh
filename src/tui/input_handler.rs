@@ -1,5 +1,5 @@
-use crate::tui::app_state::AppState;
 use crate::tui::handler_result::KeyHandlerResult;
+use crate::tui::state::AppState;
 use crossterm::event::Event;
 
 #[async_trait::async_trait]

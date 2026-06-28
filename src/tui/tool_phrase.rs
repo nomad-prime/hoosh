@@ -1,4 +1,4 @@
-use super::app_state::ActiveToolCall;
+use super::state::ActiveToolCall;
 use crate::tools::CategoryPhrasing;
 
 fn capitalize_first(s: &str) -> String {

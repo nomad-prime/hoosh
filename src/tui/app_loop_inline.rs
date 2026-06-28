@@ -3,8 +3,8 @@ use crossterm::event;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use super::app_state::AppState;
 use super::message_renderer::MessageRenderer;
+use super::state::AppState;
 use crate::agent::AgentEvent;
 use crate::console::{VerbosityLevel, console};
 use crate::tui::actions::{answer, execute_command};

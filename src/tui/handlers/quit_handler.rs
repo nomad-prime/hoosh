@@ -1,6 +1,6 @@
-use crate::tui::app_state::AppState;
 use crate::tui::handler_result::KeyHandlerResult;
 use crate::tui::input_handler::InputHandler;
+use crate::tui::state::AppState;
 use async_trait::async_trait;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 
@@ -82,7 +82,7 @@ impl InputHandler for QuitHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::app_state::AppState;
+    use crate::tui::state::AppState;
     use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState};
 
     fn key(code: KeyCode, mods: KeyModifiers) -> Event {

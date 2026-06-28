@@ -1,8 +1,8 @@
 use crate::tools::todo_write::TodoStatus;
-use crate::tui::app_state::AppState;
 use crate::tui::colors::palette;
 use crate::tui::component::Component;
 use crate::tui::events::AgentState;
+use crate::tui::state::AppState;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

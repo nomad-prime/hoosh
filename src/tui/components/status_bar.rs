@@ -1,7 +1,7 @@
-use crate::tui::app_state::AppState;
 use crate::tui::component::Component;
 use crate::tui::events::AgentState;
 use crate::tui::palette;
+use crate::tui::state::AppState;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},

@@ -1,6 +1,6 @@
-use crate::tui::app_state::{AppState, PermissionOption};
 use crate::tui::component::Component;
 use crate::tui::palette;
+use crate::tui::state::{AppState, PermissionOption};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

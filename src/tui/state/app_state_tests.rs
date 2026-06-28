@@ -2,83 +2,6 @@ use super::*;
 use crate::tools::phrasing;
 
 #[test]
-fn completion_state_new_initializes_correctly() {
-    let state = CompletionState::new(0);
-    assert_eq!(state.selected_index, 0);
-    assert_eq!(state.scroll_offset, 0);
-    assert!(state.candidates.is_empty());
-    assert!(state.query.is_empty());
-    assert_eq!(state.completer_index, 0);
-}
-
-#[test]
-fn completion_state_selected_item_returns_none_when_empty() {
-    let state = CompletionState::new(0);
-    assert_eq!(state.selected_item(), None);
-}
-
-#[test]
-fn completion_state_selected_item_returns_correct_item() {
-    let mut state = CompletionState::new(0);
-    state.candidates = vec!["foo".to_string(), "bar".to_string()];
-    assert_eq!(state.selected_item(), Some("foo"));
-
-    state.selected_index = 1;
-    assert_eq!(state.selected_item(), Some("bar"));
-}
-
-#[test]
-fn completion_state_select_next_wraps_around() {
-    let mut state = CompletionState::new(0);
-    state.candidates = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-
-    state.select_next();
-    assert_eq!(state.selected_index, 1);
-
-    state.select_next();
-    assert_eq!(state.selected_index, 2);
-
-    state.select_next();
-    assert_eq!(state.selected_index, 0); // wraps
-}
-
-#[test]
-fn completion_state_select_prev_wraps_around() {
-    let mut state = CompletionState::new(0);
-    state.candidates = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-    state.selected_index = 0;
-
-    state.select_prev();
-    assert_eq!(state.selected_index, 2); // wraps to end
-
-    state.select_prev();
-    assert_eq!(state.selected_index, 1);
-}
-
-#[test]
-fn completion_state_select_next_empty_candidates() {
-    let mut state = CompletionState::new(0);
-    state.select_next();
-    assert_eq!(state.selected_index, 0);
-}
-
-#[test]
-fn completion_state_scroll_offset_updates_when_scrolling() {
-    let mut state = CompletionState::new(0);
-    state.candidates = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-    state.selected_index = 2;
-
-    state.update_scroll_offset(10);
-    assert_eq!(state.scroll_offset, 0);
-
-    // Test when selected_index would be out of view
-    state.selected_index = 15;
-    state.scroll_offset = 0;
-    state.update_scroll_offset(10);
-    assert_eq!(state.scroll_offset, 6); // 15 - (10 - 1) = 6
-}
-
-#[test]
 fn approval_dialog_new_initializes_correctly() {
     let dialog = ApprovalDialogState::new("call123".to_string(), "bash".to_string());
     assert_eq!(dialog.tool_call_id, "call123");
@@ -653,12 +576,118 @@ fn batch_completion_collapses_to_single_summary_in_scrollback() {
         state.update_tool_call_status(id, ToolCallStatus::Completed);
     }
     state.complete_active_tool_calls();
+    state.handle_agent_event(AgentEvent::FinalResponse("done".into()));
 
     let rendered = rendered_text(&mut state);
     assert!(rendered.contains("Read 3 files"), "got: {rendered}");
     assert!(rendered.contains("a.txt, b.txt, c.txt"), "got: {rendered}");
     assert!(!rendered.contains("Read(a.txt)"), "got: {rendered}");
     assert!(state.tools.active.is_empty());
+}
+
+fn complete_batch(state: &mut AppState, calls: &[(&str, &str, CategoryPhrasing)]) {
+    for (id, name, phrasing) in calls {
+        state.add_active_tool_call(
+            id.to_string(),
+            name.to_string(),
+            ToolRender::Standard,
+            *phrasing,
+        );
+        state.update_tool_call_status(id, ToolCallStatus::Completed);
+    }
+    state.complete_active_tool_calls();
+}
+
+#[test]
+fn consecutive_exploration_batches_coalesce_into_one_block() {
+    let mut state = AppState::new();
+    complete_batch(&mut state, &[("l1", "List(.)", phrasing::LIST)]);
+    complete_batch(
+        &mut state,
+        &[
+            ("r1", "Read(a.txt)", phrasing::READ),
+            ("r2", "Read(b.txt)", phrasing::READ),
+        ],
+    );
+    complete_batch(&mut state, &[("l2", "List(.hoosh)", phrasing::LIST)]);
+    state.handle_agent_event(AgentEvent::FinalResponse("summary".into()));
+
+    let rendered = rendered_text(&mut state);
+    assert!(
+        rendered.contains("Listed 2 directories, read 2 files"),
+        "got: {rendered}"
+    );
+    assert_eq!(rendered.matches('⎿').count(), 1, "got: {rendered}");
+    assert!(state.pending_exploration.is_empty());
+}
+
+#[test]
+fn stream_start_without_text_does_not_seal_run() {
+    let mut state = AppState::new();
+    complete_batch(&mut state, &[("l1", "List(.)", phrasing::LIST)]);
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    complete_batch(
+        &mut state,
+        &[
+            ("r1", "Read(a.txt)", phrasing::READ),
+            ("r2", "Read(b.txt)", phrasing::READ),
+        ],
+    );
+    state.handle_agent_event(AgentEvent::FinalResponse("done".into()));
+
+    let rendered = rendered_text(&mut state);
+    assert!(
+        rendered.contains("Listed 1 directory, read 2 files"),
+        "got: {rendered}"
+    );
+    assert_eq!(rendered.matches('⎿').count(), 1, "got: {rendered}");
+}
+
+#[test]
+fn text_delta_seals_pending_run() {
+    let mut state = AppState::new();
+    complete_batch(&mut state, &[("r1", "Read(a.txt)", phrasing::READ)]);
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("answer".into()));
+
+    assert!(state.pending_exploration.is_empty());
+    assert!(rendered_text(&mut state).contains("Read 1 file"));
+}
+
+#[test]
+fn exploration_run_is_deferred_until_sealed() {
+    let mut state = AppState::new();
+    complete_batch(&mut state, &[("r1", "Read(a.txt)", phrasing::READ)]);
+
+    assert!(rendered_text(&mut state).is_empty());
+    assert_eq!(state.pending_exploration.len(), 1);
+}
+
+#[test]
+fn non_exploration_batch_seals_prior_run_first() {
+    let mut state = AppState::new();
+    complete_batch(&mut state, &[("r1", "Read(a.txt)", phrasing::READ)]);
+    complete_batch(&mut state, &[("e1", "Edit(a.txt)", phrasing::EDIT)]);
+
+    let rendered = rendered_text(&mut state);
+    let read_at = rendered
+        .find("Read 1 file")
+        .expect("read summary committed");
+    let edit_at = rendered.find("Edit(a.txt)").expect("edit rendered");
+    assert!(
+        read_at < edit_at,
+        "exploration must seal before edit: {rendered}"
+    );
+}
+
+#[test]
+fn expanded_view_opts_out_of_coalescing() {
+    let mut state = AppState::new();
+    state.tools.expanded = true;
+    complete_batch(&mut state, &[("r1", "Read(a.txt)", phrasing::READ)]);
+
+    assert!(rendered_text(&mut state).contains("Read(a.txt)"));
+    assert!(state.pending_exploration.is_empty());
 }
 
 #[test]

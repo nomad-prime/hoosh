@@ -1,7 +1,7 @@
 use crate::tui::app_layout_builder::AppLayoutBuilder;
-use crate::tui::app_state::AppState;
 use crate::tui::layout::Layout;
 use crate::tui::layout_builder::LayoutBuilder;
+use crate::tui::state::AppState;
 
 pub trait AppLayout {
     fn create(app: &AppState, terminal_width: u16, terminal_height: u16) -> Self;

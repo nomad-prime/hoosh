@@ -5,9 +5,9 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 
-use super::app_state::AppState;
-use super::app_state::MessageLine;
 use super::message_renderer::MessageRenderer;
+use super::state::AppState;
+use super::state::MessageLine;
 use crate::agent::AgentEvent;
 use crate::console::{VerbosityLevel, console};
 use crate::tui::actions::{answer, execute_command};
