@@ -59,6 +59,7 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     message_renderer: &MessageRenderer,
 ) -> Result<()> {
+    app.streaming.advance_reveal();
     app.flush_streaming_to_scrollback(terminal.size()?.width);
     message_renderer.render_pending_messages(app, terminal)?;
 

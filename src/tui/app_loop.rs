@@ -114,6 +114,7 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     message_renderer: &MessageRenderer,
 ) -> Result<()> {
+    app.streaming.advance_reveal();
     message_renderer.render_pending_messages(app, terminal)?;
 
     let terminal_width = terminal.get_viewport_area().width;

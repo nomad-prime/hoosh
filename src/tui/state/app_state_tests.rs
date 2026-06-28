@@ -162,6 +162,7 @@ fn visible_streaming_text_shows_partial_trailing_line() {
     let mut state = AppState::new();
     state.handle_agent_event(AgentEvent::StreamStarted);
     state.handle_agent_event(AgentEvent::TextDelta("line one\npartial".into()));
+    state.streaming.reveal_all();
     assert_eq!(state.visible_streaming_text(), Some("line one\npartial"));
 }
 
@@ -170,6 +171,7 @@ fn visible_streaming_text_shows_text_before_first_newline() {
     let mut state = AppState::new();
     state.handle_agent_event(AgentEvent::StreamStarted);
     state.handle_agent_event(AgentEvent::TextDelta("no newline yet".into()));
+    state.streaming.reveal_all();
     assert_eq!(state.visible_streaming_text(), Some("no newline yet"));
 }
 
@@ -644,11 +646,64 @@ fn stream_start_without_text_does_not_seal_run() {
 }
 
 #[test]
-fn text_delta_seals_pending_run() {
+fn transient_text_delta_does_not_seal_run() {
     let mut state = AppState::new();
+    state.streaming.to_scrollback = true;
     complete_batch(&mut state, &[("r1", "Read(a.txt)", phrasing::READ)]);
     state.handle_agent_event(AgentEvent::StreamStarted);
-    state.handle_agent_event(AgentEvent::TextDelta("answer".into()));
+    state.handle_agent_event(AgentEvent::TextDelta("let me read those".into()));
+    state.streaming.reveal_all();
+    state.flush_streaming_to_scrollback(80);
+
+    assert_eq!(state.pending_exploration.len(), 1);
+}
+
+#[test]
+fn streaming_table_is_held_until_block_completes() {
+    let mut state = AppState::new();
+    state.streaming.to_scrollback = true;
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta(
+        "| A | B |\n|---|---|\n| 1 | 2 |".into(),
+    ));
+    state.streaming.reveal_all();
+    state.flush_streaming_to_scrollback(80);
+    assert!(
+        rendered_text(&mut state).trim().is_empty(),
+        "incomplete table must not commit"
+    );
+
+    state.handle_agent_event(AgentEvent::TextDelta("\n\ndone".into()));
+    state.streaming.reveal_all();
+    state.flush_streaming_to_scrollback(80);
+    let out = rendered_text(&mut state);
+    assert!(out.contains('A') && out.contains('B'), "got: {out}");
+}
+
+#[test]
+fn streamed_preamble_commits_before_next_turn() {
+    let mut state = AppState::new();
+    state.streaming.to_scrollback = true;
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("let me look".into()));
+    state.handle_agent_event(AgentEvent::AssistantThought("let me look".into()));
+    state.streaming.advance_reveal();
+    state.flush_streaming_to_scrollback(80);
+    state.handle_agent_event(AgentEvent::StreamStarted);
+
+    assert!(rendered_text(&mut state).contains("let me look"));
+}
+
+#[test]
+fn committed_stream_seals_pending_run() {
+    let mut state = AppState::new();
+    state.streaming.to_scrollback = true;
+    complete_batch(&mut state, &[("r1", "Read(a.txt)", phrasing::READ)]);
+    state.handle_agent_event(AgentEvent::StreamStarted);
+    state.handle_agent_event(AgentEvent::TextDelta("the answer".into()));
+    state.streaming.finalize = true;
+    state.streaming.reveal_all();
+    state.flush_streaming_to_scrollback(80);
 
     assert!(state.pending_exploration.is_empty());
     assert!(rendered_text(&mut state).contains("Read 1 file"));

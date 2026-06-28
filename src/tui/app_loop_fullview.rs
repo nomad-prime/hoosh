@@ -98,6 +98,7 @@ fn render_frame(
     terminal: &mut HooshTerminal,
     _message_renderer: &MessageRenderer,
 ) -> Result<()> {
+    app.streaming.advance_reveal();
     let has_pending = app.has_pending_messages();
     let _ = app.drain_pending_messages();
 

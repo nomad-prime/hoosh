@@ -17,6 +17,9 @@ impl Component for ActiveToolCallsComponent {
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
         if state.tools.active.is_empty() {
+            if !state.pending_exploration.is_empty() {
+                self.render_pending_exploration(state, area, buf);
+            }
             return;
         }
 
@@ -103,6 +106,27 @@ impl Component for ActiveToolCallsComponent {
 }
 
 impl ActiveToolCallsComponent {
+    fn render_pending_exploration(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
+        let calls = &state.pending_exploration;
+        let sweep = glyphs::TOOL_EXECUTING_SWEEP;
+        let frame = sweep[state.animation.frame % sweep.len()];
+
+        let summary = Line::from(vec![
+            Span::styled(frame, Style::default().fg(palette::TOOL_STATUS_EXECUTING)),
+            Span::raw(" "),
+            Span::raw(format!("{}… ", completed_phrase(calls))),
+        ]);
+
+        let targets = truncate_targets(&target_basenames(calls), area.width as usize);
+        let detail = Line::from(vec![
+            Span::raw("  "),
+            Span::styled("⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
+            Span::styled(targets, Style::default().fg(palette::SECONDARY_TEXT)),
+        ]);
+
+        Paragraph::new(vec![summary, detail, Line::from("")]).render(area, buf);
+    }
+
     fn render_collapsed(&self, state: &AppState, area: Rect, buf: &mut Buffer) {
         let calls = &state.tools.active;
         let all_done = calls.iter().all(|tc| {

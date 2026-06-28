@@ -13,8 +13,12 @@ impl AppLayout for Layout<AppState> {
             || app.is_showing_approval_dialog()
             || app.is_completing();
 
-        let active_tool_calls_visible = !app.tools.active.is_empty();
-        let active_tool_calls_height = if app.tool_calls_collapsed() {
+        let pending_exploration_only =
+            app.tools.active.is_empty() && !app.pending_exploration.is_empty();
+        let active_tool_calls_visible = !app.tools.active.is_empty() || pending_exploration_only;
+        let active_tool_calls_height = if pending_exploration_only {
+            3
+        } else if app.tool_calls_collapsed() {
             2
         } else {
             app.tools.active.iter().fold(0u16, |acc, tc| {

@@ -74,6 +74,18 @@ pub fn format_tool_continuation(content: &str) -> String {
     format!("  ⎿ {}", content)
 }
 
+fn hold_unfinished_block(text: &str) -> String {
+    let boundary = text.rfind("\n\n").map(|i| i + 2).unwrap_or(0);
+    let tail = &text[boundary..];
+    let unfinished = tail.lines().any(|l| l.trim_start().starts_with('|'))
+        || tail.matches("```").count() % 2 == 1;
+    if unfinished {
+        text[..boundary].to_string()
+    } else {
+        text.to_string()
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         let mut input = TextArea::default();
@@ -596,7 +608,6 @@ impl AppState {
     }
 
     fn on_text_delta(&mut self, delta: String) {
-        self.seal_exploration_run();
         self.streaming.push_delta(&delta);
     }
 
@@ -802,21 +813,33 @@ impl AppState {
         if !self.streaming.to_scrollback {
             return;
         }
-        let Some(text) = self.streaming.text.clone() else {
+        if self.streaming.text.is_none() {
             return;
+        }
+        let full = self.streaming.revealed_slice().to_string();
+        let finalize = self.streaming.finalize && self.streaming.revealed_complete();
+
+        let render_src = if finalize {
+            full.clone()
+        } else {
+            hold_unfinished_block(&full)
         };
-        let finalize = self.streaming.finalize;
-        if text.trim().is_empty() && !finalize {
+        let keep_last = !finalize && render_src.len() == full.len();
+        if render_src.trim().is_empty() && !finalize {
             return;
         }
 
         let rendered = crate::tui::message_renderer::MessageRenderer::new()
-            .markdown_to_wrapped_lines(&text, width.max(1) as usize);
-        let stable = if finalize {
-            rendered.len()
-        } else {
+            .markdown_to_wrapped_lines(&render_src, width.max(1) as usize);
+        let stable = if keep_last {
             rendered.len().saturating_sub(1)
+        } else {
+            rendered.len()
         };
+
+        if stable > self.streaming.committed {
+            self.seal_exploration_run();
+        }
 
         if self.streaming.committed == 0 && stable > 0 {
             self.add_message_line(MessageLine::Plain(String::new()));
