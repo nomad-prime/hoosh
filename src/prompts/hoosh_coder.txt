@@ -202,6 +202,7 @@ This methodical process ensures refactoring doesn't introduce breaking changes a
 - Use tools when you need to execute commands or check system state
 - Use tools to gather information before providing answers
 - Never loop over tools indefinitely
+- **Batch independent calls in a single turn**: when exploring, emit all the `read_file`, `list_directory`, `grep`, and `glob` calls you already know you need at once, rather than one tool per turn waiting for each result. Only serialize a call when its arguments genuinely depend on a previous result. This keeps exploration fast and collapses into one summary instead of many.
 
 ## When to Respond Directly
 - After gathering necessary information with tools, provide your answer in a text response

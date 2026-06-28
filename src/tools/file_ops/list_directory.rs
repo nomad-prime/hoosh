@@ -239,7 +239,13 @@ impl Tool for ListDirectoryTool {
         }
 
         if file_count > 0 || dir_count > 0 {
-            format!("Found {} files, {} directories", file_count, dir_count)
+            let files = if file_count == 1 { "file" } else { "files" };
+            let dirs = if dir_count == 1 {
+                "directory"
+            } else {
+                "directories"
+            };
+            format!("Found {} {}, {} {}", file_count, files, dir_count, dirs)
         } else {
             "Listed directory contents".to_string()
         }
@@ -315,7 +321,14 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(tool.result_summary(&result), "Found 2 files, 1 directories");
+        assert_eq!(tool.result_summary(&result), "Found 2 files, 1 directory");
+    }
+
+    #[test]
+    fn result_summary_singularizes_single_counts() {
+        let tool = ListDirectoryTool::new();
+        let result = "Contents of .:\n  sub/\n  only.txt\n";
+        assert_eq!(tool.result_summary(result), "Found 1 file, 1 directory");
     }
 
     #[test]
