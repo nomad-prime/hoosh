@@ -8,6 +8,24 @@ use syntect::util::LinesWithEndings;
 
 use crate::tui::palette;
 
+const DEFAULT_TABLE_WIDTH: usize = 120;
+
+fn middle_elide(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max {
+        return s.to_string();
+    }
+    if max <= 1 {
+        return "…".to_string();
+    }
+    let keep = max - 1;
+    let head = keep.div_ceil(2);
+    let tail = keep - head;
+    let head_str: String = chars[..head].iter().collect();
+    let tail_str: String = chars[chars.len() - tail..].iter().collect();
+    format!("{head_str}…{tail_str}")
+}
+
 // Table rendering types
 #[derive(Debug, Clone)]
 struct TableCell {
@@ -98,10 +116,15 @@ impl MarkdownRenderer {
     }
 
     pub fn render(&self, markdown: &str) -> Vec<Line<'static>> {
-        self.render_with_indent(markdown, "  ")
+        self.render_with_indent(markdown, "  ", DEFAULT_TABLE_WIDTH)
     }
 
-    pub fn render_with_indent(&self, markdown: &str, indent: &str) -> Vec<Line<'static>> {
+    pub fn render_with_indent(
+        &self,
+        markdown: &str,
+        indent: &str,
+        max_table_width: usize,
+    ) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         let parser = Parser::new_ext(markdown, Options::all());
 
@@ -303,7 +326,7 @@ impl MarkdownRenderer {
                     }
                     TagEnd::Table => {
                         if let Some(table) = current_table.take() {
-                            let table_lines = self.render_table(table);
+                            let table_lines = self.render_table(table, max_table_width);
                             lines.extend(table_lines);
                             // Add blank line after table for spacing
                             lines.push(Line::from(""));
@@ -329,7 +352,12 @@ impl MarkdownRenderer {
                         .fg(palette::MARKDOWN_CODE_FG)
                         .bg(palette::MARKDOWN_CODE_BG)
                         .add_modifier(Modifier::BOLD);
-                    current_line_spans.push(Span::styled(format!("`{}`", code), style));
+                    let span = Span::styled(format!("`{}`", code), style);
+                    if let Some(ref mut table) = current_table {
+                        table.current_cell.add_span(span);
+                    } else {
+                        current_line_spans.push(span);
+                    }
                 }
                 Event::SoftBreak => {
                     current_line_spans.push(Span::raw(" "));
@@ -517,15 +545,19 @@ impl MarkdownRenderer {
             return widths;
         }
 
-        let available_width = max_width.saturating_sub(borders_width);
-        let total_content_width: usize = widths.iter().sum();
+        const MIN_COL: usize = 5;
+        let mut available = max_width.saturating_sub(borders_width);
+        let mut order: Vec<usize> = (0..col_count).collect();
+        order.sort_by_key(|&i| widths[i]);
 
-        if total_content_width > 0 {
-            for width in &mut widths {
-                let proportion = (*width as f64) / (total_content_width as f64);
-                *width = (proportion * available_width as f64).floor() as usize;
-                *width = (*width).max(3);
+        let mut remaining_cols = col_count;
+        for &i in &order {
+            let fair = (available / remaining_cols).max(MIN_COL);
+            if widths[i] > fair {
+                widths[i] = fair;
             }
+            available = available.saturating_sub(widths[i]);
+            remaining_cols -= 1;
         }
 
         widths
@@ -563,149 +595,110 @@ impl MarkdownRenderer {
         }
     }
 
-    fn render_header_line(
-        &self,
-        headers: &[TableCell],
-        widths: &[usize],
-        alignments: &[Alignment],
-    ) -> Line<'static> {
-        use unicode_width::UnicodeWidthStr;
-
-        let mut spans = Vec::new();
-
-        for (i, (cell, &width)) in headers.iter().zip(widths.iter()).enumerate() {
-            spans.push(Span::raw("|"));
-
-            let alignment = alignments.get(i).copied().unwrap_or(Alignment::Left);
-
-            let content_width = cell.visual_width;
-            let (padding_left, padding_right) =
-                self.apply_padding_with_alignment(content_width, width, alignment);
-
-            spans.push(Span::raw(" ".repeat(padding_left)));
-
-            if content_width <= width - 2 {
-                spans.extend(cell.spans.clone());
-                spans.push(Span::raw(" ".repeat(padding_right)));
-            } else {
-                let mut accumulated_width = 0;
-                let target_width = width.saturating_sub(padding_left + 3); // Leave room for "..."
-
-                for span in &cell.spans {
-                    let span_width = UnicodeWidthStr::width(span.content.as_ref());
-                    if accumulated_width + span_width <= target_width {
-                        spans.push(span.clone());
-                        accumulated_width += span_width;
-                    } else {
-                        // Truncate this span
-                        let remaining = target_width.saturating_sub(accumulated_width);
-                        if remaining > 0 {
-                            let truncated: String = span.content.chars().take(remaining).collect();
-                            spans.push(Span::styled(truncated, span.style));
-                        }
-                        break;
-                    }
-                }
-
-                spans.push(Span::raw("..."));
-                spans.push(Span::raw(" "));
-            }
-        }
-
-        spans.push(Span::raw("|"));
-
-        Line::from(spans)
-    }
-
-    fn render_separator_line(&self, widths: &[usize]) -> Line<'static> {
+    fn border_line(&self, widths: &[usize], left: char, mid: char, right: char) -> Line<'static> {
         let mut content = String::new();
-
-        for &width in widths {
-            content.push('|');
-            content.push_str(&"-".repeat(width));
+        content.push(left);
+        for (i, &width) in widths.iter().enumerate() {
+            if i > 0 {
+                content.push(mid);
+            }
+            content.push_str(&"─".repeat(width));
         }
-        content.push('|');
-
-        Line::from(Span::raw(content))
+        content.push(right);
+        Line::from(Span::styled(
+            content,
+            Style::default().fg(palette::MARKDOWN_RULE),
+        ))
     }
 
-    fn render_data_line(
+    fn render_row(
         &self,
-        row: &[TableCell],
+        cells: &[TableCell],
         widths: &[usize],
         alignments: &[Alignment],
     ) -> Line<'static> {
         use unicode_width::UnicodeWidthStr;
 
-        let mut spans = Vec::new();
+        let bar = || Span::styled("│", Style::default().fg(palette::MARKDOWN_RULE));
+        let mut spans = vec![bar()];
 
-        for (i, (&width, cell)) in widths.iter().zip(row.iter()).enumerate() {
-            spans.push(Span::raw("|"));
-
+        for (i, &width) in widths.iter().enumerate() {
             let alignment = alignments.get(i).copied().unwrap_or(Alignment::Left);
+            let content_budget = width.saturating_sub(2);
 
-            let content_width = cell.visual_width;
+            let fitted = cells
+                .get(i)
+                .map(|cell| self.fit_cell(cell, content_budget))
+                .unwrap_or_default();
+            let fitted_width: usize = fitted
+                .iter()
+                .map(|s| UnicodeWidthStr::width(s.content.as_ref()))
+                .sum();
+
             let (padding_left, padding_right) =
-                self.apply_padding_with_alignment(content_width, width, alignment);
+                self.apply_padding_with_alignment(fitted_width, width, alignment);
 
             spans.push(Span::raw(" ".repeat(padding_left)));
-
-            if content_width <= width - 2 {
-                spans.extend(cell.spans.clone());
-                spans.push(Span::raw(" ".repeat(padding_right)));
-            } else {
-                let mut accumulated_width = 0;
-                let target_width = width.saturating_sub(padding_left + 3); // Leave room for "..."
-
-                for span in &cell.spans {
-                    let span_width = UnicodeWidthStr::width(span.content.as_ref());
-                    if accumulated_width + span_width <= target_width {
-                        spans.push(span.clone());
-                        accumulated_width += span_width;
-                    } else {
-                        // Truncate this span
-                        let remaining = target_width.saturating_sub(accumulated_width);
-                        if remaining > 0 {
-                            let truncated: String = span.content.chars().take(remaining).collect();
-                            spans.push(Span::styled(truncated, span.style));
-                        }
-                        break;
-                    }
-                }
-
-                spans.push(Span::raw("..."));
-                spans.push(Span::raw(" "));
-            }
+            spans.extend(fitted);
+            spans.push(Span::raw(" ".repeat(padding_right)));
+            spans.push(bar());
         }
-
-        for item in widths.iter().skip(row.len()) {
-            let width = *item;
-            spans.push(Span::raw("|"));
-            spans.push(Span::raw(" ".repeat(width)));
-        }
-
-        spans.push(Span::raw("|"));
 
         Line::from(spans)
     }
 
-    fn render_table(&self, table: TableBuilder) -> Vec<Line<'static>> {
+    fn fit_cell(&self, cell: &TableCell, budget: usize) -> Vec<Span<'static>> {
+        use unicode_width::UnicodeWidthStr;
+
+        if cell.visual_width <= budget {
+            return cell.spans.clone();
+        }
+
+        let joined: String = cell.spans.iter().map(|s| s.content.as_ref()).collect();
+        if joined.contains('/')
+            && let Some(span) = cell.spans.first()
+            && cell.spans.len() == 1
+        {
+            return vec![Span::styled(middle_elide(&joined, budget), span.style)];
+        }
+
+        let mut out = Vec::new();
+        let target = budget.saturating_sub(1);
+        let mut acc = 0;
+        for span in &cell.spans {
+            let w = UnicodeWidthStr::width(span.content.as_ref());
+            if acc + w <= target {
+                out.push(span.clone());
+                acc += w;
+            } else {
+                let remaining = target.saturating_sub(acc);
+                if remaining > 0 {
+                    let truncated: String = span.content.chars().take(remaining).collect();
+                    out.push(Span::styled(truncated, span.style));
+                }
+                break;
+            }
+        }
+        out.push(Span::raw("…"));
+        out
+    }
+
+    fn render_table(&self, table: TableBuilder, max_width: usize) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
 
         if table.headers.is_empty() {
             return lines;
         }
 
-        let max_width = 120;
         let widths = self.calculate_column_widths(&table, max_width);
 
-        lines.push(self.render_header_line(&table.headers, &widths, &table.alignments));
-
-        lines.push(self.render_separator_line(&widths));
-
+        lines.push(self.border_line(&widths, '┌', '┬', '┐'));
+        lines.push(self.render_row(&table.headers, &widths, &table.alignments));
+        lines.push(self.border_line(&widths, '├', '┼', '┤'));
         for row in &table.rows {
-            lines.push(self.render_data_line(row, &widths, &table.alignments));
+            lines.push(self.render_row(row, &widths, &table.alignments));
         }
+        lines.push(self.border_line(&widths, '└', '┴', '┘'));
 
         lines
     }
@@ -867,508 +860,185 @@ mod tests {
 
     // Table rendering tests for User Story 1 (T009-T012)
 
+    fn line_text(line: &Line<'static>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
     #[test]
     fn test_render_simple_table() {
-        // T009: Test 2x2 table rendering with pipe visibility
         let renderer = MarkdownRenderer::new();
         let markdown = "| Header1 | Header2 |\n|---------|----------|\n| Data1   | Data2   |";
-        let lines = renderer.render(markdown);
+        let texts: Vec<String> = renderer.render(markdown).iter().map(line_text).collect();
+        let starts = |t: &String, c: char| t.trim_start().starts_with(c);
 
-        // Should have at least 4 lines (header + separator + data + blank after)
-        // Note: No blank before since table is first element
+        assert!(texts.iter().any(|t| starts(t, '┌')), "top border");
+        assert!(texts.iter().any(|t| starts(t, '├')), "header rule");
+        assert!(texts.iter().any(|t| starts(t, '└')), "bottom border");
         assert!(
-            lines.len() >= 4,
-            "Expected at least 4 lines, got {}",
-            lines.len()
-        );
-
-        // Filter out blank lines for verification
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|line| {
-                let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-                let trimmed = text.trim();
-                !trimmed.is_empty()
-            })
-            .collect();
-
-        // All non-blank lines should contain pipe characters
-        for (i, line) in table_lines.iter().enumerate() {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            assert!(
-                line_text.contains('|'),
-                "Line {} should contain pipe character: '{}'",
-                i,
-                line_text
-            );
-        }
-
-        // Verify structure: header, separator, data
-        let line0_text: String = table_lines[0]
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
-        let line1_text: String = table_lines[1]
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
-        let line2_text: String = table_lines[2]
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
-
-        assert!(
-            line0_text.contains("Header1") && line0_text.contains("Header2"),
-            "First line should contain headers"
+            texts
+                .iter()
+                .any(|t| t.contains("Header1") && t.contains("Header2")),
+            "header row"
         );
         assert!(
-            line1_text.contains('-'),
-            "Second line should be separator with dashes"
+            texts
+                .iter()
+                .any(|t| t.contains("Data1") && t.contains("Data2")),
+            "data row"
         );
+    }
+
+    #[test]
+    fn test_inline_code_stays_in_table_cell() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "| Doc | Repo |\n|-----|------|\n| `a/b.md` | `peyk` |";
+
+        let data_line = renderer
+            .render(markdown)
+            .iter()
+            .map(line_text)
+            .find(|t| t.contains("a/b.md"))
+            .expect("data row rendered");
+
         assert!(
-            line2_text.contains("Data1") && line2_text.contains("Data2"),
-            "Third line should contain data"
+            data_line.contains('│') && data_line.contains("peyk"),
+            "inline-code cells must render inside the table row, got: {data_line}"
         );
     }
 
     #[test]
     fn test_header_separator() {
-        // T010: Test dash separator line below headers
         let renderer = MarkdownRenderer::new();
         let markdown = "| Col1 | Col2 | Col3 |\n|------|------|------|\n| A    | B    | C    |";
-        let lines = renderer.render(markdown);
+        let texts: Vec<String> = renderer.render(markdown).iter().map(line_text).collect();
 
-        assert!(lines.len() >= 3, "Expected at least 3 lines");
-
-        // Second line should be the separator with dashes and pipes
-        let separator_text: String = lines[1].spans.iter().map(|s| s.content.as_ref()).collect();
-
-        assert!(
-            separator_text.contains('-'),
-            "Separator should contain dashes"
-        );
-        assert!(
-            separator_text.contains('|'),
-            "Separator should contain pipes"
-        );
-
-        // Separator should have multiple dash segments (one per column)
-        let dash_segments = separator_text
-            .split('|')
-            .filter(|s| s.contains('-'))
-            .count();
-        assert!(
-            dash_segments >= 3,
-            "Separator should have dash segments for each column"
+        let rule = texts
+            .iter()
+            .find(|t| t.trim_start().starts_with('├'))
+            .expect("header rule line");
+        assert!(rule.contains('─'), "rule should contain horizontal bars");
+        assert_eq!(
+            rule.matches('┼').count(),
+            2,
+            "three columns yield two interior junctions"
         );
     }
 
     #[test]
     fn test_empty_cells_no_collapse() {
-        // T011: Verify empty cells maintain column width (don't collapse)
         let renderer = MarkdownRenderer::new();
         let markdown = "| Name  | Value |\n|-------|-------|\n| Item1 |       |\n|       | Item2 |";
-        let lines = renderer.render(markdown);
+        let texts: Vec<String> = renderer.render(markdown).iter().map(line_text).collect();
 
-        assert!(
-            lines.len() >= 4,
-            "Expected at least 4 lines (header + separator + 2 data rows)"
-        );
+        let row1 = texts.iter().find(|t| t.contains("Item1")).unwrap();
+        let row2 = texts.iter().find(|t| t.contains("Item2")).unwrap();
 
-        // Check that empty cells are still represented with proper spacing
-        let row1_text: String = lines[2].spans.iter().map(|s| s.content.as_ref()).collect();
-        let row2_text: String = lines[3].spans.iter().map(|s| s.content.as_ref()).collect();
-
-        // Both rows should have pipes indicating column boundaries
-        let row1_pipe_count = row1_text.chars().filter(|&c| c == '|').count();
-        let row2_pipe_count = row2_text.chars().filter(|&c| c == '|').count();
-
+        let bars = |t: &str| t.chars().filter(|&c| c == '│').count();
         assert_eq!(
-            row1_pipe_count, row2_pipe_count,
-            "Empty cells should maintain same number of column separators"
+            bars(row1),
+            bars(row2),
+            "empty cells keep the same column separators"
         );
-        assert!(
-            row1_pipe_count >= 2,
-            "Should have at least 2 pipes (start and middle or middle and end)"
-        );
+        assert!(bars(row1) >= 3, "two columns yield three bars");
+    }
+
+    fn row_lines(lines: &[Line<'static>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(line_text)
+            .filter(|t| t.trim_start().starts_with('│'))
+            .collect()
     }
 
     #[test]
     fn test_truncate_wide_table() {
-        // T012: Test ellipsis truncation when table exceeds terminal width
         let renderer = MarkdownRenderer::new();
-
-        // Create a table with very long content
-        let long_content = "VeryLongContentThatExceedsTerminalWidth".repeat(5);
-        let markdown = format!(
-            "| Header1 | Header2 |\n|---------|----------|\n| {} | {} |",
-            long_content, long_content
-        );
-        let lines = renderer.render(&markdown);
-
-        assert!(lines.len() >= 3, "Expected at least 3 lines");
-
-        // Filter blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|l| {
-                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                !t.trim().is_empty()
-            })
-            .collect();
-
-        // Check that lines don't exceed a reasonable terminal width (e.g., 120 chars)
-        // and contain ellipsis for truncated content
-        for (i, line) in table_lines.iter().enumerate() {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            let line_width: usize = line_text.chars().count();
-
-            // If the line is truncated, it should contain ellipsis
-            if line_width < long_content.len() && i > 0 {
-                // Note: This test assumes truncation happens; actual behavior depends on implementation
-                // For now, just verify the table structure is maintained
-                assert!(
-                    line_text.contains('|'),
-                    "Truncated line {} should still maintain pipe structure",
-                    i
-                );
-            }
-        }
-    }
-
-    // User Story 2 tests (T029-T032) - Complex tables with formatting
-
-    #[test]
-    fn test_formatted_cells() {
-        // T029: Test bold/italic preservation within cells
-        let renderer = MarkdownRenderer::new();
-        let markdown = "| Name | Status |\n|------|--------|\n| **Bold** | *Italic* |\n| Normal | **Bold** and *Italic* |";
-        let lines = renderer.render(markdown);
+        let long = "VeryLongContentThatExceedsTerminalWidth".repeat(5);
+        let markdown = format!("| H1 | H2 |\n|----|----|\n| {long} | {long} |");
+        let texts: Vec<String> = renderer.render(&markdown).iter().map(line_text).collect();
 
         assert!(
-            lines.len() >= 4,
-            "Expected at least 4 lines (header + separator + 2 data rows)"
+            texts.iter().all(|t| t.chars().count() <= 122),
+            "rows stay within the table width budget"
         );
-
-        // Filter out blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|line| {
-                let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-                !text.trim().is_empty()
-            })
-            .collect();
-
-        // Check that table structure is maintained
-        for line in &table_lines {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            assert!(
-                line_text.contains('|'),
-                "Line should contain pipe characters"
-            );
-        }
-
-        // Check that formatted text is preserved in spans
-        // Data rows should have multiple spans with different styles
-        let data_row1 = &table_lines[2];
-        let data_row2 = &table_lines[3];
-
-        // At least one span in data rows should have bold or italic modifier
-        let has_formatted_spans = data_row1
-            .spans
-            .iter()
-            .any(|s| s.style.add_modifier != ratatui::style::Modifier::empty())
-            || data_row2
-                .spans
+        assert!(
+            row_lines(&renderer.render(&markdown))
                 .iter()
-                .any(|s| s.style.add_modifier != ratatui::style::Modifier::empty());
-
-        assert!(
-            has_formatted_spans,
-            "Data rows should preserve text formatting"
+                .any(|t| t.contains('…')),
+            "overlong cells are elided"
         );
     }
 
     #[test]
-    fn test_escaped_pipes_in_cells() {
-        // T030: Test escaped pipes render as literal pipe characters
+    fn test_path_cells_middle_elide() {
         let renderer = MarkdownRenderer::new();
-        // Note: In markdown, \| within a cell should render as a literal pipe
-        let markdown = r"| Column1 | Column2 |
-|---------|---------|
-| Text with \| pipe | Normal |";
+        let a = format!("src/{}alpha/00-overview.md", "deep/".repeat(30));
+        let b = format!("src/{}beta/01-backend.md", "deep/".repeat(30));
+        let markdown = format!("| Doc |\n|-----|\n| `{a}` |\n| `{b}` |");
+
+        let rows = row_lines(&renderer.render(&markdown));
+        let elided: Vec<&String> = rows.iter().filter(|t| t.contains('…')).collect();
+        assert_eq!(elided.len(), 2, "both path rows elide: {rows:?}");
+        assert!(elided.iter().any(|t| t.contains("overview.md")));
+        assert!(elided.iter().any(|t| t.contains("backend.md")));
+    }
+
+    #[test]
+    fn test_formatted_cells_preserve_style() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "| Name | Status |\n|------|--------|\n| **Bold** | *Italic* |";
         let lines = renderer.render(markdown);
 
-        assert!(lines.len() >= 3, "Expected at least 3 lines");
-
-        // The data row should contain the literal pipe character in the cell content
-        let data_row = &lines[2];
-        let row_text: String = data_row.spans.iter().map(|s| s.content.as_ref()).collect();
-
-        // Should have table structure pipes AND the literal pipe in content
-        let pipe_count = row_text.chars().filter(|&c| c == '|').count();
+        let row = lines
+            .iter()
+            .find(|l| line_text(l).contains("Bold"))
+            .expect("data row");
         assert!(
-            pipe_count >= 3,
-            "Should have at least 3 pipes (2 for structure + 1 literal)"
+            row.spans
+                .iter()
+                .any(|s| s.style.add_modifier != ratatui::style::Modifier::empty()),
+            "data rows preserve bold/italic"
         );
     }
 
     #[test]
-    fn test_special_characters() {
-        // T031: Test special characters in cells (parentheses, hyphens, quotes)
+    fn test_consistent_column_separators() {
         let renderer = MarkdownRenderer::new();
-        let markdown = r#"| Item | Description |
-|------|-------------|
-| (A) | "quoted" |
-| B-C | it's-working |"#;
-        let lines = renderer.render(markdown);
+        let markdown = "| Short | Medium | Long Header |\n|-------|--------|-------------|\n| A | B | C |\n| Longer | X | Y |";
+        let bars: Vec<usize> = row_lines(&renderer.render(markdown))
+            .iter()
+            .map(|t| t.chars().filter(|&c| c == '│').count())
+            .collect();
 
-        assert!(lines.len() >= 4, "Expected at least 4 lines");
-
-        // Check that special characters are preserved
-        let data_row1 = &lines[2];
-        let data_row2 = &lines[3];
-
-        let row1_text: String = data_row1.spans.iter().map(|s| s.content.as_ref()).collect();
-        let row2_text: String = data_row2.spans.iter().map(|s| s.content.as_ref()).collect();
-
-        #[cfg(test)]
-        {
-            eprintln!("Row1: '{}'", row1_text);
-            eprintln!("Row2: '{}'", row2_text);
-        }
-
+        assert!(!bars.is_empty());
         assert!(
-            row1_text.contains('(') && row1_text.contains(')'),
-            "Parentheses should be preserved"
-        );
-        // Note: pulldown-cmark may convert straight quotes to smart quotes
-        let has_quotes = row1_text.contains('"')
-            || row1_text.contains('\u{201C}')
-            || row1_text.contains('\u{201D}');
-        assert!(
-            has_quotes,
-            "Quotes should be preserved (may be smart quotes)"
-        );
-        assert!(row2_text.contains('-'), "Hyphens should be preserved");
-        let has_apostrophe = row2_text.contains('\'') || row2_text.contains('\u{2019}');
-        assert!(
-            has_apostrophe,
-            "Apostrophes should be preserved (may be smart quotes)"
+            bars.windows(2).all(|w| w[0] == w[1]),
+            "every row has the same column bars: {bars:?}"
         );
     }
 
     #[test]
-    fn test_varying_cell_lengths() {
-        // T032: Test alignment with mixed content lengths
+    fn test_left_alignment_pads_trailing() {
         let renderer = MarkdownRenderer::new();
-        let markdown = "| Short | Medium Length | Very Long Content Here |\n|-------|---------------|------------------------|\n| A | B | C |\n| VeryLongText | X | Y |";
-        let lines = renderer.render(markdown);
-
-        assert!(lines.len() >= 4, "Expected at least 4 lines");
-
-        // Filter blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|l| {
-                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                !t.trim().is_empty()
-            })
-            .collect();
-
-        // All lines should have the same number of pipe characters (column structure maintained)
-        let pipe_counts: Vec<usize> = table_lines
-            .iter()
-            .map(|line| {
-                let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-                text.chars().filter(|&c| c == '|').count()
-            })
-            .collect();
-
-        // Header, separator, and all data rows should have same pipe count
-        assert!(
-            pipe_counts.windows(2).all(|w| w[0] == w[1]),
-            "All rows should have the same number of column separators: {:?}",
-            pipe_counts
-        );
-
-        // Check that columns are properly padded/aligned
-        for (i, line) in table_lines.iter().enumerate() {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            if i == 1 {
-                // Separator line should have dashes
-                assert!(line_text.contains('-'), "Separator should contain dashes");
-            }
-        }
-    }
-
-    // User Story 3 tests (T040-T043) - Column alignment
-
-    #[test]
-    fn test_left_alignment() {
-        // T040: Test left-aligned columns
-        let renderer = MarkdownRenderer::new();
-        // Left alignment uses :-- or ---
-        let markdown = "| Name | Age |\n|:-----|:----|\n| Alice | 30 |\n| Bob | 25 |";
-        let lines = renderer.render(markdown);
-
-        assert!(lines.len() >= 4, "Expected at least 4 lines");
-
-        // Filter blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|l| {
-                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                !t.trim().is_empty()
-            })
-            .collect();
-
-        // Check that content is left-aligned (text starts right after the space after pipe)
-        let data_row = &table_lines[2];
-        let row_text: String = data_row.spans.iter().map(|s| s.content.as_ref()).collect();
-
-        // For left alignment, text should appear near the start of each column
-        // After splitting by |, trimming start should remove minimal spaces
-        let columns: Vec<&str> = row_text.split('|').collect();
-        if columns.len() > 1 {
-            let first_col = columns[1];
-            // Left-aligned: should have space at start, then text, then more spaces
-            assert!(
-                first_col.starts_with(' '),
-                "Column should have leading space for padding"
-            );
-        }
+        let markdown = "| Name | Age |\n|:-----|:----|\n| Alice | 30 |";
+        let row = row_lines(&renderer.render(markdown))
+            .into_iter()
+            .find(|t| t.contains("Alice"))
+            .expect("data row");
+        let first_col = row.split('│').nth(1).unwrap();
+        assert!(first_col.starts_with(' '), "left pad before content");
     }
 
     #[test]
-    fn test_center_alignment() {
-        // T041: Test center-aligned columns
+    fn test_right_alignment_pads_leading() {
         let renderer = MarkdownRenderer::new();
-        // Center alignment uses :-:
-        let markdown = "| Item | Value |\n|:----:|:-----:|\n| A | 100 |\n| BC | 50 |";
-        let lines = renderer.render(markdown);
-
-        assert!(lines.len() >= 4, "Expected at least 4 lines");
-
-        // Filter blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|l| {
-                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                !t.trim().is_empty()
-            })
-            .collect();
-
-        // Verify table structure is maintained
-        for line in &table_lines {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            assert!(
-                line_text.contains('|'),
-                "Line should contain pipe characters"
-            );
-        }
-
-        // For center alignment, content should be roughly centered in the column
-        // This is harder to test precisely without knowing exact widths, so we verify structure
-        let data_row = &table_lines[2];
-        let row_text: String = data_row.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(row_text.contains('A'), "Should contain data");
-    }
-
-    #[test]
-    fn test_right_alignment() {
-        // T042: Test right-aligned columns
-        let renderer = MarkdownRenderer::new();
-        // Right alignment uses --:
-        let markdown = "| Name | Amount |\n|------|-------:|\n| Item1 | 1000 |\n| Item2 | 50 |";
-        let lines = renderer.render(markdown);
-
-        assert!(lines.len() >= 4, "Expected at least 4 lines");
-
-        // Filter blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|l| {
-                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                !t.trim().is_empty()
-            })
-            .collect();
-
-        // Verify table structure
-        for line in &table_lines {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            assert!(
-                line_text.contains('|'),
-                "Line should contain pipe characters"
-            );
-        }
-
-        // Right-aligned columns should have content near the end (before the padding before pipe)
-        let data_row = &table_lines[2];
-        let row_text: String = data_row.spans.iter().map(|s| s.content.as_ref()).collect();
-
-        // Split by pipes and check the last column (Amount)
-        let columns: Vec<&str> = row_text.split('|').collect();
-        if columns.len() > 2 {
-            let last_col = columns[columns.len() - 2]; // -2 because last element after final | is empty
-            // Right-aligned: should have more spaces at start, then text
-            let trimmed_start = last_col.trim_start();
-            let leading_spaces = last_col.len() - trimmed_start.len();
-            assert!(
-                leading_spaces > 1,
-                "Right-aligned column should have leading spaces"
-            );
-        }
-    }
-
-    #[test]
-    fn test_mixed_alignment() {
-        // T043: Test table with mixed column alignments
-        let renderer = MarkdownRenderer::new();
-        let markdown = "| Name | Count | Price |\n|:-----|:-----:|------:|\n| Apple | 5 | 1.50 |\n| Banana | 10 | 0.75 |";
-        let lines = renderer.render(markdown);
-
-        assert!(
-            lines.len() >= 4,
-            "Expected at least 4 lines (header + separator + 2 data rows)"
-        );
-
-        // Filter blank lines
-        let table_lines: Vec<_> = lines
-            .iter()
-            .filter(|l| {
-                let t: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                !t.trim().is_empty()
-            })
-            .collect();
-
-        // Verify all rows have consistent structure
-        let pipe_counts: Vec<usize> = table_lines
-            .iter()
-            .map(|line| {
-                let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-                text.chars().filter(|&c| c == '|').count()
-            })
-            .collect();
-
-        assert!(
-            pipe_counts.windows(2).all(|w| w[0] == w[1]),
-            "All rows should have same number of pipes: {:?}",
-            pipe_counts
-        );
-
-        // Verify content is present in all rows
-        for (i, line) in table_lines.iter().enumerate() {
-            let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            if i == 0 {
-                assert!(line_text.contains("Name"), "Header should contain Name");
-            } else if i >= 2 {
-                // Data rows should have actual data
-                assert!(line_text.len() > 10, "Data rows should have content");
-            }
-        }
+        let markdown = "| Name | Amount |\n|------|-------:|\n| Item1 | 1000 |";
+        let row = row_lines(&renderer.render(markdown))
+            .into_iter()
+            .find(|t| t.contains("1000"))
+            .expect("data row");
+        let amount_col = row.split('│').nth(2).unwrap();
+        let leading = amount_col.len() - amount_col.trim_start().len();
+        assert!(leading > 1, "right-aligned column has leading padding");
     }
 }

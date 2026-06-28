@@ -144,7 +144,11 @@ impl MessageRenderer {
         terminal_width: usize,
         terminal: &mut HooshTerminal,
     ) -> Result<()> {
-        let rendered_lines = self.markdown_renderer.render(&markdown);
+        let rendered_lines = self.markdown_renderer.render_with_indent(
+            &markdown,
+            "  ",
+            terminal_width.saturating_sub(3),
+        );
         let wrapped_lines = self.wrap_styled_lines(rendered_lines, terminal_width);
         let line_count = wrapped_lines.len() as u16;
 
@@ -198,7 +202,11 @@ impl MessageRenderer {
         markdown: &str,
         terminal_width: usize,
     ) -> Vec<Line<'static>> {
-        let rendered = self.markdown_renderer.render(markdown);
+        let rendered = self.markdown_renderer.render_with_indent(
+            markdown,
+            "  ",
+            terminal_width.saturating_sub(3),
+        );
         self.wrap_styled_lines(rendered, terminal_width)
     }
 
