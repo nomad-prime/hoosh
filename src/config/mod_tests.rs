@@ -14,6 +14,32 @@ fn default_config_has_required_fields() {
 }
 
 #[test]
+fn default_config_only_claims_embedded_core_instructions() {
+    let config = AppConfig::default();
+
+    for (name, agent) in &config.agents {
+        if let Some(core_file) = &agent.core_instructions_file {
+            assert!(
+                DEFAULT_CORE_INSTRUCTIONS
+                    .iter()
+                    .any(|(embedded, _)| embedded == core_file),
+                "agent '{}' claims core instructions '{}' that is not embedded",
+                name,
+                core_file
+            );
+        }
+    }
+}
+
+#[test]
+fn default_config_explore_and_general_have_no_core_instructions() {
+    let config = AppConfig::default();
+
+    assert_eq!(config.agents["hoosh_explore"].core_instructions_file, None);
+    assert_eq!(config.agents["hoosh_general"].core_instructions_file, None);
+}
+
+#[test]
 fn default_config_loads_agents_from_prompts() {
     let config = AppConfig::default();
 

@@ -200,7 +200,7 @@ impl BackendConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct AgentConfig {
     pub file: String,
     #[serde(default)]
@@ -274,7 +274,11 @@ impl Default for AppConfig {
 
         for (file_name, _) in DEFAULT_AGENTS {
             let agent_name = file_name.strip_suffix(".txt").unwrap_or(file_name);
-            let core_instructions_file = Some(format!("{}_core_instructions.txt", agent_name));
+            let core_file = format!("{}_core_instructions.txt", agent_name);
+            let core_instructions_file = DEFAULT_CORE_INSTRUCTIONS
+                .iter()
+                .any(|(name, _)| *name == core_file)
+                .then_some(core_file);
             agents.insert(
                 agent_name.to_string(),
                 AgentConfig {

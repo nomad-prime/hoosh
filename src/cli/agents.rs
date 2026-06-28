@@ -72,8 +72,8 @@ fn reinstall_builtins() -> Result<()> {
         let default_agents = AppConfig::default().agents;
         let mut updated = false;
         for (name, agent_config) in default_agents {
-            if let std::collections::hash_map::Entry::Vacant(e) = config.agents.entry(name) {
-                e.insert(agent_config);
+            if config.agents.get(&name) != Some(&agent_config) {
+                config.agents.insert(name, agent_config);
                 updated = true;
             }
         }
