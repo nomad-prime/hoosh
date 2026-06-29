@@ -96,6 +96,25 @@ pub fn resolve_memory_root(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillStorageMode {
+    #[default]
+    Local,
+    Central,
+    Both,
+    Off,
+}
+
+pub fn resolve_skill_roots(mode: SkillStorageMode, cwd: &Path, data_dir: &Path) -> Vec<PathBuf> {
+    match mode {
+        SkillStorageMode::Off => vec![],
+        SkillStorageMode::Local => vec![cwd.join(".hoosh").join("skills")],
+        SkillStorageMode::Central => vec![data_dir.join("skills")],
+        SkillStorageMode::Both => vec![data_dir.join("skills"), cwd.join(".hoosh").join("skills")],
+    }
+}
+
 const GITIGNORE_MARKER: &str = ".hoosh/conversations/";
 const GITIGNORE_BLOCK: &str = "\n# hoosh conversations (added automatically). Remove this line if you want to commit conversation history.\n.hoosh/conversations/\n.hoosh/memory/\n.hoosh/handoffs/\n";
 
@@ -219,6 +238,52 @@ mod tests {
         ensure_local_storage_gitignored(tmp.path()).unwrap();
         let content = std::fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
         assert!(!content.contains("# hoosh conversations"));
+    }
+
+    #[test]
+    fn skill_mode_off_is_empty() {
+        assert!(
+            resolve_skill_roots(
+                SkillStorageMode::Off,
+                Path::new("/proj"),
+                Path::new("/data"),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn skill_mode_local_uses_cwd() {
+        let roots = resolve_skill_roots(
+            SkillStorageMode::Local,
+            Path::new("/proj"),
+            Path::new("/data"),
+        );
+        assert_eq!(roots.len(), 1);
+        assert!(roots[0].ends_with(".hoosh/skills"));
+    }
+
+    #[test]
+    fn skill_mode_central_uses_data_dir() {
+        let roots = resolve_skill_roots(
+            SkillStorageMode::Central,
+            Path::new("/proj"),
+            Path::new("/data"),
+        );
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0], Path::new("/data/skills"));
+    }
+
+    #[test]
+    fn skill_mode_both_returns_two_roots_central_first() {
+        let roots = resolve_skill_roots(
+            SkillStorageMode::Both,
+            Path::new("/proj"),
+            Path::new("/data"),
+        );
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0], Path::new("/data/skills"));
+        assert!(roots[1].ends_with(".hoosh/skills"));
     }
 
     #[test]

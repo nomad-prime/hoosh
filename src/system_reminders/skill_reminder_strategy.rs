@@ -6,14 +6,12 @@ use std::path::PathBuf;
 
 pub struct SkillReminderStrategy {
     skill_manager: SkillManager,
-    project_root: PathBuf,
 }
 
 impl SkillReminderStrategy {
-    pub fn new(project_root: PathBuf) -> Self {
+    pub fn new(roots: Vec<PathBuf>) -> Self {
         Self {
-            skill_manager: SkillManager::new(),
-            project_root,
+            skill_manager: SkillManager::with_roots(roots),
         }
     }
 }
@@ -25,7 +23,7 @@ impl ReminderStrategy for SkillReminderStrategy {
         conversation: &mut Conversation,
         _context: &ReminderContext,
     ) -> Result<SideEffectResult> {
-        if let Ok(skills) = self.skill_manager.discover_skills(&self.project_root) {
+        if let Ok(skills) = self.skill_manager.discover_skills() {
             let summary = self.skill_manager.get_skills_summary(&skills);
 
             if !summary.is_empty()
@@ -50,39 +48,45 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    fn make_skills_dir(tmp: &TempDir) -> PathBuf {
+        let dir = tmp.path().join(".hoosh").join("skills");
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn make_executable(path: &std::path::Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(path, perms).unwrap();
+        }
+    }
+
     fn create_context() -> ReminderContext {
         ReminderContext { agent_step: 0 }
     }
 
     #[test]
     fn test_strategy_name() {
-        let strategy = SkillReminderStrategy::new(PathBuf::from("."));
+        let strategy = SkillReminderStrategy::new(vec![]);
         assert_eq!(strategy.name(), "skill_reminder");
     }
 
     #[tokio::test]
     async fn test_injects_skills_into_user_message() {
-        let temp_dir = TempDir::new().unwrap();
-        let skills_dir = temp_dir.path().join(".hoosh").join("skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = make_skills_dir(&tmp);
         let skill_path = skills_dir.join("test_skill.sh");
         fs::write(&skill_path, "#!/bin/bash\n# Test skill\necho 'test'").unwrap();
+        make_executable(&skill_path);
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&skill_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&skill_path, perms).unwrap();
-        }
-
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let strategy = SkillReminderStrategy::new(vec![skills_dir]);
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
 
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
         let last_msg = conversation.messages.last().unwrap();
@@ -93,29 +97,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_injection_without_skills() {
-        let temp_dir = TempDir::new().unwrap();
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = make_skills_dir(&tmp);
+        let strategy = SkillReminderStrategy::new(vec![skills_dir]);
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
 
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
         let last_msg = conversation.messages.last().unwrap();
-        let content = last_msg.content.as_ref().unwrap();
-        // If no skills, no summary should be added
-        assert_eq!(content, "Hello");
+        assert_eq!(last_msg.content.as_ref().unwrap(), "Hello");
     }
 
     #[tokio::test]
     async fn test_no_injection_without_user_message() {
-        let temp_dir = TempDir::new().unwrap();
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let strategy = SkillReminderStrategy::new(vec![]);
         let mut conversation = Conversation::new();
 
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
         assert!(conversation.messages.is_empty());
@@ -123,168 +123,100 @@ mod tests {
 
     #[tokio::test]
     async fn test_always_returns_continue() {
-        let temp_dir = TempDir::new().unwrap();
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let strategy = SkillReminderStrategy::new(vec![]);
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
 
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), SideEffectResult::Continue));
-    }
-
-    #[tokio::test]
-    async fn test_no_injection_when_summary_is_empty() {
-        let temp_dir = TempDir::new().unwrap();
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
-        let mut conversation = Conversation::new();
-        conversation.add_user_message("Hello".to_string());
-
-        let initial_count = conversation.messages.len();
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
-
-        assert!(result.is_ok());
-        // No skill summary should be injected when summary is empty
-        assert_eq!(conversation.messages.len(), initial_count);
-        let last_msg = conversation.messages.last().unwrap();
-        assert_eq!(last_msg.content.as_ref().unwrap(), "Hello");
     }
 
     #[tokio::test]
     async fn test_no_injection_when_last_message_is_assistant() {
-        let temp_dir = TempDir::new().unwrap();
-        let skills_dir = temp_dir.path().join(".hoosh").join("skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = make_skills_dir(&tmp);
         let skill_path = skills_dir.join("test_skill.sh");
         fs::write(&skill_path, "#!/bin/bash\n# Test skill\necho 'test'").unwrap();
+        make_executable(&skill_path);
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&skill_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&skill_path, perms).unwrap();
-        }
-
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let strategy = SkillReminderStrategy::new(vec![skills_dir]);
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
-        // Add an assistant message as the last message
         conversation.add_assistant_message(Some("Response".to_string()), None);
 
         let initial_count = conversation.messages.len();
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
-        // No injection should occur when last message is not from user
         assert_eq!(conversation.messages.len(), initial_count);
-        let last_msg = conversation.messages.last().unwrap();
-        assert_eq!(last_msg.role, "assistant");
     }
 
     #[tokio::test]
     async fn test_no_injection_when_last_message_is_system() {
-        let temp_dir = TempDir::new().unwrap();
-        let skills_dir = temp_dir.path().join(".hoosh").join("skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = make_skills_dir(&tmp);
         let skill_path = skills_dir.join("test_skill.sh");
         fs::write(&skill_path, "#!/bin/bash\n# Test skill\necho 'test'").unwrap();
+        make_executable(&skill_path);
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&skill_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&skill_path, perms).unwrap();
-        }
-
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let strategy = SkillReminderStrategy::new(vec![skills_dir]);
         let mut conversation = Conversation::new();
-        // Add a system message as the last message
         conversation.add_system_message("System info".to_string());
 
         let initial_count = conversation.messages.len();
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
-        // No injection should occur when last message is not from user
-        assert_eq!(conversation.messages.len(), initial_count);
-        let last_msg = conversation.messages.last().unwrap();
-        assert_eq!(last_msg.role, "system");
-    }
-
-    #[tokio::test]
-    async fn test_no_injection_with_empty_summary_but_user_last_message() {
-        let temp_dir = TempDir::new().unwrap();
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
-        let mut conversation = Conversation::new();
-        conversation.add_user_message("Hello".to_string());
-
-        let initial_count = conversation.messages.len();
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
-
-        assert!(result.is_ok());
-        // Even though last message is user, no injection if summary is empty
         assert_eq!(conversation.messages.len(), initial_count);
     }
 
     #[tokio::test]
-    async fn test_injection_only_with_skills_and_user_last_message() {
-        let temp_dir = TempDir::new().unwrap();
-        let skills_dir = temp_dir.path().join(".hoosh").join("skills");
-        fs::create_dir_all(&skills_dir).unwrap();
+    async fn test_injection_with_skill_md_format() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = make_skills_dir(&tmp);
+        let skill_dir = skills_dir.join("pdf-processing");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: pdf-processing\ndescription: Extract text from PDFs.\n---\n\nInstructions here.",
+        )
+        .unwrap();
 
-        let skill_path = skills_dir.join("my_skill.sh");
-        fs::write(&skill_path, "#!/bin/bash\n# My skill\necho 'skill'").unwrap();
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&skill_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&skill_path, perms).unwrap();
-        }
-
-        let strategy = SkillReminderStrategy::new(temp_dir.path().to_path_buf());
+        let strategy = SkillReminderStrategy::new(vec![skills_dir]);
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
 
         let initial_count = conversation.messages.len();
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
         assert!(result.is_ok());
-        // Injection should occur: skills exist AND last message is user
         assert_eq!(conversation.messages.len(), initial_count + 1);
-        let last_msg = conversation.messages.last().unwrap();
-        assert_eq!(last_msg.role, "system");
-        let content = last_msg.content.as_ref().unwrap();
-        assert!(content.contains("available_skills"));
+        let content = conversation
+            .messages
+            .last()
+            .unwrap()
+            .content
+            .as_ref()
+            .unwrap();
+        assert!(content.contains("pdf-processing"));
+        assert!(content.contains("Extract text from PDFs."));
+        assert!(content.contains("SKILL.md"));
     }
 
     #[tokio::test]
-    async fn test_handles_discovery_error_gracefully() {
-        // Use a non-existent path that might cause discovery to fail
-        let strategy =
-            SkillReminderStrategy::new(PathBuf::from("/nonexistent/path/that/does/not/exist"));
+    async fn test_handles_missing_roots_gracefully() {
+        let strategy = SkillReminderStrategy::new(vec![PathBuf::from(
+            "/nonexistent/path/that/does/not/exist",
+        )]);
         let mut conversation = Conversation::new();
         conversation.add_user_message("Hello".to_string());
 
-        let context = create_context();
-        let result = strategy.apply(&mut conversation, &context).await;
+        let result = strategy.apply(&mut conversation, &create_context()).await;
 
-        // Should still return Ok(Continue) even if skill discovery fails
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), SideEffectResult::Continue));
-        // Message should remain unchanged
         let last_msg = conversation.messages.last().unwrap();
         assert_eq!(last_msg.content.as_ref().unwrap(), "Hello");
     }

@@ -305,7 +305,8 @@ pub async fn initialize_session(session_config: SessionConfig) -> Result<AgentSe
         core_instructions,
     ));
     let todo_strategy = Box::new(TodoReminderStrategy::new(todo_state.clone()));
-    let skill_strategy = Box::new(SkillReminderStrategy::new(working_dir.clone()));
+    let skill_roots = config.skill_roots(&working_dir).unwrap_or_default();
+    let skill_strategy = Box::new(SkillReminderStrategy::new(skill_roots));
     let system_reminder = Arc::new(
         SystemReminder::new()
             .add_strategy(periodic_strategy)

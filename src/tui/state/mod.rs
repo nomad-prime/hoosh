@@ -22,6 +22,4 @@ pub use message_line::MessageLine;
 pub use metrics_state::MetricsState;
 pub use scroll_state::ScrollState;
 pub use tool_call_view::ToolCallView;
-pub use tool_detail::{
-    BashDetail, BashOutputLine, SubagentDetail, SubagentStepSummary,
-};
+pub use tool_detail::{BashDetail, BashOutputLine, SubagentDetail, SubagentStepSummary};

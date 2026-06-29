@@ -3,7 +3,8 @@ use crate::context_management::ContextManagerConfig;
 use crate::daemon::config::DaemonConfig;
 use crate::memory_mode::MemoryMode;
 use crate::storage::{
-    ConversationStorageMode, deserialize_conversation_storage, resolve_storage_root,
+    ConversationStorageMode, SkillStorageMode, deserialize_conversation_storage,
+    resolve_skill_roots, resolve_storage_root,
 };
 use crate::terminal_mode::TerminalMode;
 use serde::{Deserialize, Serialize};
@@ -238,6 +239,8 @@ pub struct AppConfig {
     pub memory_mode: Option<MemoryMode>,
     #[serde(default)]
     pub display_compact: Option<bool>,
+    #[serde(default)]
+    pub skill_mode: Option<SkillStorageMode>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -266,6 +269,8 @@ pub struct ProjectConfig {
     pub terminal_mode: Option<TerminalMode>,
     #[serde(default)]
     pub memory_mode: Option<MemoryMode>,
+    #[serde(default)]
+    pub skill_mode: Option<SkillStorageMode>,
 }
 
 impl Default for AppConfig {
@@ -304,6 +309,7 @@ impl Default for AppConfig {
             daemon: None,
             memory_mode: None,
             display_compact: None,
+            skill_mode: None,
         }
     }
 }
@@ -629,6 +635,15 @@ impl AppConfig {
         Ok(crate::storage::resolve_memory_root(mode, cwd, &data_dir))
     }
 
+    pub fn skill_mode(&self) -> SkillStorageMode {
+        self.skill_mode.unwrap_or_default()
+    }
+
+    pub fn skill_roots(&self, cwd: &Path) -> ConfigResult<Vec<PathBuf>> {
+        let data_dir = Self::hoosh_data_dir()?;
+        Ok(resolve_skill_roots(self.skill_mode(), cwd, &data_dir))
+    }
+
     pub fn project_config_path() -> ConfigResult<PathBuf> {
         let mut path = std::env::current_dir().map_err(ConfigError::IoError)?;
         path.push(".hoosh");
@@ -684,6 +699,10 @@ impl AppConfig {
 
         if other.memory_mode.is_some() {
             self.memory_mode = other.memory_mode;
+        }
+
+        if other.skill_mode.is_some() {
+            self.skill_mode = other.skill_mode;
         }
     }
 
