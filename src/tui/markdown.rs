@@ -26,6 +26,12 @@ fn middle_elide(s: &str, max: usize) -> String {
     format!("{head_str}…{tail_str}")
 }
 
+fn quote_gutter(depth: usize) -> Vec<Span<'static>> {
+    (0..depth)
+        .map(|_| Span::styled("│ ", Style::default().fg(palette::MARKDOWN_QUOTE)))
+        .collect()
+}
+
 // Table rendering types
 #[derive(Debug, Clone)]
 struct TableCell {
@@ -134,6 +140,9 @@ impl MarkdownRenderer {
         let mut code_language: Option<String> = None;
         let mut list_depth: usize = 0;
         let mut list_stack: Vec<Option<usize>> = Vec::new();
+        let mut pending_item_marker = false;
+        let mut blockquote_depth: usize = 0;
+        let mut pending_quote_marker = false;
         let mut heading_level = HeadingLevel::H1;
         let mut in_emphasis = false;
         let mut in_strong = false;
@@ -203,20 +212,29 @@ impl MarkdownRenderer {
                                 current_line_spans.push(Span::raw(format!("{}• ", indent)));
                             }
                         }
+                        pending_item_marker = true;
                     }
                     Tag::Paragraph => {
-                        if !current_line_spans.is_empty() {
-                            lines.push(Line::from(std::mem::take(&mut current_line_spans)));
+                        // In loose lists the item's first paragraph must continue on the
+                        // marker line rather than flushing the bare marker to its own line.
+                        if pending_item_marker {
+                            pending_item_marker = false;
+                        } else if pending_quote_marker {
+                            pending_quote_marker = false;
+                        } else {
+                            if !current_line_spans.is_empty() {
+                                lines.push(Line::from(std::mem::take(&mut current_line_spans)));
+                            }
+                            current_line_spans.extend(quote_gutter(blockquote_depth));
                         }
                     }
                     Tag::BlockQuote(_) => {
                         if !current_line_spans.is_empty() {
                             lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
-                        current_line_spans.push(Span::styled(
-                            "│ ",
-                            Style::default().fg(palette::MARKDOWN_QUOTE),
-                        ));
+                        blockquote_depth += 1;
+                        current_line_spans.extend(quote_gutter(blockquote_depth));
+                        pending_quote_marker = true;
                     }
                     Tag::Link { .. } => {}
                     Tag::Image { .. } => {}
@@ -302,6 +320,8 @@ impl MarkdownRenderer {
                         if !current_line_spans.is_empty() {
                             lines.push(Line::from(std::mem::take(&mut current_line_spans)));
                         }
+                        blockquote_depth = blockquote_depth.saturating_sub(1);
+                        pending_quote_marker = false;
                     }
                     TagEnd::TableCell => {
                         if let Some(ref mut table) = current_table {
@@ -360,7 +380,12 @@ impl MarkdownRenderer {
                     }
                 }
                 Event::SoftBreak => {
-                    current_line_spans.push(Span::raw(" "));
+                    if blockquote_depth > 0 {
+                        lines.push(Line::from(std::mem::take(&mut current_line_spans)));
+                        current_line_spans.extend(quote_gutter(blockquote_depth));
+                    } else {
+                        current_line_spans.push(Span::raw(" "));
+                    }
                 }
                 Event::HardBreak => {
                     lines.push(Line::from(std::mem::take(&mut current_line_spans)));
@@ -805,12 +830,64 @@ mod tests {
     }
 
     #[test]
+    fn test_loose_list_keeps_marker_with_content() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "1. First item\n\n2. Second item\n\n3. Third item";
+        let texts: Vec<String> = renderer.render(markdown).iter().map(line_text).collect();
+
+        assert!(
+            texts.iter().any(|t| t.contains("1. First item")),
+            "loose-list marker stays on the same line as its content: {texts:?}"
+        );
+        assert!(
+            texts.iter().all(|t| t.trim() != "1." && t.trim() != "2."),
+            "no bare marker lines: {texts:?}"
+        );
+    }
+
+    #[test]
     fn test_render_blockquote() {
         let renderer = MarkdownRenderer::new();
         let markdown = "> This is a quote";
         let lines = renderer.render(markdown);
 
         assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_multiline_blockquote_keeps_gutter() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "> line one\n> line two\n> line three";
+        let quoted: Vec<String> = renderer
+            .render(markdown)
+            .iter()
+            .map(line_text)
+            .filter(|t| t.contains("line"))
+            .collect();
+
+        assert_eq!(quoted.len(), 3, "each quoted line is its own row: {quoted:?}");
+        assert!(
+            quoted.iter().all(|t| t.contains('│')),
+            "every quoted line keeps the gutter: {quoted:?}"
+        );
+    }
+
+    #[test]
+    fn test_multiparagraph_blockquote_keeps_gutter() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "> first para\n>\n> second para";
+        let quoted: Vec<String> = renderer
+            .render(markdown)
+            .iter()
+            .map(line_text)
+            .filter(|t| t.contains("para"))
+            .collect();
+
+        assert_eq!(quoted.len(), 2, "two quoted paragraphs: {quoted:?}");
+        assert!(
+            quoted.iter().all(|t| t.contains('│')),
+            "every quoted paragraph keeps the gutter: {quoted:?}"
+        );
     }
 
     #[test]
