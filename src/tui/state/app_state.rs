@@ -54,23 +54,26 @@ pub struct AppState {
     pub fullview: bool,
 }
 
-/// Format a short status/error string as a `  ⎿  [lowercased message]` line.
-///
-/// Trims trailing punctuation/whitespace and lowercases the first character.
-/// Used by `add_status_message`, `add_error`, and friends so every `⎿` line
-/// shares the same shape.
-pub fn format_inline_status(message: &str) -> String {
+/// Normalize a short status/error string: trim trailing punctuation/whitespace
+/// and lowercase the first character, so every `⎿` status line reads the same.
+pub fn inline_status_body(message: &str) -> String {
     let trimmed = message.trim().trim_end_matches(['.', '!', '\n']);
     let mut chars = trimmed.chars();
-    let body = match chars.next() {
+    match chars.next() {
         Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
         None => String::new(),
-    };
-    format!("  ⎿  [{}]", body)
+    }
 }
 
-pub fn format_tool_continuation(content: &str) -> String {
-    format!("  ⎿ {}", content)
+/// Build a `⎿` continuation/detail line with the canonical styling: a dim
+/// glyph and a secondary-text body. Every `⎿` line that isn't an error routes
+/// through here so the marker and body colors stay consistent whether the line
+/// is rendered live or committed to scrollback.
+pub fn continuation_line(body: impl Into<String>) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("  ⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
+        Span::styled(body.into(), Style::default().fg(palette::SECONDARY_TEXT)),
+    ])
 }
 
 impl AppState {
@@ -297,11 +300,7 @@ impl AppState {
     }
 
     fn add_tool_continuation(&mut self, content: &str) {
-        let line = Line::from(Span::styled(
-            format_tool_continuation(content),
-            Style::default().fg(palette::SUBDUED_TEXT),
-        ));
-        self.add_styled_line(line);
+        self.add_styled_line(continuation_line(content));
     }
 
     fn add_inline_tool_line(&mut self, prefix: &str, body: &str) {
@@ -758,12 +757,15 @@ impl AppState {
     }
 
     pub fn add_status_message(&mut self, message: &str) {
-        self.add_message(format_inline_status(message));
+        self.add_styled_line(continuation_line(format!(
+            "[{}]",
+            inline_status_body(message)
+        )));
     }
 
     pub fn add_error(&mut self, error: &str) {
         let styled_line = Line::from(Span::styled(
-            format_inline_status(error),
+            format!("  ⎿ [{}]", inline_status_body(error)),
             Style::default()
                 .fg(palette::DESTRUCTIVE)
                 .add_modifier(Modifier::ITALIC),
@@ -791,7 +793,7 @@ impl AppState {
 
     pub fn add_retry_failure(&mut self, message: &str) {
         let styled_line = Line::from(Span::styled(
-            format_inline_status(message),
+            format!("  ⎿ [{}]", inline_status_body(message)),
             Style::default()
                 .fg(palette::DESTRUCTIVE)
                 .add_modifier(Modifier::ITALIC),

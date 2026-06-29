@@ -1,5 +1,5 @@
 use crate::tui::component::Component;
-use crate::tui::state::{AppState, ToolCallStatus};
+use crate::tui::state::{AppState, ToolCallStatus, continuation_line};
 use crate::tui::tool_phrase::{aggregate_phrase, completed_phrase, target_basenames};
 use crate::tui::{glyphs, palette};
 use ratatui::{
@@ -92,11 +92,7 @@ impl Component for ActiveToolCallsComponent {
             lines.push(Line::from(spans));
 
             if let Some(summary) = &tool_call.result_summary {
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled("⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
-                    Span::styled(summary, Style::default().fg(palette::SECONDARY_TEXT)),
-                ]));
+                lines.push(continuation_line(summary.clone()));
             }
         }
 
@@ -118,11 +114,7 @@ impl ActiveToolCallsComponent {
         ]);
 
         let targets = truncate_targets(&target_basenames(calls), area.width as usize);
-        let detail = Line::from(vec![
-            Span::raw("  "),
-            Span::styled("⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
-            Span::styled(targets, Style::default().fg(palette::SECONDARY_TEXT)),
-        ]);
+        let detail = continuation_line(targets);
 
         Paragraph::new(vec![summary, detail, Line::from("")]).render(area, buf);
     }
@@ -173,11 +165,7 @@ impl ActiveToolCallsComponent {
         ]);
 
         let targets = truncate_targets(&target_basenames(calls), area.width as usize);
-        let detail = Line::from(vec![
-            Span::raw("  "),
-            Span::styled("⎿ ", Style::default().fg(palette::SUBDUED_TEXT)),
-            Span::styled(targets, Style::default().fg(palette::SECONDARY_TEXT)),
-        ]);
+        let detail = continuation_line(targets);
 
         Paragraph::new(vec![summary, detail]).render(area, buf);
     }

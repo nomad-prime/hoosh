@@ -31,6 +31,7 @@ impl BashCommandPatternRegistry {
 
         CommandPatternResult {
             description: "bash command".to_string(),
+            summary: "Runs a bash command".to_string(),
             pattern: "*".to_string(),
             persistent_message: "don't ask me again for bash in this project".to_string(),
             safe: false,

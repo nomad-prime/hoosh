@@ -121,6 +121,17 @@ pub trait Tool: Send + Sync {
     ///              If None, returns a generic descriptor (usually with "*" as target).
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor;
 
+    /// Describe permission with access to the full call arguments, so a tool
+    /// can fold model-supplied context (e.g. an `explanation` field) into the
+    /// approval prompt. Defaults to [`Tool::describe_permission`].
+    fn describe_permission_for_call(
+        &self,
+        target: Option<&str>,
+        _args: &Value,
+    ) -> ToolPermissionDescriptor {
+        self.describe_permission(target)
+    }
+
     /// Format the tool call for display (e.g., "Read(src/main.rs)")
     /// This is shown when the tool is invoked
     fn format_call_display(&self, _args: &Value) -> String {

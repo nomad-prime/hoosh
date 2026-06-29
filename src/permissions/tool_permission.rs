@@ -16,6 +16,7 @@ pub struct ToolPermissionDescriptor {
     display_name: String,
     approval_title: String,
     approval_prompt: String,
+    command_summary: Option<String>,
     command_preview: Option<String>,
     persistent_approval: String,
     suggested_pattern: Option<String>,
@@ -40,6 +41,7 @@ impl std::fmt::Debug for ToolPermissionDescriptor {
             .field("display_name", &self.display_name)
             .field("approval_title", &self.approval_title)
             .field("approval_prompt", &self.approval_prompt)
+            .field("command_summary", &self.command_summary)
             .field("command_preview", &self.command_preview)
             .field("persistent_approval", &self.persistent_approval)
             .field("suggested_pattern", &self.suggested_pattern)
@@ -60,6 +62,7 @@ impl PartialEq for ToolPermissionDescriptor {
             && self.display_name == other.display_name
             && self.approval_title == other.approval_title
             && self.approval_prompt == other.approval_prompt
+            && self.command_summary == other.command_summary
             && self.command_preview == other.command_preview
             && self.persistent_approval == other.persistent_approval
             && self.suggested_pattern == other.suggested_pattern
@@ -105,6 +108,10 @@ impl ToolPermissionDescriptor {
         &self.approval_prompt
     }
 
+    pub fn command_summary(&self) -> Option<&str> {
+        self.command_summary.as_deref()
+    }
+
     pub fn command_preview(&self) -> Option<&str> {
         self.command_preview.as_deref()
     }
@@ -138,6 +145,7 @@ pub struct ToolPermissionBuilder<'a> {
     display_name: Option<String>,
     approval_title: Option<String>,
     approval_prompt: Option<String>,
+    command_summary: Option<String>,
     command_preview: Option<String>,
     persistent_approval: Option<String>,
     suggested_pattern: Option<String>,
@@ -157,6 +165,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             display_name: None,
             approval_title: None,
             approval_prompt: None,
+            command_summary: None,
             command_preview: None,
             persistent_approval: None,
             suggested_pattern: None,
@@ -215,6 +224,16 @@ impl<'a> ToolPermissionBuilder<'a> {
 
     pub fn with_approval_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.approval_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn with_command_summary(mut self, summary: impl Into<String>) -> Self {
+        let summary = summary.into();
+        self.command_summary = if summary.is_empty() {
+            None
+        } else {
+            Some(summary)
+        };
         self
     }
 
@@ -286,6 +305,7 @@ impl<'a> ToolPermissionBuilder<'a> {
             display_name,
             approval_title,
             approval_prompt,
+            command_summary: self.command_summary,
             command_preview: self.command_preview,
             persistent_approval,
             suggested_pattern: self.suggested_pattern,

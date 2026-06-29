@@ -33,7 +33,15 @@ impl InputHandler for ToolExpandHandler {
         let is_ctrl_o =
             key.code == KeyCode::Char('o') && key.modifiers.contains(KeyModifiers::CONTROL);
 
-        if is_ctrl_o && app.tools.active.len() >= 2 {
+        // ctrl+o toggles either a collapsed 2+ batch or the live bash output of
+        // a single streaming call.
+        let has_expandable_bash = app
+            .tools
+            .active
+            .iter()
+            .any(|tc| tc.is_bash_streaming && !tc.bash_output_lines.is_empty());
+
+        if is_ctrl_o && (app.tools.active.len() >= 2 || has_expandable_bash) {
             app.tools.expanded = !app.tools.expanded;
             return KeyHandlerResult::Handled;
         }
@@ -89,10 +97,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ctrl_o_ignored_with_single_call() {
+    async fn ctrl_o_ignored_with_single_non_bash_call() {
         let mut handler = ToolExpandHandler::new();
         let mut app = AppState::new();
         app.tools.active = vec![active_call()];
+
+        let result = handler.handle_event(&ctrl_o(), &mut app, true).await;
+        assert!(matches!(result, KeyHandlerResult::NotHandled));
+        assert!(!app.tools.expanded);
+    }
+
+    #[tokio::test]
+    async fn ctrl_o_toggles_bash_output_with_single_call() {
+        use crate::tui::state::BashOutputLine;
+
+        let mut handler = ToolExpandHandler::new();
+        let mut app = AppState::new();
+        let mut bash = active_call();
+        bash.is_bash_streaming = true;
+        bash.bash_output_lines = vec![BashOutputLine {
+            line_number: 1,
+            content: "building...".into(),
+            stream_type: "stdout".into(),
+        }];
+        app.tools.active = vec![bash];
+
+        let result = handler.handle_event(&ctrl_o(), &mut app, true).await;
+        assert!(matches!(result, KeyHandlerResult::Handled));
+        assert!(app.tools.expanded);
+
+        handler.handle_event(&ctrl_o(), &mut app, true).await;
+        assert!(!app.tools.expanded);
+    }
+
+    #[tokio::test]
+    async fn ctrl_o_ignored_for_single_bash_call_without_output() {
+        let mut handler = ToolExpandHandler::new();
+        let mut app = AppState::new();
+        let mut bash = active_call();
+        bash.is_bash_streaming = true;
+        app.tools.active = vec![bash];
 
         let result = handler.handle_event(&ctrl_o(), &mut app, true).await;
         assert!(matches!(result, KeyHandlerResult::NotHandled));

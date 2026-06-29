@@ -11,7 +11,7 @@ mod tool_call_view;
 
 pub use active_tool_call::{ActiveToolCall, BashOutputLine, SubagentStepSummary, ToolCallStatus};
 pub use animation_state::AnimationState;
-pub use app_state::{AppState, format_inline_status};
+pub use app_state::{AppState, continuation_line, inline_status_body};
 pub use attachment_state::AttachmentState;
 pub use completion_state::CompletionState;
 pub use dialog_state::{

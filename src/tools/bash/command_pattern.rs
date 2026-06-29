@@ -3,6 +3,9 @@ use super::BashCommandParser;
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommandPatternResult {
     pub description: String,
+    /// One-line, plain-English gloss of what the command does, shown in the
+    /// permission dialog so the user understands the request at a glance.
+    pub summary: String,
     pub pattern: String,
     pub persistent_message: String,
     pub safe: bool,
@@ -16,12 +19,104 @@ impl Default for CommandPatternResult {
     fn default() -> Self {
         Self {
             description: String::new(),
+            summary: String::new(),
             pattern: "*".to_string(),
             persistent_message: String::new(),
             safe: false,
             allow_project_wide_trust: true,
         }
     }
+}
+
+/// Render a list of base command names as a friendly inline list:
+/// `["git"]` -> "git", `["npm", "cp"]` -> "npm and cp",
+/// `["a", "b", "c"]` -> "a, b and c".
+fn join_commands(commands: &[String]) -> String {
+    match commands {
+        [] => "a command".to_string(),
+        [one] => one.clone(),
+        [head @ .., last] => format!("{} and {}", head.join(", "), last),
+    }
+}
+
+/// Quote each item, then join into a friendly inline list:
+/// `["npx playwright", "docker compose"]` -> `"npx playwright" and "docker compose"`.
+fn quoted_join(items: &[String]) -> String {
+    let quoted: Vec<String> = items.iter().map(|i| format!("\"{i}\"")).collect();
+    join_commands(&quoted)
+}
+
+/// The commands in a compound pipeline/chain that actually warrant a rule —
+/// the read-only/whitelisted subcommands and `cd` are dropped as noise, so a
+/// rule keys on the meaningful work (e.g. `npx playwright` out of
+/// `cd web && npx playwright test … | grep …`).
+///
+/// Meaningful commands are returned as 2-word prefixes (`cmd subcmd`) so rules
+/// stay reusably scoped. If *every* subcommand is read-only/`cd`, there is no
+/// noise to strip and we fall back to the bare base-command names.
+fn meaningful_prefixes(command: &str) -> Vec<String> {
+    let mut meaningful: Vec<String> = Vec::new();
+    let mut bare_all: Vec<String> = Vec::new();
+
+    for sub in BashCommandParser::split_subcommands(command) {
+        let Some((cmd, arg)) = BashCommandParser::extract_first_command_and_arg(&sub) else {
+            continue;
+        };
+        if !bare_all.contains(&cmd) {
+            bare_all.push(cmd.clone());
+        }
+        if cmd == "cd" || SingleCommandPattern::is_whitelisted(&cmd, &sub) {
+            continue;
+        }
+        let prefix = match arg {
+            Some(a) => format!("{cmd} {a}"),
+            None => cmd.clone(),
+        };
+        if !meaningful.contains(&prefix) {
+            meaningful.push(prefix);
+        }
+    }
+
+    if meaningful.is_empty() {
+        bare_all
+    } else {
+        meaningful
+    }
+}
+
+/// Shared matcher for pipeline/chain rules. A stored rule trusts a set of
+/// command prefixes; a command matches only when *every* meaningful command it
+/// runs is covered by that set (subset-of-trust, the safe direction). A stored
+/// 2-word prefix (`npx playwright`) matches that exact prefix; a stored bare
+/// command (`cargo`) matches any of its subcommands.
+fn compound_matches(pattern: &str, command: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    let stored: Vec<String> = pattern
+        .split(['|', '&'])
+        .map(|p| {
+            p.trim()
+                .trim_end_matches(":*")
+                .trim_end_matches('*')
+                .trim()
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+    if stored.is_empty() {
+        return false;
+    }
+
+    let incoming = meaningful_prefixes(command);
+    if incoming.is_empty() {
+        return false;
+    }
+
+    incoming.iter().all(|prefix| {
+        let base = prefix.split(' ').next().unwrap_or(prefix);
+        stored.iter().any(|s| s == prefix || s == base)
+    })
 }
 
 pub trait BashCommandPattern: Send + Sync {
@@ -45,6 +140,7 @@ impl BashCommandPattern for SubshellPattern {
     fn analyze(&self, _command: &str) -> CommandPatternResult {
         CommandPatternResult {
             description: "command with subshell execution".to_string(),
+            summary: "Runs a command that executes another command inline (subshell)".to_string(),
             // A subshell rule used to be stored as "*" — that silently
             // matched every future bash command and granted blanket trust.
             // Keep the pattern stable but mark trust-project as disallowed
@@ -77,6 +173,7 @@ impl BashCommandPattern for RedirectionPattern {
 
         CommandPatternResult {
             description: format!("{} with redirection", cmd),
+            summary: format!("Runs `{}` and redirects its input/output to a file", cmd),
             pattern: format!("{}:>", cmd),
             persistent_message: format!(
                 "don't ask me again for \"{}\" commands with redirection (>, <) in this project",
@@ -129,6 +226,7 @@ impl BashCommandPattern for HeredocPattern {
 
         CommandPatternResult {
             description: format!("{} with heredoc", cmd),
+            summary: format!("Feeds an inline document (heredoc) into `{}`", cmd),
             pattern: format!("{}:<<", cmd),
             persistent_message: format!(
                 "don't ask me again for \"{}\" commands with heredoc (<<) in this project",
@@ -152,23 +250,7 @@ impl BashCommandPattern for PipelinePattern {
     }
 
     fn matches_pattern(&self, pattern: &str, command: &str) -> bool {
-        if !pattern.contains('|') {
-            return false;
-        }
-
-        let pattern_commands: Vec<&str> = pattern
-            .split('|')
-            .map(|p| p.trim().trim_end_matches(":*").trim_end_matches('*'))
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        let target_commands = BashCommandParser::extract_base_commands(command);
-
-        pattern_commands.iter().all(|pattern_cmd| {
-            target_commands
-                .iter()
-                .any(|target_cmd| target_cmd == pattern_cmd)
-        })
+        compound_matches(pattern, command)
     }
 
     fn analyze(&self, command: &str) -> CommandPatternResult {
@@ -177,6 +259,7 @@ impl BashCommandPattern for PipelinePattern {
         if base_commands.is_empty() {
             return CommandPatternResult {
                 description: "pipeline".to_string(),
+                summary: "Pipes output between commands".to_string(),
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
                 safe: false,
@@ -185,8 +268,9 @@ impl BashCommandPattern for PipelinePattern {
         }
 
         if base_commands.iter().all(|c| c == &base_commands[0]) {
-            CommandPatternResult {
+            return CommandPatternResult {
                 description: base_commands[0].clone(),
+                summary: format!("Pipes data through `{}`", base_commands[0]),
                 pattern: format!("{}:*", base_commands[0]),
                 persistent_message: format!(
                     "don't ask me again for \"{}\" commands in this project",
@@ -194,21 +278,35 @@ impl BashCommandPattern for PipelinePattern {
                 ),
                 safe: false,
                 allow_project_wide_trust: true,
+            };
+        }
+
+        let prefixes = meaningful_prefixes(command);
+        if prefixes.len() == 1 {
+            let p = &prefixes[0];
+            CommandPatternResult {
+                description: p.clone(),
+                summary: format!("Runs `{p}` and pipes its output"),
+                pattern: format!("{p}:*"),
+                persistent_message: format!(
+                    "don't ask me again for \"{p}\" commands in this project"
+                ),
+                safe: false,
+                allow_project_wide_trust: true,
             }
         } else {
-            let display = base_commands.join(", ");
-            let pattern = base_commands
+            let pattern = prefixes
                 .iter()
-                .map(|cmd| format!("{}:*", cmd))
+                .map(|p| format!("{p}:*"))
                 .collect::<Vec<_>>()
                 .join("|");
-
             CommandPatternResult {
-                description: display.clone(),
+                description: prefixes.join(", "),
+                summary: format!("Pipes output through {}", join_commands(&prefixes)),
                 pattern,
                 persistent_message: format!(
-                    "don't ask me again for pipe combination of \"{}\" commands in this project",
-                    display
+                    "don't ask me again for {} commands in this project",
+                    quoted_join(&prefixes)
                 ),
                 safe: false,
                 allow_project_wide_trust: true,
@@ -229,35 +327,7 @@ impl BashCommandPattern for CommandChainPattern {
     }
 
     fn matches_pattern(&self, pattern: &str, command: &str) -> bool {
-        // Handle compound chain patterns like "cargo:*&npm:*" (uses & for chains)
-        if pattern.contains('&') {
-            let pattern_commands: Vec<&str> = pattern
-                .split('&')
-                .map(|p| p.trim().trim_end_matches(":*").trim_end_matches('*'))
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            let target_commands = BashCommandParser::extract_base_commands(command);
-
-            // All pattern commands must be present in the target
-            return pattern_commands.iter().all(|pattern_cmd| {
-                target_commands
-                    .iter()
-                    .any(|target_cmd| target_cmd == pattern_cmd)
-            });
-        }
-
-        // Chain patterns that collapse to single command use ":*" suffix
-        if let Some(prefix) = pattern.strip_suffix(":*") {
-            let clean_target = command.trim();
-            if let Some(rest) = clean_target.strip_prefix(prefix) {
-                return rest.is_empty() || rest.starts_with(' ');
-            }
-            false
-        } else {
-            // Wildcard patterns
-            pattern == "*"
-        }
+        compound_matches(pattern, command)
     }
 
     fn analyze(&self, command: &str) -> CommandPatternResult {
@@ -266,6 +336,7 @@ impl BashCommandPattern for CommandChainPattern {
         if base_commands.is_empty() {
             return CommandPatternResult {
                 description: "command chain".to_string(),
+                summary: "Runs several commands in sequence".to_string(),
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash in this project".to_string(),
                 safe: false,
@@ -274,8 +345,9 @@ impl BashCommandPattern for CommandChainPattern {
         }
 
         if base_commands.iter().all(|c| c == &base_commands[0]) {
-            CommandPatternResult {
+            return CommandPatternResult {
                 description: base_commands[0].clone(),
+                summary: format!("Runs several `{}` commands in sequence", base_commands[0]),
                 pattern: format!("{}:*", base_commands[0]),
                 persistent_message: format!(
                     "don't ask me again for \"{}\" commands in this project",
@@ -283,22 +355,35 @@ impl BashCommandPattern for CommandChainPattern {
                 ),
                 safe: false,
                 allow_project_wide_trust: true,
+            };
+        }
+
+        let prefixes = meaningful_prefixes(command);
+        if prefixes.len() == 1 {
+            let p = &prefixes[0];
+            CommandPatternResult {
+                description: p.clone(),
+                summary: format!("Runs `{p}`"),
+                pattern: format!("{p}:*"),
+                persistent_message: format!(
+                    "don't ask me again for \"{p}\" commands in this project"
+                ),
+                safe: false,
+                allow_project_wide_trust: true,
             }
         } else {
-            let display = base_commands.join(", ");
-            // Use & for chain patterns (not | which is for pipelines)
-            let pattern = base_commands
+            let pattern = prefixes
                 .iter()
-                .map(|cmd| format!("{}:*", cmd))
+                .map(|p| format!("{p}:*"))
                 .collect::<Vec<_>>()
                 .join("&");
-
             CommandPatternResult {
-                description: display.clone(),
+                description: prefixes.join(", "),
+                summary: format!("Runs {} in sequence", join_commands(&prefixes)),
                 pattern,
                 persistent_message: format!(
-                    "don't ask me again for \"{}\" command combinations in this project",
-                    display
+                    "don't ask me again for {} commands in this project",
+                    quoted_join(&prefixes)
                 ),
                 safe: false,
                 allow_project_wide_trust: true,
@@ -436,6 +521,7 @@ impl BashCommandPattern for NetworkReadPattern {
     fn analyze(&self, _command: &str) -> CommandPatternResult {
         CommandPatternResult {
             description: "read-only network request".to_string(),
+            summary: "Makes a read-only network request (no data is uploaded)".to_string(),
             pattern: "net:read".to_string(),
             persistent_message:
                 "don't ask me again for read-only network requests (curl/wget/gh api) in this project"
@@ -506,11 +592,24 @@ impl BashCommandPattern for SingleCommandPattern {
         }
 
         if let Some(prefix) = pattern.strip_suffix(":*") {
-            let clean_target = command.trim();
-            if let Some(rest) = clean_target.strip_prefix(prefix) {
-                return rest.is_empty() || rest.starts_with(' ');
+            // Match on parsed tokens, not the raw string, so a pattern stays
+            // symmetric with the way it was generated. This is what makes
+            // env-var-prefixed commands re-match: `RUST_LOG=debug cargo run`
+            // tokenizes to (`cargo`, `run`) just like `cargo run` does, so the
+            // stored `cargo run:*` rule keeps matching it.
+            let Some((cmd, arg)) = BashCommandParser::extract_first_command_and_arg(command) else {
+                return false;
+            };
+            // A bare-command prefix (`cargo:*`) matches any invocation of that
+            // command; a command+arg prefix (`cargo run:*`) matches only when
+            // the first argument lines up too.
+            if prefix == cmd {
+                return true;
             }
-            false
+            match arg {
+                Some(arg) => prefix == format!("{} {}", cmd, arg),
+                None => false,
+            }
         } else {
             pattern == command
         }
@@ -535,8 +634,15 @@ impl BashCommandPattern for SingleCommandPattern {
                 cmd.clone()
             };
 
+            let summary = if safe {
+                format!("Runs `{}` (read-only)", description)
+            } else {
+                format!("Runs `{}`", description)
+            };
+
             CommandPatternResult {
                 description: description.clone(),
+                summary,
                 pattern,
                 persistent_message: format!(
                     "don't ask me again for \"{}\" commands in this project",
@@ -549,6 +655,7 @@ impl BashCommandPattern for SingleCommandPattern {
             // Fallback
             CommandPatternResult {
                 description: "bash command".to_string(),
+                summary: "Runs a bash command".to_string(),
                 pattern: "*".to_string(),
                 persistent_message: "don't ask me again for bash".to_string(),
                 safe: false,
@@ -601,9 +708,77 @@ mod tests {
     #[test]
     fn test_pipeline_pattern_different_commands() {
         let pattern = PipelinePattern;
+        // All read-only: nothing to strip, so the rule keys on bare names with
+        // clean wording (no "pipe combination of ...").
         let result = pattern.analyze("cat file | grep error | wc -l");
         assert_eq!(result.pattern, "cat:*|grep:*|wc:*");
-        assert!(result.persistent_message.contains("pipe combination"));
+        assert!(!result.persistent_message.contains("pipe combination"));
+        assert!(result.persistent_message.contains("\"cat\""));
+    }
+
+    /// The motivating case: read-only/`cd` noise is stripped so the rule keys on
+    /// the one meaningful command, with clean single-command wording.
+    #[test]
+    fn test_pipeline_strips_noise_to_single_meaningful_command() {
+        let pattern = PipelinePattern;
+        let result =
+            pattern.analyze("cd apps/web && npx playwright test x 2>&1 | grep -A 25 \"image\"");
+        assert_eq!(result.pattern, "npx playwright:*");
+        assert!(!result.safe);
+        assert!(result.persistent_message.contains("npx playwright"));
+        assert!(!result.persistent_message.contains("pipe combination"));
+        assert!(!result.persistent_message.contains("grep"));
+        // And the generated rule re-matches the command it came from.
+        assert!(pattern.matches_pattern(
+            &result.pattern,
+            "cd apps/web && npx playwright test x 2>&1 | grep -A 25 \"image\""
+        ));
+    }
+
+    #[test]
+    fn test_compound_keys_on_meaningful_command() {
+        // read-only prefix dropped
+        assert_eq!(
+            CommandChainPattern.analyze("ls && cargo build").pattern,
+            "cargo build:*"
+        );
+        // cd prefix dropped
+        assert_eq!(
+            CommandChainPattern.analyze("cd foo && npm test").pattern,
+            "npm test:*"
+        );
+    }
+
+    #[test]
+    fn test_compound_patterns_round_trip_through_matcher() {
+        for (pat, cmd) in [
+            (
+                &PipelinePattern as &dyn BashCommandPattern,
+                "cd web && npx playwright test x | grep y",
+            ),
+            (&CommandChainPattern, "ls && cargo build --release"),
+            (&CommandChainPattern, "cd foo && npm test -- --watch"),
+            (&PipelinePattern, "cat a | grep b | wc -l"),
+            (&CommandChainPattern, "cargo build && docker compose up"),
+        ] {
+            let result = pat.analyze(cmd);
+            assert!(
+                pat.matches_pattern(&result.pattern, cmd),
+                "generated pattern `{}` failed to re-match `{cmd}`",
+                result.pattern
+            );
+        }
+    }
+
+    #[test]
+    fn test_pipeline_two_meaningful_commands_clean_wording() {
+        let pattern = CommandChainPattern;
+        let result = pattern.analyze("cargo build && docker compose up");
+        assert_eq!(result.pattern, "cargo build:*&docker compose:*");
+        assert!(result.persistent_message.contains("\"cargo build\""));
+        assert!(result.persistent_message.contains("\"docker compose\""));
+        assert!(!result.persistent_message.contains("combination"));
+        assert!(pattern.matches_pattern(&result.pattern, "cargo build && docker compose up"));
     }
 
     #[test]
@@ -777,11 +952,18 @@ mod tests {
     }
 
     #[test]
-    fn test_pipeline_matches_pattern_missing_command() {
+    fn test_pipeline_matches_pattern_subset_is_allowed() {
         let pattern = PipelinePattern;
-        // Pattern requires cat, grep, wc but command only has cat and wc
-        assert!(!pattern.matches_pattern("cat:*|grep:*|wc:*", "cat file | wc -l"));
-        assert!(!pattern.matches_pattern("cat:*|grep:*", "cat file | wc -l"));
+        // A command using fewer commands than the rule trusts is within trust.
+        assert!(pattern.matches_pattern("cat:*|grep:*|wc:*", "cat file | wc -l"));
+        assert!(pattern.matches_pattern("cat:*|grep:*", "cat file | grep x"));
+    }
+
+    #[test]
+    fn test_pipeline_matches_pattern_uncovered_command_rejected() {
+        let pattern = PipelinePattern;
+        // `rm` is meaningful and not in the trusted set → must NOT match.
+        assert!(!pattern.matches_pattern("cat:*|grep:*", "cat file | grep x | rm -rf y"));
     }
 
     #[test]
@@ -870,6 +1052,40 @@ mod tests {
         let pattern = SingleCommandPattern;
         assert!(pattern.matches_pattern("ls:*", "ls"));
         assert!(pattern.matches_pattern("pwd:*", "pwd"));
+    }
+
+    /// Regression: an env-var prefix used to break re-matching. The pattern is
+    /// generated from the real command (`cargo run`), so the stored rule must
+    /// keep matching the same invocation even with a `VAR=val` prefix —
+    /// otherwise the identical command prompts again every time.
+    #[test]
+    fn test_single_command_matches_pattern_ignores_env_prefix() {
+        let pattern = SingleCommandPattern;
+        assert!(pattern.matches_pattern("cargo run:*", "RUST_LOG=debug cargo run"));
+        assert!(pattern.matches_pattern("cargo:*", "RUST_LOG=debug cargo run"));
+        assert!(pattern.matches_pattern("make:*", "FOO=bar make build"));
+        // A different command behind the env prefix must still NOT match.
+        assert!(!pattern.matches_pattern("cargo run:*", "RUST_LOG=debug cargo test"));
+    }
+
+    /// The descriptor a command produces must re-match the command it came
+    /// from — a stored "trust project" rule is worthless if it can't.
+    #[test]
+    fn test_analyze_pattern_round_trips_through_matcher() {
+        let pattern = SingleCommandPattern;
+        for cmd in [
+            "cargo build",
+            "RUST_LOG=debug cargo run",
+            "git status",
+            "ls -la",
+        ] {
+            let result = pattern.analyze(cmd);
+            assert!(
+                pattern.matches_pattern(&result.pattern, cmd),
+                "generated pattern `{}` failed to re-match `{cmd}`",
+                result.pattern
+            );
+        }
     }
 
     #[test]
@@ -970,7 +1186,9 @@ mod tests {
         let registry = BashCommandPatternRegistry::new();
 
         assert!(registry.matches_pattern("cat:*|grep:*", "cat file | grep pattern"));
-        assert!(!registry.matches_pattern("cat:*|grep:*|wc:*", "cat file | grep pattern"));
+        // Subset of the trusted set is fine; an uncovered meaningful command is not.
+        assert!(registry.matches_pattern("cat:*|grep:*|wc:*", "cat file | grep pattern"));
+        assert!(!registry.matches_pattern("cat:*|grep:*", "cat file | grep p | rm x"));
     }
 
     #[test]

@@ -128,7 +128,7 @@ impl BashTool {
             ));
 
             if !output.status.success() {
-                result.push_str("⚠️  Command failed with non-zero exit code\n");
+                result.push_str("Command failed with non-zero exit code\n");
             }
 
             Ok::<String, ToolError>(result)
@@ -280,7 +280,7 @@ impl BashTool {
             result.push_str(&format!("Exit code: {}\n", status.code().unwrap_or(-1)));
 
             if !status.success() {
-                result.push_str("⚠️  Command failed with non-zero exit code\n");
+                result.push_str("Command failed with non-zero exit code\n");
             }
 
             Ok::<String, ToolError>(result)
@@ -302,6 +302,8 @@ struct BashArgs {
     command: String,
     #[serde(default)]
     timeout_override: Option<u64>,
+    #[serde(default)]
+    description: Option<String>,
 }
 
 #[async_trait]
@@ -347,7 +349,10 @@ impl Tool for BashTool {
         - bash("git status") \n
         - bash("npm install") \n
         Usage notes:\n\
-        - You are already in the project directory - do not cd into it\n\
+        - Always set `description`: a short, present-tense one-liner of what the command does. The user sees it in the approval prompt.\n\
+        - You are already in the project directory - do not cd into it. Run tools at the repo root; do NOT `cd subdir && ...` just to reach a path.\n\
+        - Prefer a single command over chaining with && / | / ; — each compound command is harder to approve and to trust project-wide.\n\
+        - Do NOT filter output with `| grep` or `2>&1` to shrink it; run the command plainly. hoosh streams and captures the full output for you (use ctrl+o to expand it).\n\
         - Commands timeout after 30 seconds by default (max 300s)\n\
         - Always quote file paths with spaces: cd \"path with spaces\"\n\
         - Avoid interactive commands (-i flags) as they are not supported"#
@@ -366,9 +371,13 @@ impl Tool for BashTool {
                     "minimum": 1,
                     "maximum": 300,
                     "description": "Optional: timeout in seconds (1-300). Default is 30s. Use higher values for long-running commands like builds or test suites. Example: timeout_override=120 for 2 minutes."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "A short, present-tense one-liner (5-12 words) explaining what this command does and why, shown to the user in the approval prompt. Describe intent, not the literal command. Examples: \"Builds the project in release mode\", \"Installs the missing serde dependency\", \"Runs the failing auth tests with backtraces\"."
                 }
             },
-            "required": ["command"]
+            "required": ["command", "description"]
         })
     }
 
@@ -411,7 +420,33 @@ impl Tool for BashTool {
     }
 
     fn describe_permission(&self, target: Option<&str>) -> ToolPermissionDescriptor {
-        let target_str = target.unwrap_or("*");
+        self.build_descriptor(target.unwrap_or("*"), None)
+    }
+
+    fn describe_permission_for_call(
+        &self,
+        target: Option<&str>,
+        args: &Value,
+    ) -> ToolPermissionDescriptor {
+        let model_description = serde_json::from_value::<BashArgs>(args.clone())
+            .ok()
+            .and_then(|a| a.description)
+            .map(|d| d.trim().to_string())
+            .filter(|d| !d.is_empty());
+
+        self.build_descriptor(target.unwrap_or("*"), model_description.as_deref())
+    }
+}
+
+impl BashTool {
+    /// Build the permission descriptor for a command. `model_description` is
+    /// the model-supplied one-liner shown in the prompt; when absent we fall
+    /// back to a deterministic, pattern-derived summary.
+    fn build_descriptor(
+        &self,
+        target_str: &str,
+        model_description: Option<&str>,
+    ) -> ToolPermissionDescriptor {
         let registry = BashCommandPatternRegistry::new();
         let mut pattern_result = registry.analyze_command(target_str);
 
@@ -424,10 +459,15 @@ impl Tool for BashTool {
             pattern_result = CdOutsideCwdResult::result();
         }
 
+        let summary = model_description
+            .map(str::to_string)
+            .unwrap_or(pattern_result.summary);
+
         // Build descriptor with safety info, but let ToolExecutor decide approval
         let mut builder = ToolPermissionBuilder::new(self, target_str)
             .with_approval_title(" Bash Command ")
             .with_approval_prompt("Can I run this bash command?")
+            .with_command_summary(summary)
             .with_command_preview(target_str.to_string())
             .with_persistent_approval(pattern_result.persistent_message)
             .with_suggested_pattern(pattern_result.pattern)
@@ -448,9 +488,7 @@ impl Tool for BashTool {
             .build()
             .expect("Failed to build BashTool permission descriptor")
     }
-}
 
-impl BashTool {
     /// True if the command runs `cd <path>` for a path that resolves outside
     /// the configured working directory. `cd` with no arg counts as leaving
     /// (it targets `$HOME`).
@@ -496,6 +534,8 @@ impl CdOutsideCwdResult {
     fn result() -> crate::tools::bash::command_pattern::CommandPatternResult {
         crate::tools::bash::command_pattern::CommandPatternResult {
             description: "cd outside working directory".to_string(),
+            summary: "Changes into a directory outside the project, then runs commands there"
+                .to_string(),
             pattern: "cd:outside".to_string(),
             persistent_message:
                 "don't ask me again for `cd` outside the working directory in this project"
@@ -558,6 +598,57 @@ mod tests {
         // cd into cwd or under cwd should NOT match the outside rule.
         let inside = format!("cd {}", cwd.display());
         assert!(!matcher.matches("cd:outside", &inside));
+    }
+
+    #[test]
+    fn model_description_is_shown_in_prompt() {
+        let tool = BashTool::new();
+        let args = json!({
+            "command": "cargo build --release",
+            "description": "Builds the project in release mode"
+        });
+        let desc = tool.describe_permission_for_call(Some("cargo build --release"), &args);
+        assert_eq!(
+            desc.command_summary(),
+            Some("Builds the project in release mode")
+        );
+    }
+
+    #[test]
+    fn missing_description_falls_back_to_pattern_summary() {
+        let tool = BashTool::new();
+        let args = json!({ "command": "cargo build --release" });
+        let desc = tool.describe_permission_for_call(Some("cargo build --release"), &args);
+        // Deterministic fallback still describes the command.
+        assert_eq!(desc.command_summary(), Some("Runs `cargo build`"));
+    }
+
+    #[test]
+    fn compound_command_suggests_single_meaningful_prefix() {
+        let cwd = std::env::current_dir().unwrap();
+        let tool = BashTool::new().with_working_directory(cwd);
+        // No model description, so the deterministic pattern path is used.
+        let desc = tool.describe_permission(Some(
+            "npx playwright test x 2>&1 | grep -A 25 \"image uploads\"",
+        ));
+        assert_eq!(desc.suggested_pattern(), Some("npx playwright:*"));
+        assert!(!desc.is_read_only());
+    }
+
+    #[test]
+    fn cd_outside_override_fires_for_compound_command() {
+        let tool = BashTool::new().with_working_directory(PathBuf::from("/Users/x/project"));
+        let desc = tool.describe_permission(Some("cd /etc && npx playwright test | grep x"));
+        assert_eq!(desc.suggested_pattern(), Some("cd:outside"));
+        assert!(!desc.is_read_only());
+    }
+
+    #[test]
+    fn blank_description_falls_back_to_pattern_summary() {
+        let tool = BashTool::new();
+        let args = json!({ "command": "ls -la", "description": "   " });
+        let desc = tool.describe_permission_for_call(Some("ls -la"), &args);
+        assert_eq!(desc.command_summary(), Some("Runs `ls -la` (read-only)"));
     }
 
     #[tokio::test]

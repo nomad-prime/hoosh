@@ -22,7 +22,9 @@ impl Component for PermissionDialog {
             // We absolutely need space for these.
             // Borders(2) + Prompt(2) + Options(N) + Footer(2)
             let options_count = dialog_state.options.len() as u16;
-            let fixed_chrome_height = 2 + 2 + options_count + 2;
+            let summary = descriptor.command_summary();
+            let summary_height = summary.is_some() as u16;
+            let fixed_chrome_height = 2 + 2 + summary_height + options_count + 2;
 
             let mut lines = vec![];
 
@@ -30,6 +32,14 @@ impl Component for PermissionDialog {
                 descriptor.approval_prompt(),
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
+
+            if let Some(summary) = summary {
+                lines.push(Line::from(vec![Span::styled(
+                    summary,
+                    Style::default().fg(palette::WARNING),
+                )]));
+            }
+
             lines.push(Line::from(""));
 
             // 2. Calculate Dynamic Preview Height

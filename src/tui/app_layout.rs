@@ -53,17 +53,17 @@ impl AppLayout for Layout<AppState> {
         // Calculate bash results visibility and height
         let has_bash_tasks = app.tools.active.iter().any(|tc| tc.is_bash_streaming);
         let bash_results_visible = has_bash_tasks;
+        let bash_max_lines = if app.tools.expanded { 30 } else { 5 };
         let bash_results_height = app.tools.active.iter().fold(0u16, |acc, tc| {
             if !tc.is_bash_streaming || tc.bash_output_lines.is_empty() {
                 return acc;
             }
-            const MAX_LINES: usize = 5;
             let total_lines = tc.bash_output_lines.len();
-            let lines_to_show = total_lines.min(MAX_LINES);
+            let lines_to_show = total_lines.min(bash_max_lines);
             let mut height = lines_to_show as u16;
 
             // Add 1 for ellipsis if there are more lines
-            if total_lines > MAX_LINES {
+            if total_lines > bash_max_lines {
                 height += 1;
             }
             acc + height
@@ -123,6 +123,11 @@ impl AppLayout for Layout<AppState> {
                     // 2 lines: Borders (Top + Bottom)
                     // Total: 6 + N
                     let mut base = 6 + state.options.len() as u16;
+
+                    // One-line command summary, when present.
+                    if state.descriptor.command_summary().is_some() {
+                        base += 1;
+                    }
 
                     // Add height for command preview if present
                     if let Some(preview) = state.descriptor.command_preview() {

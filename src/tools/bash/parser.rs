@@ -8,51 +8,151 @@ impl BashCommandParser {
     /// - Quotes: 'echo "a | b"' -> ["echo"] (not ["echo", "b"])
     /// - Env Vars: 'Start=1 cargo build' -> ["cargo"]
     /// - Chains: 'git commit && git push' -> ["git"]
+    /// - No-space operators: 'cat a|grep b' -> ["cat", "grep"]
     pub fn extract_base_commands(input: &str) -> Vec<String> {
-        // 1. Heredoc Pre-processing
-        // We keep your existing logic to only parse the first line if heredoc exists
-        // to prevent parsing the content of the heredoc as commands.
+        let mut commands = IndexSet::new();
+        for segment in Self::split_subcommands(input) {
+            if let Some(cmd) = Self::first_command_token(&segment) {
+                commands.insert(cmd);
+            }
+        }
+        commands.into_iter().collect()
+    }
+
+    /// Split a command into its top-level subcommands, breaking on `&&`, `||`,
+    /// `;` and `|` while respecting quotes and `$( )` / `( )` / backtick
+    /// nesting. Operators inside quotes or subshells are NOT split, so
+    /// `echo $(a | b)` and `git commit -m 'x | y'` each stay a single segment.
+    /// Redirections (`2>&1`, `>`) are left attached to their segment.
+    ///
+    /// This is a deliberately small, heuristic splitter built on `shlex`-style
+    /// scanning rather than a full shell grammar — adequate for hoosh's threat
+    /// model. If structural correctness is ever needed, replace this with a real
+    /// AST parser (the `brush-parser` crate is the candidate).
+    pub fn split_subcommands(input: &str) -> Vec<String> {
         let input_to_parse = if Self::contains_heredoc(input) {
             input.lines().next().unwrap_or("").to_string()
         } else {
             input.to_string()
         };
 
-        // 2. Tokenization via shlex
-        // This handles the quoting logic automatically.
-        let tokens = match shlex::split(&input_to_parse) {
-            Some(t) => t,
-            None => return vec![], // Unbalanced quotes or parse error -> Unsafe to run
-        };
+        let chars: Vec<char> = input_to_parse.chars().collect();
+        let mut segments = Vec::new();
+        let mut current = String::new();
+        let mut i = 0;
+        let mut in_single = false;
+        let mut in_double = false;
+        let mut in_backtick = false;
+        let mut depth: i32 = 0;
 
-        let mut commands = IndexSet::new();
-        let mut expect_command = true;
+        while i < chars.len() {
+            let c = chars[i];
 
-        for token in tokens {
-            if Self::is_control_operator(&token) {
-                expect_command = true;
+            if c == '\\' && !in_single {
+                current.push(c);
+                if i + 1 < chars.len() {
+                    current.push(chars[i + 1]);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
                 continue;
             }
 
-            if expect_command {
-                // 3. Handle Environment Variable Prefixes (e.g., RUST_LOG=debug cargo run)
-                // If it looks like VAR=VAL, it's not the command yet.
-                if token.contains('=') && !token.starts_with('-') {
-                    // Edge case check: ensure it's actually a variable assignment
-                    // and not a command that happens to have an equal sign (rare but possible)
-                    continue;
-                }
-
-                // This is our command
-                commands.insert(token);
-                expect_command = false;
+            if in_single {
+                current.push(c);
+                in_single = c != '\'';
+                i += 1;
+                continue;
+            }
+            if in_double {
+                current.push(c);
+                in_double = c != '"';
+                i += 1;
+                continue;
             }
 
-            // If expect_command is false, we are processing arguments.
-            // We ignore them until we hit a control operator.
+            match c {
+                '\'' => {
+                    in_single = true;
+                    current.push(c);
+                    i += 1;
+                }
+                '"' => {
+                    in_double = true;
+                    current.push(c);
+                    i += 1;
+                }
+                '`' => {
+                    in_backtick = !in_backtick;
+                    current.push(c);
+                    i += 1;
+                }
+                _ if in_backtick => {
+                    current.push(c);
+                    i += 1;
+                }
+                '$' if i + 1 < chars.len() && chars[i + 1] == '(' => {
+                    depth += 1;
+                    current.push('$');
+                    current.push('(');
+                    i += 2;
+                }
+                '(' => {
+                    depth += 1;
+                    current.push(c);
+                    i += 1;
+                }
+                ')' => {
+                    depth = (depth - 1).max(0);
+                    current.push(c);
+                    i += 1;
+                }
+                _ if depth > 0 => {
+                    current.push(c);
+                    i += 1;
+                }
+                ';' => {
+                    Self::push_segment(&mut segments, &mut current);
+                    i += 1;
+                }
+                '|' => {
+                    Self::push_segment(&mut segments, &mut current);
+                    i += if i + 1 < chars.len() && chars[i + 1] == '|' {
+                        2
+                    } else {
+                        1
+                    };
+                }
+                '&' if i + 1 < chars.len() && chars[i + 1] == '&' => {
+                    Self::push_segment(&mut segments, &mut current);
+                    i += 2;
+                }
+                _ => {
+                    current.push(c);
+                    i += 1;
+                }
+            }
         }
+        Self::push_segment(&mut segments, &mut current);
+        segments
+    }
 
-        commands.into_iter().collect()
+    fn push_segment(segments: &mut Vec<String>, current: &mut String) {
+        let trimmed = current.trim();
+        if !trimmed.is_empty() {
+            segments.push(trimmed.to_string());
+        }
+        current.clear();
+    }
+
+    /// First real command token of a single subcommand: skips `VAR=val`
+    /// env-var prefixes. Returns `None` on an empty/unparseable segment.
+    fn first_command_token(segment: &str) -> Option<String> {
+        let tokens = shlex::split(segment)?;
+        tokens
+            .into_iter()
+            .find(|t| !t.contains('=') || t.starts_with('-'))
     }
 
     pub fn contains_heredoc(input: &str) -> bool {
@@ -236,5 +336,106 @@ mod tests {
             "echo \"Hello! This is a test message written using bash.\" > test_message.txt && cat test_message.txt ",
         );
         assert_eq!(cmds, vec!["echo", "cat"]);
+    }
+
+    /// Regression: shlex tokenizes `a|grep` as one token, so the old parser
+    /// missed everything after a space-less operator. The splitter must see it.
+    #[test]
+    fn extract_base_commands_handles_no_space_operators() {
+        assert_eq!(
+            BashCommandParser::extract_base_commands("cat a|grep b"),
+            vec!["cat", "grep"]
+        );
+        assert_eq!(
+            BashCommandParser::extract_base_commands("cargo build&&cargo test"),
+            vec!["cargo"]
+        );
+        assert_eq!(
+            BashCommandParser::extract_base_commands("ls;pwd;echo hi"),
+            vec!["ls", "pwd", "echo"]
+        );
+    }
+
+    #[test]
+    fn split_subcommands_spaced_and_unspaced() {
+        assert_eq!(
+            BashCommandParser::split_subcommands("a && b"),
+            vec!["a", "b"]
+        );
+        assert_eq!(BashCommandParser::split_subcommands("a&&b"), vec!["a", "b"]);
+        assert_eq!(BashCommandParser::split_subcommands("a|b"), vec!["a", "b"]);
+        assert_eq!(BashCommandParser::split_subcommands("a;b"), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn split_subcommands_or_does_not_create_empty_segment() {
+        assert_eq!(
+            BashCommandParser::split_subcommands("ls || echo failed"),
+            vec!["ls", "echo failed"]
+        );
+    }
+
+    #[test]
+    fn split_subcommands_respects_quotes() {
+        assert_eq!(
+            BashCommandParser::split_subcommands("echo \"a && b\""),
+            vec!["echo \"a && b\""]
+        );
+        assert_eq!(
+            BashCommandParser::split_subcommands("git commit -m 'x | y'"),
+            vec!["git commit -m 'x | y'"]
+        );
+    }
+
+    #[test]
+    fn split_subcommands_respects_subshell_and_backtick_nesting() {
+        assert_eq!(
+            BashCommandParser::split_subcommands("echo $(a | b)"),
+            vec!["echo $(a | b)"]
+        );
+        assert_eq!(
+            BashCommandParser::split_subcommands("echo `a | b`"),
+            vec!["echo `a | b`"]
+        );
+    }
+
+    #[test]
+    fn split_subcommands_keeps_redirection_in_segment() {
+        assert_eq!(
+            BashCommandParser::split_subcommands("npx test 2>&1 | grep y"),
+            vec!["npx test 2>&1", "grep y"]
+        );
+    }
+
+    #[test]
+    fn split_subcommands_screenshot_case() {
+        assert_eq!(
+            BashCommandParser::split_subcommands(
+                "cd apps/web && npx playwright test x 2>&1 | grep -A 25 \"image uploads\""
+            ),
+            vec![
+                "cd apps/web",
+                "npx playwright test x 2>&1",
+                "grep -A 25 \"image uploads\""
+            ]
+        );
+    }
+
+    #[test]
+    fn split_subcommands_trims_and_drops_empty() {
+        assert_eq!(
+            BashCommandParser::split_subcommands("  ls  ;  "),
+            vec!["ls"]
+        );
+        assert!(BashCommandParser::split_subcommands("   ").is_empty());
+    }
+
+    #[test]
+    fn split_subcommands_ignores_heredoc_body() {
+        // Only the command line is split; heredoc body is left out.
+        assert_eq!(
+            BashCommandParser::split_subcommands("cat <<EOF\nfoo | bar\nEOF"),
+            vec!["cat <<EOF"]
+        );
     }
 }

@@ -374,7 +374,7 @@ impl ToolExecutor {
             .or_else(|| args.get("command").and_then(|v| v.as_str()));
 
         // Let the tool describe its own permission requirements
-        let descriptor = tool.describe_permission(target);
+        let descriptor = tool.describe_permission_for_call(target, args);
 
         // Auto-approve read-only operations
         if descriptor.is_read_only() {

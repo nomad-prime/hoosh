@@ -345,7 +345,10 @@ pub(crate) async fn handle_cancel_task(
                 use ratatui::text::{Line, Span};
                 app.clear_active_tool_calls();
                 app.add_styled_line(Line::from(Span::styled(
-                    super::state::format_inline_status("retracted, hoosh did not see this"),
+                    format!(
+                        "  ⎿ [{}]",
+                        super::state::inline_status_body("retracted, hoosh did not see this")
+                    ),
                     Style::default()
                         .fg(super::colors::palette::DIMMED_TEXT)
                         .add_modifier(Modifier::ITALIC),

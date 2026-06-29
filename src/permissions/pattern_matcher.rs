@@ -167,19 +167,26 @@ mod tests {
     }
 
     #[test]
-    fn test_multicommand_requires_all_commands() {
+    fn test_multicommand_allows_trusted_subset_rejects_untrusted() {
         let matcher = BashPatternMatcher::new();
         let pattern = "find:*|head:*|xargs:*";
 
+        // Full pipeline of trusted commands.
         assert!(matcher.matches(
             pattern,
             "find . -name '*.md' | head -3 | xargs sed -i 's/test/TEST/g'"
         ));
+        // A subset of the trusted commands is still within trust (safe direction).
+        assert!(matcher.matches(pattern, "find . | head -3"));
+        assert!(matcher.matches(pattern, "head -3 | xargs sed -i 's/a/b/'"));
 
+        // A single (non-compound) command does NOT match a multi-command
+        // pipeline rule — it routes to the single-command matcher instead.
         assert!(!matcher.matches(pattern, "xargs sed -i 's/test/TEST/g'"));
         assert!(!matcher.matches(pattern, "find . -name '*.md'"));
-        assert!(!matcher.matches(pattern, "find . | head -3"));
-        assert!(!matcher.matches(pattern, "head -3 | xargs sed -i 's/a/b/'"));
+
+        // An untrusted command anywhere in the pipeline rejects the whole thing.
+        assert!(!matcher.matches(pattern, "find . | head -3 | rm -rf x"));
     }
 
     #[test]
@@ -193,14 +200,15 @@ mod tests {
     }
 
     #[test]
-    fn test_multicommand_all_three_present() {
+    fn test_multicommand_subset_matches_single_does_not() {
         let matcher = BashPatternMatcher::new();
         let pattern = "cat:*|grep:*|head:*";
 
         assert!(matcher.matches(pattern, "cat Cargo.toml | grep version | head -1"));
-
-        assert!(!matcher.matches(pattern, "cat Cargo.toml | grep version"));
-
+        // Subset of the trusted set is within trust.
+        assert!(matcher.matches(pattern, "cat Cargo.toml | grep version"));
+        // A lone command routes to the single-command matcher, which does not
+        // honor a multi-command pipeline rule.
         assert!(!matcher.matches(pattern, "grep version"));
     }
 
