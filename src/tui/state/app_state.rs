@@ -14,7 +14,6 @@ use anyhow::Result;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use std::collections::VecDeque;
-use std::time::Instant;
 
 pub struct AppState {
     pub input: TextArea,
@@ -342,23 +341,12 @@ impl AppState {
         render: ToolRender,
         phrasing: CategoryPhrasing,
     ) {
-        self.tools.active.push(ActiveToolCall {
+        self.tools.active.push(ActiveToolCall::new(
             tool_call_id,
             display_name,
             render,
             phrasing,
-            status: ToolCallStatus::Starting,
-            preview: None,
-            result_summary: None,
-            subagent_steps: Vec::new(),
-            is_subagent_task: false,
-            bash_output_lines: Vec::new(),
-            is_bash_streaming: false,
-            start_time: Instant::now(),
-            budget_pct: None,
-            total_tool_uses: None,
-            total_tokens: None,
-        });
+        ));
     }
 
     pub fn update_tool_call_status(&mut self, tool_call_id: &str, status: ToolCallStatus) {
@@ -444,9 +432,9 @@ impl AppState {
         // Subagent summaries are pure status (tool count, tokens, elapsed) so
         // they survive compact mode — without them a finished subagent looks
         // indistinguishable from a zero-result call.
-        if tool_call.is_subagent_task {
+        if let Some(subagent) = &tool_call.subagent {
             if let (Some(tool_uses), Some(tokens)) =
-                (tool_call.total_tool_uses, tool_call.total_tokens)
+                (subagent.total_tool_uses, subagent.total_tokens)
             {
                 let tokens_formatted = if tokens >= 1000 {
                     format!("{:.1}k", tokens as f64 / 1000.0)
@@ -672,14 +660,16 @@ impl AppState {
         budget_pct: f32,
     ) {
         if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-            tool_call.is_subagent_task = true;
-            let step = SubagentStepSummary {
-                step_number,
-                action_type,
-                description,
-            };
             tool_call.budget_pct = Some(budget_pct);
-            tool_call.add_subagent_step(step);
+            tool_call
+                .subagent
+                .get_or_insert_with(SubagentDetail::default)
+                .steps
+                .push(SubagentStepSummary {
+                    step_number,
+                    action_type,
+                    description,
+                });
         }
     }
 
@@ -690,8 +680,11 @@ impl AppState {
         total_tokens: usize,
     ) {
         if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-            tool_call.total_tool_uses = Some(total_tool_uses);
-            tool_call.total_tokens = Some(total_tokens);
+            let subagent = tool_call
+                .subagent
+                .get_or_insert_with(SubagentDetail::default);
+            subagent.total_tool_uses = Some(total_tool_uses);
+            subagent.total_tokens = Some(total_tokens);
         }
     }
 
@@ -703,11 +696,15 @@ impl AppState {
         stream_type: String,
     ) {
         if let Some(tool_call) = self.get_active_tool_call_mut(&tool_call_id) {
-            tool_call.add_bash_output_line(BashOutputLine {
-                line_number,
-                content: output_line,
-                stream_type,
-            });
+            tool_call
+                .bash
+                .get_or_insert_with(BashDetail::default)
+                .lines
+                .push(BashOutputLine {
+                    line_number,
+                    content: output_line,
+                    stream_type,
+                });
         }
     }
 

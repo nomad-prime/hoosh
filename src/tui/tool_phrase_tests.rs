@@ -1,26 +1,16 @@
 use super::*;
 use crate::tools::{CategoryPhrasing, ToolRender, phrasing};
 use crate::tui::state::{ActiveToolCall, ToolCallStatus};
-use std::time::Instant;
 
 fn call(display_name: &str, phrasing: CategoryPhrasing) -> ActiveToolCall {
-    ActiveToolCall {
-        tool_call_id: display_name.to_string(),
-        display_name: display_name.to_string(),
-        render: ToolRender::Standard,
+    let mut call = ActiveToolCall::new(
+        display_name.to_string(),
+        display_name.to_string(),
+        ToolRender::Standard,
         phrasing,
-        status: ToolCallStatus::Executing,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        is_subagent_task: false,
-        bash_output_lines: Vec::new(),
-        is_bash_streaming: false,
-        start_time: Instant::now(),
-        budget_pct: None,
-        total_tool_uses: None,
-        total_tokens: None,
-    }
+    );
+    call.status = ToolCallStatus::Executing;
+    call
 }
 
 #[test]

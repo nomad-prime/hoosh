@@ -39,7 +39,7 @@ impl InputHandler for ToolExpandHandler {
             .tools
             .active
             .iter()
-            .any(|tc| tc.is_bash_streaming && !tc.bash_output_lines.is_empty());
+            .any(|tc| tc.bash.as_ref().is_some_and(|b| !b.lines.is_empty()));
 
         if is_ctrl_o && (app.tools.active.len() >= 2 || has_expandable_bash) {
             app.tools.expanded = !app.tools.expanded;
@@ -56,30 +56,20 @@ mod tests {
     use crate::tools::{ToolRender, phrasing};
     use crate::tui::state::{ActiveToolCall, ToolCallStatus};
     use crossterm::event::KeyEvent;
-    use std::time::Instant;
 
     fn ctrl_o() -> Event {
         Event::Key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL))
     }
 
     fn active_call() -> ActiveToolCall {
-        ActiveToolCall {
-            tool_call_id: "id".into(),
-            display_name: "Read(a.rs)".into(),
-            render: ToolRender::Standard,
-            phrasing: phrasing::READ,
-            status: ToolCallStatus::Executing,
-            preview: None,
-            result_summary: None,
-            subagent_steps: Vec::new(),
-            is_subagent_task: false,
-            bash_output_lines: Vec::new(),
-            is_bash_streaming: false,
-            start_time: Instant::now(),
-            budget_pct: None,
-            total_tool_uses: None,
-            total_tokens: None,
-        }
+        let mut call = ActiveToolCall::new(
+            "id".into(),
+            "Read(a.rs)".into(),
+            ToolRender::Standard,
+            phrasing::READ,
+        );
+        call.status = ToolCallStatus::Executing;
+        call
     }
 
     #[tokio::test]
@@ -109,17 +99,18 @@ mod tests {
 
     #[tokio::test]
     async fn ctrl_o_toggles_bash_output_with_single_call() {
-        use crate::tui::state::BashOutputLine;
+        use crate::tui::state::{BashDetail, BashOutputLine};
 
         let mut handler = ToolExpandHandler::new();
         let mut app = AppState::new();
         let mut bash = active_call();
-        bash.is_bash_streaming = true;
-        bash.bash_output_lines = vec![BashOutputLine {
-            line_number: 1,
-            content: "building...".into(),
-            stream_type: "stdout".into(),
-        }];
+        bash.bash = Some(BashDetail {
+            lines: vec![BashOutputLine {
+                line_number: 1,
+                content: "building...".into(),
+                stream_type: "stdout".into(),
+            }],
+        });
         app.tools.active = vec![bash];
 
         let result = handler.handle_event(&ctrl_o(), &mut app, true).await;
@@ -135,7 +126,7 @@ mod tests {
         let mut handler = ToolExpandHandler::new();
         let mut app = AppState::new();
         let mut bash = active_call();
-        bash.is_bash_streaming = true;
+        bash.bash = Some(crate::tui::state::BashDetail::default());
         app.tools.active = vec![bash];
 
         let result = handler.handle_event(&ctrl_o(), &mut app, true).await;

@@ -8,8 +8,9 @@ mod message_line;
 mod metrics_state;
 mod scroll_state;
 mod tool_call_view;
+mod tool_detail;
 
-pub use active_tool_call::{ActiveToolCall, BashOutputLine, SubagentStepSummary, ToolCallStatus};
+pub use active_tool_call::{ActiveToolCall, ToolCallStatus};
 pub use animation_state::AnimationState;
 pub use app_state::{AppState, continuation_line, inline_status_body};
 pub use attachment_state::AttachmentState;
@@ -21,3 +22,6 @@ pub use message_line::MessageLine;
 pub use metrics_state::MetricsState;
 pub use scroll_state::ScrollState;
 pub use tool_call_view::ToolCallView;
+pub use tool_detail::{
+    BashDetail, BashOutputLine, SubagentDetail, SubagentStepSummary, ToolDetail,
+};

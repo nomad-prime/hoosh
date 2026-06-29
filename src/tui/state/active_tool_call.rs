@@ -1,19 +1,6 @@
+use super::tool_detail::{BashDetail, SubagentDetail, ToolDetail};
 use crate::tools::{CategoryPhrasing, ToolRender};
 use std::time::Instant;
-
-#[derive(Clone, Debug)]
-pub struct SubagentStepSummary {
-    pub step_number: usize,
-    pub action_type: String,
-    pub description: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct BashOutputLine {
-    pub line_number: usize,
-    pub content: String,
-    pub stream_type: String, // "stdout" or "stderr"
-}
 
 #[derive(Clone, Debug)]
 pub struct ActiveToolCall {
@@ -24,14 +11,10 @@ pub struct ActiveToolCall {
     pub status: ToolCallStatus,
     pub preview: Option<String>,
     pub result_summary: Option<String>,
-    pub subagent_steps: Vec<SubagentStepSummary>,
-    pub is_subagent_task: bool,
-    pub bash_output_lines: Vec<BashOutputLine>,
-    pub is_bash_streaming: bool,
+    pub subagent: Option<SubagentDetail>,
+    pub bash: Option<BashDetail>,
     pub start_time: Instant,
     pub budget_pct: Option<f32>,
-    pub total_tool_uses: Option<usize>,
-    pub total_tokens: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,13 +27,33 @@ pub enum ToolCallStatus {
 }
 
 impl ActiveToolCall {
-    pub fn add_subagent_step(&mut self, step: SubagentStepSummary) {
-        self.subagent_steps.push(step);
+    pub fn new(
+        tool_call_id: String,
+        display_name: String,
+        render: ToolRender,
+        phrasing: CategoryPhrasing,
+    ) -> Self {
+        Self {
+            tool_call_id,
+            display_name,
+            render,
+            phrasing,
+            status: ToolCallStatus::Starting,
+            preview: None,
+            result_summary: None,
+            subagent: None,
+            bash: None,
+            start_time: Instant::now(),
+            budget_pct: None,
+        }
     }
 
-    pub fn add_bash_output_line(&mut self, line: BashOutputLine) {
-        self.bash_output_lines.push(line);
-        self.is_bash_streaming = true;
+    pub fn detail(&self) -> Option<&dyn ToolDetail> {
+        if let Some(detail) = &self.subagent {
+            Some(detail)
+        } else {
+            self.bash.as_ref().map(|detail| detail as &dyn ToolDetail)
+        }
     }
 
     pub fn elapsed_time(&self) -> String {

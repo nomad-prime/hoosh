@@ -27,47 +27,12 @@ impl AppLayout for Layout<AppState> {
                 if tc.result_summary.is_some() {
                     height += 1;
                 }
+                height += tc
+                    .detail()
+                    .map_or(0, |d| d.detail_lines(app.tools.expanded).len() as u16);
                 acc + height
             })
         };
-
-        // Calculate subagent results visibility and height
-        let has_subagent_tasks = app.tools.active.iter().any(|tc| tc.is_subagent_task);
-        let subagent_results_visible = has_subagent_tasks;
-        let subagent_results_height = app.tools.active.iter().fold(0u16, |acc, tc| {
-            if !tc.is_subagent_task || tc.subagent_steps.is_empty() {
-                return acc;
-            }
-            const MAX_STEPS: usize = 5;
-            let total_steps = tc.subagent_steps.len();
-            let steps_to_show = total_steps.min(MAX_STEPS);
-            let mut height = steps_to_show as u16;
-
-            // Add 1 for ellipsis if there are more steps
-            if total_steps > MAX_STEPS {
-                height += 1;
-            }
-            acc + height
-        });
-
-        // Calculate bash results visibility and height
-        let has_bash_tasks = app.tools.active.iter().any(|tc| tc.is_bash_streaming);
-        let bash_results_visible = has_bash_tasks;
-        let bash_max_lines = if app.tools.expanded { 30 } else { 5 };
-        let bash_results_height = app.tools.active.iter().fold(0u16, |acc, tc| {
-            if !tc.is_bash_streaming || tc.bash_output_lines.is_empty() {
-                return acc;
-            }
-            let total_lines = tc.bash_output_lines.len();
-            let lines_to_show = total_lines.min(bash_max_lines);
-            let mut height = lines_to_show as u16;
-
-            // Add 1 for ellipsis if there are more lines
-            if total_lines > bash_max_lines {
-                height += 1;
-            }
-            acc + height
-        });
 
         // Calculate todo list visibility and height
         let todo_list_visible = !app.todos.is_empty();
@@ -96,12 +61,7 @@ impl AppLayout for Layout<AppState> {
         let mut builder = LayoutBuilder::new()
             .spacer(1)
             .active_tool_calls(active_tool_calls_height, active_tool_calls_visible)
-            .subagent_results(subagent_results_height, subagent_results_visible)
-            .bash_results(bash_results_height, bash_results_visible)
-            .spacer_if(
-                1,
-                active_tool_calls_visible || subagent_results_visible || bash_results_visible,
-            )
+            .spacer_if(1, active_tool_calls_visible)
             .status_bar()
             .todo_list(todo_list_height, todo_list_visible)
             .queued_prompts(queued_prompts_height, queued_prompts_visible)

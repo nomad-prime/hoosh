@@ -94,6 +94,10 @@ impl Component for ActiveToolCallsComponent {
             if let Some(summary) = &tool_call.result_summary {
                 lines.push(continuation_line(summary.clone()));
             }
+
+            if let Some(detail) = tool_call.detail() {
+                lines.extend(detail.detail_lines(state.tools.expanded));
+            }
         }
 
         let paragraph = Paragraph::new(lines);

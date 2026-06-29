@@ -10,68 +10,53 @@ fn approval_dialog_new_initializes_correctly() {
 }
 
 #[test]
-fn active_tool_call_add_subagent_step() {
-    let mut tool_call = ActiveToolCall {
-        tool_call_id: "call1".to_string(),
-        display_name: "test".to_string(),
-        render: ToolRender::Standard,
-        phrasing: phrasing::GENERIC,
-        status: ToolCallStatus::Starting,
-        preview: None,
-        budget_pct: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        is_subagent_task: false,
-        bash_output_lines: Vec::new(),
-        is_bash_streaming: false,
-        start_time: Instant::now(),
-        total_tool_uses: None,
-        total_tokens: None,
-    };
+fn subagent_step_progress_accumulates_steps() {
+    let mut state = AppState::new();
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "Explore".to_string(),
+        ToolRender::Subagent,
+        phrasing::GENERIC,
+    );
 
-    let step = SubagentStepSummary {
+    state.handle_agent_event(AgentEvent::SubagentStepProgress {
+        tool_call_id: "call1".to_string(),
         step_number: 1,
         action_type: "search".to_string(),
         description: "searching for data".to_string(),
-    };
+        timestamp: std::time::SystemTime::now(),
+        budget_pct: 12.0,
+    });
 
-    tool_call.add_subagent_step(step);
-    assert_eq!(tool_call.subagent_steps.len(), 1);
-    assert_eq!(tool_call.subagent_steps[0].step_number, 1);
+    let subagent = state.tools.active[0].subagent.as_ref().unwrap();
+    assert_eq!(subagent.steps.len(), 1);
+    assert_eq!(subagent.steps[0].step_number, 1);
+    assert_eq!(state.tools.active[0].budget_pct, Some(12.0));
 }
 
 #[test]
-fn active_tool_call_add_bash_output_line() {
-    let mut tool_call = ActiveToolCall {
+fn bash_output_chunk_accumulates_lines() {
+    let mut state = AppState::new();
+    state.add_active_tool_call(
+        "call1".to_string(),
+        "Bash(echo hi)".to_string(),
+        ToolRender::Standard,
+        phrasing::GENERIC,
+    );
+
+    state.handle_agent_event(AgentEvent::BashOutputChunk {
         tool_call_id: "call1".to_string(),
-        display_name: "bash".to_string(),
-        render: ToolRender::Standard,
-        phrasing: phrasing::GENERIC,
-        status: ToolCallStatus::Executing,
-        preview: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        is_subagent_task: false,
-        bash_output_lines: Vec::new(),
-        is_bash_streaming: false,
-        budget_pct: None,
-        start_time: Instant::now(),
-        total_tool_uses: None,
-        total_tokens: None,
-    };
-
-    let line = BashOutputLine {
         line_number: 1,
-        content: "Hello from bash".to_string(),
+        output_line: "Hello from bash".to_string(),
         stream_type: "stdout".to_string(),
-    };
+        timestamp: std::time::SystemTime::now(),
+    });
 
-    tool_call.add_bash_output_line(line);
-    assert_eq!(tool_call.bash_output_lines.len(), 1);
-    assert_eq!(tool_call.bash_output_lines[0].line_number, 1);
-    assert_eq!(tool_call.bash_output_lines[0].content, "Hello from bash");
-    assert_eq!(tool_call.bash_output_lines[0].stream_type, "stdout");
-    assert!(tool_call.is_bash_streaming);
+    let bash = state.tools.active[0].bash.as_ref().unwrap();
+    assert_eq!(bash.lines.len(), 1);
+    assert_eq!(bash.lines[0].line_number, 1);
+    assert_eq!(bash.lines[0].content, "Hello from bash");
+    assert_eq!(bash.lines[0].stream_type, "stdout");
 }
 
 // ============================================================================
@@ -900,23 +885,14 @@ fn scroll_clamp_pulls_offset_in_when_content_shrinks() {
 }
 
 fn executing_call(id: &str, render: ToolRender) -> ActiveToolCall {
-    ActiveToolCall {
-        tool_call_id: id.to_string(),
-        display_name: format!("call {id}"),
+    let mut call = ActiveToolCall::new(
+        id.to_string(),
+        format!("call {id}"),
         render,
-        phrasing: phrasing::GENERIC,
-        status: ToolCallStatus::Executing,
-        preview: None,
-        budget_pct: None,
-        result_summary: None,
-        subagent_steps: Vec::new(),
-        is_subagent_task: false,
-        bash_output_lines: Vec::new(),
-        is_bash_streaming: false,
-        start_time: Instant::now(),
-        total_tool_uses: None,
-        total_tokens: None,
-    }
+        phrasing::GENERIC,
+    );
+    call.status = ToolCallStatus::Executing;
+    call
 }
 
 #[test]
@@ -956,15 +932,19 @@ fn mixed_standard_and_subagent_does_not_collapse() {
 fn subagent_completion_preserves_individual_stats() {
     let mut state = AppState::new();
     let mut a = executing_call("a", ToolRender::Subagent);
-    a.is_subagent_task = true;
     a.status = ToolCallStatus::Completed;
-    a.total_tool_uses = Some(3);
-    a.total_tokens = Some(1500);
+    a.subagent = Some(SubagentDetail {
+        total_tool_uses: Some(3),
+        total_tokens: Some(1500),
+        ..Default::default()
+    });
     let mut b = executing_call("b", ToolRender::Subagent);
-    b.is_subagent_task = true;
     b.status = ToolCallStatus::Completed;
-    b.total_tool_uses = Some(2);
-    b.total_tokens = Some(900);
+    b.subagent = Some(SubagentDetail {
+        total_tool_uses: Some(2),
+        total_tokens: Some(900),
+        ..Default::default()
+    });
     state.tools.active = vec![a, b];
 
     state.complete_active_tool_calls();

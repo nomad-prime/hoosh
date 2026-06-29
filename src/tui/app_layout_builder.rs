@@ -1,13 +1,11 @@
 use crate::tui::components::active_tool_calls::ActiveToolCallsComponent;
 use crate::tui::components::approval_dialog::ApprovalDialog;
-use crate::tui::components::bash_results::BashResultsComponent;
 use crate::tui::components::completion_popup::CompletionPopup;
 use crate::tui::components::input::Input;
 use crate::tui::components::mode_indicator::ModeIndicator;
 use crate::tui::components::permission_dialog::PermissionDialog;
 use crate::tui::components::queued_prompts::QueuedPromptsComponent;
 use crate::tui::components::status_bar::StatusBar;
-use crate::tui::components::subagent_results::SubagentResultsComponent;
 use crate::tui::components::todo_list::TodoListComponent;
 use crate::tui::layout::ComponentDescriptor;
 use crate::tui::layout_builder::LayoutBuilder;
@@ -16,8 +14,6 @@ use crate::tui::state::AppState;
 pub trait AppLayoutBuilder {
     fn status_bar(self) -> Self;
     fn active_tool_calls(self, height: u16, visible: bool) -> Self;
-    fn subagent_results(self, height: u16, visible: bool) -> Self;
-    fn bash_results(self, height: u16, visible: bool) -> Self;
     fn todo_list(self, height: u16, visible: bool) -> Self;
     fn queued_prompts(self, height: u16, visible: bool) -> Self;
     fn input_field(self, height: u16) -> Self;
@@ -35,20 +31,6 @@ impl AppLayoutBuilder for LayoutBuilder<AppState> {
     fn active_tool_calls(self, height: u16, visible: bool) -> Self {
         self.component(
             ComponentDescriptor::new(height, Some(Box::new(ActiveToolCallsComponent)))
-                .with_visibility(visible),
-        )
-    }
-
-    fn subagent_results(self, height: u16, visible: bool) -> Self {
-        self.component(
-            ComponentDescriptor::new(height, Some(Box::new(SubagentResultsComponent)))
-                .with_visibility(visible),
-        )
-    }
-
-    fn bash_results(self, height: u16, visible: bool) -> Self {
-        self.component(
-            ComponentDescriptor::new(height, Some(Box::new(BashResultsComponent)))
                 .with_visibility(visible),
         )
     }
