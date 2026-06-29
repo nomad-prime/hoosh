@@ -865,7 +865,11 @@ mod tests {
             .filter(|t| t.contains("line"))
             .collect();
 
-        assert_eq!(quoted.len(), 3, "each quoted line is its own row: {quoted:?}");
+        assert_eq!(
+            quoted.len(),
+            3,
+            "each quoted line is its own row: {quoted:?}"
+        );
         assert!(
             quoted.iter().all(|t| t.contains('│')),
             "every quoted line keeps the gutter: {quoted:?}"
