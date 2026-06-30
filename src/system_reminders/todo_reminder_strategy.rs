@@ -1,4 +1,5 @@
 use crate::Conversation;
+use crate::agent::Role;
 use crate::system_reminders::{ReminderContext, ReminderStrategy, SideEffectResult};
 use crate::tools::TodoState;
 use anyhow::Result;
@@ -22,7 +23,7 @@ impl ReminderStrategy for TodoReminderStrategy {
     ) -> Result<SideEffectResult> {
         if let Some(reminder) = self.todo_state.format_for_llm().await
             && let Some(last_msg) = conversation.messages.last_mut()
-            && last_msg.role == "user"
+            && last_msg.role == Role::User
             && let Some(content) = &mut last_msg.content
         {
             content.push_str("\n\n");

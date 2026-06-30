@@ -47,6 +47,7 @@ impl ReminderStrategy for PeriodicCoreReminderStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::Role;
 
     fn create_context() -> ReminderContext {
         ReminderContext { agent_step: 0 }
@@ -93,7 +94,7 @@ mod tests {
         let messages = conversation.get_messages_for_api();
         // Should have user message + reminder
         assert!(messages.len() >= 2);
-        assert_eq!(messages.last().unwrap().role, "system");
+        assert_eq!(messages.last().unwrap().role, Role::System);
         assert_eq!(messages.last().unwrap().content, Some(instructions.clone()));
     }
 
@@ -140,7 +141,7 @@ mod tests {
         assert!(count_after_second > count_after_first);
         assert_eq!(
             conversation.get_messages_for_api().last().unwrap().role,
-            "system"
+            Role::System
         );
     }
 

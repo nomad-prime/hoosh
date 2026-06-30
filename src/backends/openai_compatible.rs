@@ -172,7 +172,7 @@ fn to_openai_wire(messages: &[ConversationMessage]) -> Vec<OpenAIWireMessage> {
             };
 
             OpenAIWireMessage {
-                role: m.role.clone(),
+                role: m.role.as_str().to_string(),
                 content,
                 tool_calls: m.tool_calls.clone(),
                 tool_call_id: m.tool_call_id.clone(),

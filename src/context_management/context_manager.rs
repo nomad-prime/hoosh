@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_token_pressure_with_data() {
-        use crate::agent::ConversationMessage;
+        use crate::agent::{ConversationMessage, Role};
 
         let accountant = Arc::new(TokenAccountant::new());
         let config = ContextManagerConfig::default();
@@ -226,7 +226,7 @@ mod tests {
 
         let mut conversation = Conversation::new();
         conversation.messages.push(ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some("x".repeat(20_000)), // ~5000 tokens
             tool_calls: None,
             tool_call_id: None,
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_should_warn_about_pressure() {
-        use crate::agent::ConversationMessage;
+        use crate::agent::{ConversationMessage, Role};
 
         let accountant = Arc::new(TokenAccountant::new());
         let config = ContextManagerConfig::default().with_warning_threshold(0.5);
@@ -250,7 +250,7 @@ mod tests {
         // Create a conversation with >50% tokens (64K+ for 128K limit)
         let mut conversation = Conversation::new();
         conversation.messages.push(ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some("x".repeat(260_000)), // ~65K tokens (>50% of 128K)
             tool_calls: None,
             tool_call_id: None,
@@ -292,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_strategy_coordination_stops_at_target_reached() {
-        use crate::agent::ConversationMessage;
+        use crate::agent::{ConversationMessage, Role};
 
         // Create a mock strategy that returns TargetReached
         struct TargetReachedStrategy;
@@ -335,7 +335,7 @@ mod tests {
 
         let mut conversation = Conversation::new();
         conversation.messages.push(ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some("test".to_string()),
             tool_calls: None,
             tool_call_id: None,
@@ -352,7 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_all_strategies_run_without_target_reached() {
-        use crate::agent::ConversationMessage;
+        use crate::agent::{ConversationMessage, Role};
         use std::sync::Arc as StdArc;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -383,7 +383,7 @@ mod tests {
 
         let mut conversation = Conversation::new();
         conversation.messages.push(ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some("test".to_string()),
             tool_calls: None,
             tool_call_id: None,

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::agent::{Conversation, ConversationMessage};
+use crate::agent::{Conversation, ConversationMessage, Role};
 use crate::context_management::{ContextManagementStrategy, SlidingWindowConfig, StrategyResult};
 
 pub struct SlidingWindowStrategy {
@@ -14,11 +14,11 @@ impl SlidingWindowStrategy {
     }
 
     fn is_system_message(&self, message: &ConversationMessage) -> bool {
-        message.role == "system"
+        message.role == Role::System
     }
 
     fn is_user_message(&self, message: &ConversationMessage) -> bool {
-        message.role == "user"
+        message.role == Role::User
     }
 
     fn should_preserve(&self, message: &ConversationMessage, is_first_user_message: bool) -> bool {
@@ -39,7 +39,7 @@ impl SlidingWindowStrategy {
                 continue;
             }
             // If it's an assistant message with tool calls, ensure its results are kept.
-            if messages[i].role == "assistant" && messages[i].tool_calls.is_some() {
+            if messages[i].role == Role::Assistant && messages[i].tool_calls.is_some() {
                 self.mark_tool_results(i, messages, keep_flags);
             }
         }
@@ -49,11 +49,11 @@ impl SlidingWindowStrategy {
                 continue;
             }
 
-            if messages[i].role == "tool"
+            if messages[i].role == Role::Tool
                 && let Some(tool_call_id) = &messages[i].tool_call_id
             {
                 for j in (0..i).rev() {
-                    if messages[j].role == "assistant"
+                    if messages[j].role == Role::Assistant
                         && let Some(tool_calls) = &messages[j].tool_calls
                         && tool_calls.iter().any(|tc| &tc.id == tool_call_id)
                     {
@@ -79,7 +79,7 @@ impl SlidingWindowStrategy {
         if let Some(tool_calls) = &messages[assistant_index].tool_calls {
             for tool_call in tool_calls {
                 for k in (assistant_index + 1)..messages.len() {
-                    if messages[k].role == "tool"
+                    if messages[k].role == Role::Tool
                         && messages[k].tool_call_id.as_ref() == Some(&tool_call.id)
                     {
                         keep_flags[k] = true;
@@ -276,7 +276,7 @@ mod tests {
 
         assert_eq!(conversation.messages.len(), 10);
 
-        assert_eq!(conversation.messages[0].role, "system");
+        assert_eq!(conversation.messages[0].role, Role::System);
         assert!(
             conversation.messages[0]
                 .content
@@ -326,7 +326,7 @@ mod tests {
 
         assert_eq!(conversation.messages.len(), 10);
 
-        assert_eq!(conversation.messages[0].role, "system");
+        assert_eq!(conversation.messages[0].role, Role::System);
 
         assert!(
             conversation.messages[1]
@@ -397,7 +397,7 @@ mod tests {
 
         assert_eq!(conversation.messages.len(), 10);
 
-        assert_eq!(conversation.messages[0].role, "system");
+        assert_eq!(conversation.messages[0].role, Role::System);
         assert!(
             conversation.messages[1]
                 .content
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(conversation.messages.len(), 10);
 
         // All system messages should be preserved
-        assert_eq!(conversation.messages[0].role, "system");
+        assert_eq!(conversation.messages[0].role, Role::System);
         assert!(
             conversation.messages[0]
                 .content
@@ -446,7 +446,7 @@ mod tests {
                 .unwrap()
                 .contains("System prompt 1")
         );
-        assert_eq!(conversation.messages[1].role, "system");
+        assert_eq!(conversation.messages[1].role, Role::System);
         assert!(
             conversation.messages[1]
                 .content
@@ -454,7 +454,7 @@ mod tests {
                 .unwrap()
                 .contains("System prompt 2")
         );
-        assert_eq!(conversation.messages[2].role, "system");
+        assert_eq!(conversation.messages[2].role, Role::System);
         assert!(
             conversation.messages[2]
                 .content
@@ -464,7 +464,7 @@ mod tests {
         );
 
         // First user message should be preserved despite being at index 3
-        assert_eq!(conversation.messages[3].role, "user");
+        assert_eq!(conversation.messages[3].role, Role::User);
         assert!(
             conversation.messages[3]
                 .content
@@ -519,7 +519,7 @@ mod tests {
 
         // All should be system messages
         for msg in &conversation.messages {
-            assert_eq!(msg.role, "system");
+            assert_eq!(msg.role, Role::System);
         }
     }
 
@@ -555,7 +555,7 @@ mod tests {
         conversation
             .messages
             .push(crate::agent::ConversationMessage {
-                role: "tool".to_string(),
+                role: Role::Tool,
                 content: Some("file contents".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
@@ -569,11 +569,11 @@ mod tests {
         let has_tool_call = conversation
             .messages
             .iter()
-            .any(|m| m.role == "assistant" && m.tool_calls.is_some());
+            .any(|m| m.role == Role::Assistant && m.tool_calls.is_some());
         let has_tool_result = conversation
             .messages
             .iter()
-            .any(|m| m.role == "tool" && m.tool_call_id == Some("call_1".to_string()));
+            .any(|m| m.role == Role::Tool && m.tool_call_id == Some("call_1".to_string()));
 
         assert_eq!(has_tool_call, has_tool_result);
     }
@@ -620,7 +620,7 @@ mod tests {
         conversation
             .messages
             .push(crate::agent::ConversationMessage {
-                role: "tool".to_string(),
+                role: Role::Tool,
                 content: Some("contents a".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
@@ -630,7 +630,7 @@ mod tests {
         conversation
             .messages
             .push(crate::agent::ConversationMessage {
-                role: "tool".to_string(),
+                role: Role::Tool,
                 content: Some("contents b".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_2".to_string()),
@@ -644,15 +644,14 @@ mod tests {
         let assistant_with_calls = conversation
             .messages
             .iter()
-            .find(|m| m.role == "assistant" && m.tool_calls.is_some());
+            .find(|m| m.role == Role::Assistant && m.tool_calls.is_some());
 
         if let Some(msg) = assistant_with_calls {
             let tool_calls = msg.tool_calls.as_ref().unwrap();
             for tool_call in tool_calls {
-                let has_result = conversation
-                    .messages
-                    .iter()
-                    .any(|m| m.role == "tool" && m.tool_call_id.as_ref() == Some(&tool_call.id));
+                let has_result = conversation.messages.iter().any(|m| {
+                    m.role == Role::Tool && m.tool_call_id.as_ref() == Some(&tool_call.id)
+                });
                 assert!(
                     has_result,
                     "Tool call {} must have corresponding result",
@@ -690,7 +689,7 @@ mod tests {
         conversation
             .messages
             .push(crate::agent::ConversationMessage {
-                role: "tool".to_string(),
+                role: Role::Tool,
                 content: Some("old result".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("old_call".to_string()),
@@ -738,7 +737,7 @@ mod tests {
 
         // All should be system messages
         for msg in &conversation.messages {
-            assert_eq!(msg.role, "system");
+            assert_eq!(msg.role, Role::System);
         }
 
         // Should have the last 5 system messages
@@ -818,7 +817,7 @@ mod tests {
         let last_system = conversation
             .messages
             .iter()
-            .rfind(|msg| msg.role == "system")
+            .rfind(|msg| msg.role == Role::System)
             .unwrap()
             .content
             .as_ref()
@@ -875,13 +874,13 @@ mod tests {
         let mut tool_results_seen = std::collections::HashSet::new();
 
         for msg in messages {
-            if msg.role == "assistant" {
+            if msg.role == Role::Assistant {
                 if let Some(tool_calls) = &msg.tool_calls {
                     for tc in tool_calls {
                         tool_calls_seen.insert(tc.id.clone());
                     }
                 }
-            } else if msg.role == "tool"
+            } else if msg.role == Role::Tool
                 && let Some(tool_call_id) = &msg.tool_call_id
             {
                 tool_results_seen.insert(tool_call_id.clone());
@@ -936,7 +935,7 @@ mod tests {
         conversation
             .messages
             .push(crate::agent::ConversationMessage {
-                role: "tool".to_string(),
+                role: Role::Tool,
                 content: Some("old result".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("old_call_1".to_string()),
@@ -996,7 +995,7 @@ mod tests {
         conversation
             .messages
             .push(crate::agent::ConversationMessage {
-                role: "tool".to_string(),
+                role: Role::Tool,
                 content: Some("tool result".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("kept_call".to_string()),
@@ -1014,11 +1013,11 @@ mod tests {
         let has_call = conversation
             .messages
             .iter()
-            .any(|m| m.role == "assistant" && m.tool_calls.is_some());
+            .any(|m| m.role == Role::Assistant && m.tool_calls.is_some());
         let has_result = conversation
             .messages
             .iter()
-            .any(|m| m.role == "tool" && m.tool_call_id == Some("kept_call".to_string()));
+            .any(|m| m.role == Role::Tool && m.tool_call_id == Some("kept_call".to_string()));
 
         if has_call {
             assert!(has_result, "If tool call is kept, result must be kept too");
@@ -1055,7 +1054,7 @@ mod tests {
             conversation
                 .messages
                 .push(crate::agent::ConversationMessage {
-                    role: "tool".to_string(),
+                    role: Role::Tool,
                     content: Some(format!("result-{}", round)),
                     tool_calls: None,
                     tool_call_id: Some(format!("call_{}", round)),
@@ -1116,7 +1115,7 @@ mod tests {
             conversation
                 .messages
                 .push(crate::agent::ConversationMessage {
-                    role: "tool".to_string(),
+                    role: Role::Tool,
                     content: Some(format!("result-{}", round)),
                     tool_calls: None,
                     tool_call_id: Some(format!("strict_call_{}", round)),

@@ -1,5 +1,5 @@
 use super::{LlmBackend, LlmResponse, RequestExecutor};
-use crate::agent::{Conversation, ConversationMessage, ToolCall};
+use crate::agent::{Conversation, ConversationMessage, Role, ToolCall};
 use crate::backends::llm_error::LlmError;
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
@@ -332,7 +332,7 @@ impl TogetherAiBackend {
         ChatCompletionRequest {
             model: self.config.model.clone(),
             messages: vec![ConversationMessage {
-                role: "user".to_string(),
+                role: Role::User,
                 content: Some(message.to_string()),
                 tool_calls: None,
                 tool_call_id: None,

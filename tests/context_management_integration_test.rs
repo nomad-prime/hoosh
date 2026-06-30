@@ -1,4 +1,4 @@
-use hoosh::agent::{Conversation, ConversationMessage};
+use hoosh::agent::{Conversation, ConversationMessage, Role};
 use hoosh::context_management::{
     ContextManager, ContextManagerConfig, SlidingWindowConfig, TokenAccountant,
     ToolOutputTruncationConfig,
@@ -20,7 +20,7 @@ async fn test_token_pressure_reflects_conversation_size() {
 
     // Add a message with ~25K tokens (100K bytes / 4)
     conversation.messages.push(ConversationMessage {
-        role: "user".to_string(),
+        role: Role::User,
         content: Some("x".repeat(100_000)),
         tool_calls: None,
         tool_call_id: None,
@@ -38,7 +38,7 @@ async fn test_token_pressure_reflects_conversation_size() {
 
     // Add another message with ~50K tokens
     conversation.messages.push(ConversationMessage {
-        role: "assistant".to_string(),
+        role: Role::Assistant,
         content: Some("y".repeat(200_000)),
         tool_calls: None,
         tool_call_id: None,
@@ -103,7 +103,7 @@ async fn test_strategy_execution_order() {
     for i in 0..10 {
         // Add assistant message with tool call
         conversation.messages.push(ConversationMessage {
-            role: "assistant".to_string(),
+            role: Role::Assistant,
             content: None,
             tool_calls: Some(vec![hoosh::agent::ToolCall {
                 id: format!("call_{}", i),
@@ -120,7 +120,7 @@ async fn test_strategy_execution_order() {
 
         // Add tool result message with large content
         conversation.messages.push(ConversationMessage {
-            role: "tool".to_string(),
+            role: Role::Tool,
             content: Some(format!(
                 "Tool result {} with large content: {}",
                 i,
@@ -154,10 +154,9 @@ async fn test_strategy_execution_order() {
     for msg in conversation.messages.iter() {
         if let Some(tool_calls) = &msg.tool_calls {
             for tool_call in tool_calls {
-                let has_result = conversation
-                    .messages
-                    .iter()
-                    .any(|m| m.role == "tool" && m.tool_call_id.as_ref() == Some(&tool_call.id));
+                let has_result = conversation.messages.iter().any(|m| {
+                    m.role == Role::Tool && m.tool_call_id.as_ref() == Some(&tool_call.id)
+                });
                 assert!(
                     has_result,
                     "Tool call {} must have matching result",
@@ -212,7 +211,7 @@ async fn test_pressure_recalculation_after_compression() {
     let mut conversation = Conversation::new();
     for i in 0..50 {
         conversation.messages.push(ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some(format!("Message {}: {}", i, "x".repeat(10_000))),
             tool_calls: None,
             tool_call_id: None,
@@ -281,7 +280,7 @@ fn test_token_estimation_with_tool_calls() {
 
     // Add a message with tool calls and large arguments
     conversation.messages.push(ConversationMessage {
-        role: "assistant".to_string(),
+        role: Role::Assistant,
         content: None,
         tool_calls: Some(vec![ToolCall {
             id: "call_1".to_string(),

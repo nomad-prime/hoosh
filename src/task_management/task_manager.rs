@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::agent::{Agent, AgentEvent, Conversation};
+use crate::agent::{Agent, AgentEvent, Conversation, Role};
 use crate::backends::LlmBackend;
 use crate::permissions::PermissionManager;
 use crate::storage::ConversationStorage;
@@ -204,7 +204,7 @@ impl TaskManager {
                     .messages
                     .iter()
                     .rev()
-                    .find(|m| m.role == "assistant" && m.content.is_some())
+                    .find(|m| m.role == Role::Assistant && m.content.is_some())
                     .and_then(|m| m.content.clone())
                     .unwrap_or_else(|| "Task completed without final message".to_string());
 

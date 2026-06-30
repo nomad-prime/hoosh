@@ -1,5 +1,5 @@
 use super::*;
-use crate::agent::{Conversation, ToolCall, ToolFunction};
+use crate::agent::{Conversation, Role, ToolCall, ToolFunction};
 use crate::backends::{LlmError, LlmResponse};
 use crate::permissions::PermissionManager;
 use async_trait::async_trait;
@@ -435,7 +435,7 @@ async fn agent_response_only_has_content_completes() {
     assert!(result.is_ok());
     let last_message = conversation.messages.last();
     assert!(last_message.is_some());
-    assert_eq!(last_message.unwrap().role, "assistant");
+    assert_eq!(last_message.unwrap().role, Role::Assistant);
     assert_eq!(
         last_message.unwrap().content,
         Some("Final answer".to_string())

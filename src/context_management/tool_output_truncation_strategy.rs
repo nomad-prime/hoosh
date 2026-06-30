@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::agent::{Conversation, ConversationMessage};
+use crate::agent::{Conversation, ConversationMessage, Role};
 use crate::context_management::{
     ContextManagementStrategy, StrategyResult, ToolOutputTruncationConfig,
 };
@@ -82,11 +82,11 @@ impl ToolOutputTruncationStrategy {
     }
 
     fn is_tool_result(&self, message: &ConversationMessage) -> bool {
-        message.role == "tool" && message.tool_call_id.is_some()
+        message.role == Role::Tool && message.tool_call_id.is_some()
     }
 
     fn is_assistant_with_tools(&self, message: &ConversationMessage) -> bool {
-        message.role == "assistant" && message.tool_calls.is_some()
+        message.role == Role::Assistant && message.tool_calls.is_some()
     }
 
     /// Recursively truncates all string values in a JSON value that exceed max_length.

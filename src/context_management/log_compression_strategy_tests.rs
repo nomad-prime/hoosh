@@ -1,5 +1,5 @@
 use super::*;
-use crate::agent::{Conversation, ConversationMessage};
+use crate::agent::{Conversation, ConversationMessage, Role};
 use crate::context_management::LogCompressionConfig;
 use crate::tools::{BuiltinToolProvider, ToolRegistry};
 use std::path::PathBuf;
@@ -21,7 +21,7 @@ fn tool_result(content: &str) -> ConversationMessage {
 
 fn tool_result_named(name: &str, content: &str) -> ConversationMessage {
     ConversationMessage {
-        role: "tool".to_string(),
+        role: Role::Tool,
         content: Some(content.to_string()),
         tool_calls: None,
         tool_call_id: Some("call_1".to_string()),
@@ -129,7 +129,7 @@ async fn strategy_compresses_tool_results_in_place() {
 
     let mut conversation = Conversation::new();
     conversation.messages.push(ConversationMessage {
-        role: "user".to_string(),
+        role: Role::User,
         content: Some("run the tests".to_string()),
         tool_calls: None,
         tool_call_id: None,
@@ -174,7 +174,7 @@ async fn strategy_ignores_non_tool_messages() {
 
     let mut conversation = Conversation::new();
     conversation.messages.push(ConversationMessage {
-        role: "user".to_string(),
+        role: Role::User,
         content: Some(big_text.clone()),
         tool_calls: None,
         tool_call_id: None,

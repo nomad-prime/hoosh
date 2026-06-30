@@ -113,7 +113,7 @@ impl MemoryModeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::Conversation;
+    use crate::agent::{Conversation, Role};
     use crate::memory_mode::tool::UpdateSessionFileTool;
     use crate::tools::Tool;
     use serde_json::json;
@@ -377,9 +377,9 @@ mod tests {
 
         // Final: 2 original system msgs + 1 injected + 1 user
         assert_eq!(conv.messages.len(), 4);
-        assert_eq!(conv.messages[0].role, "system");
-        assert_eq!(conv.messages[1].role, "system");
-        assert_eq!(conv.messages[2].role, "system");
-        assert_eq!(conv.messages[3].role, "user");
+        assert_eq!(conv.messages[0].role, Role::System);
+        assert_eq!(conv.messages[1].role, Role::System);
+        assert_eq!(conv.messages[2].role, Role::System);
+        assert_eq!(conv.messages[3].role, Role::User);
     }
 }

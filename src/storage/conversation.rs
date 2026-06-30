@@ -274,6 +274,7 @@ impl ConversationStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::Role;
     use tempfile::TempDir;
 
     fn create_test_storage() -> (ConversationStorage, TempDir) {
@@ -284,9 +285,9 @@ mod tests {
         (storage, temp_dir)
     }
 
-    fn create_test_message(role: &str, content: &str) -> ConversationMessage {
+    fn create_test_message(role: Role, content: &str) -> ConversationMessage {
         ConversationMessage {
-            role: role.to_string(),
+            role,
             content: Some(content.to_string()),
             tool_calls: None,
             tool_call_id: None,
@@ -314,17 +315,17 @@ mod tests {
 
         storage.create_conversation(conv_id).unwrap();
 
-        let msg1 = create_test_message("user", "Hello");
-        let msg2 = create_test_message("assistant", "Hi there!");
+        let msg1 = create_test_message(Role::User, "Hello");
+        let msg2 = create_test_message(Role::Assistant, "Hi there!");
 
         storage.append_message(conv_id, &msg1).unwrap();
         storage.append_message(conv_id, &msg2).unwrap();
 
         let loaded = storage.load_messages(conv_id).unwrap();
         assert_eq!(loaded.len(), 2);
-        assert_eq!(loaded[0].role, "user");
+        assert_eq!(loaded[0].role, Role::User);
         assert_eq!(loaded[0].content, Some("Hello".to_string()));
-        assert_eq!(loaded[1].role, "assistant");
+        assert_eq!(loaded[1].role, Role::Assistant);
         assert_eq!(loaded[1].content, Some("Hi there!".to_string()));
 
         let metadata = storage.load_metadata(conv_id).unwrap();
@@ -421,7 +422,7 @@ mod tests {
 
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        let msg = create_test_message("user", "Test");
+        let msg = create_test_message(Role::User, "Test");
         storage.append_message(conv_id, &msg).unwrap();
 
         let updated_metadata = storage.load_metadata(conv_id).unwrap();

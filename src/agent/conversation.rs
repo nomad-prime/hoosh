@@ -6,9 +6,29 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    System,
+    User,
+    Assistant,
+    Tool,
+}
+
+impl Role {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::System => "system",
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::Tool => "tool",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
-    pub role: String,
+    pub role: Role,
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
@@ -123,7 +143,7 @@ impl ToolCallResponse {
         };
 
         ConversationMessage {
-            role: "tool".to_string(),
+            role: Role::Tool,
             content: Some(content),
             tool_calls: None,
             tool_call_id: Some(self.tool_call_id.clone()),
@@ -266,7 +286,7 @@ impl Conversation {
 
     pub fn add_system_message(&mut self, content: String) {
         let message = ConversationMessage {
-            role: "system".to_string(),
+            role: Role::System,
             content: Some(content),
             tool_calls: None,
             tool_call_id: None,
@@ -287,7 +307,7 @@ impl Conversation {
         attachments: Vec<Attachment>,
     ) {
         let message = ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some(content),
             tool_calls: None,
             tool_call_id: None,
@@ -347,7 +367,7 @@ impl Conversation {
         tool_calls: Option<Vec<ToolCall>>,
     ) {
         let message = ConversationMessage {
-            role: "assistant".to_string(),
+            role: Role::Assistant,
             content,
             tool_calls,
             tool_call_id: None,
@@ -430,7 +450,7 @@ impl Conversation {
     pub fn has_pending_tool_calls(&self) -> bool {
         // Check last message first (assistant with tool_calls)
         if let Some(last_message) = self.messages.last()
-            && last_message.role == "assistant"
+            && last_message.role == Role::Assistant
             && last_message.tool_calls.is_some()
         {
             return true;
@@ -441,12 +461,12 @@ impl Conversation {
             let last_is_user = self
                 .messages
                 .last()
-                .map(|m| m.role == "user")
+                .map(|m| m.role == Role::User)
                 .unwrap_or(false);
 
             if last_is_user {
                 let second_to_last = &self.messages[self.messages.len() - 2];
-                if second_to_last.role == "assistant" && second_to_last.tool_calls.is_some() {
+                if second_to_last.role == Role::Assistant && second_to_last.tool_calls.is_some() {
                     return true;
                 }
             }
@@ -458,7 +478,7 @@ impl Conversation {
     pub fn get_pending_tool_calls(&self) -> Option<&Vec<ToolCall>> {
         // Check last message first (assistant with tool_calls)
         if let Some(last_message) = self.messages.last()
-            && last_message.role == "assistant"
+            && last_message.role == Role::Assistant
             && let Some(ref tool_calls) = last_message.tool_calls
         {
             return Some(tool_calls);
@@ -469,12 +489,12 @@ impl Conversation {
             let last_is_user = self
                 .messages
                 .last()
-                .map(|m| m.role == "user")
+                .map(|m| m.role == Role::User)
                 .unwrap_or(false);
 
             if last_is_user {
                 let second_to_last = &self.messages[self.messages.len() - 2];
-                if second_to_last.role == "assistant" {
+                if second_to_last.role == Role::Assistant {
                     return second_to_last.tool_calls.as_ref();
                 }
             }
@@ -500,19 +520,20 @@ impl Conversation {
     /// If the conversation has on-disk storage, the file is rewritten so the
     /// change survives a reload.
     pub fn cancel_in_flight_turn(&mut self) -> CancelKind {
-        let Some(user_idx) = self.messages.iter().rposition(|m| m.role == "user") else {
+        let Some(user_idx) = self.messages.iter().rposition(|m| m.role == Role::User) else {
             return CancelKind::Thinking;
         };
 
         let any_tools_fired = self.messages[user_idx + 1..]
             .iter()
-            .any(|m| m.role == "assistant" && m.tool_calls.is_some());
+            .any(|m| m.role == Role::Assistant && m.tool_calls.is_some());
 
         let kind = if any_tools_fired {
             let mut orphan_ids = Vec::new();
             let assistant_indices: Vec<usize> = (user_idx + 1..self.messages.len())
                 .filter(|&i| {
-                    self.messages[i].role == "assistant" && self.messages[i].tool_calls.is_some()
+                    self.messages[i].role == Role::Assistant
+                        && self.messages[i].tool_calls.is_some()
                 })
                 .collect();
 
@@ -527,7 +548,8 @@ impl Conversation {
 
                 let mut found = std::collections::HashSet::new();
                 let mut insert_at = asst_idx + 1;
-                while insert_at < self.messages.len() && self.messages[insert_at].role == "tool" {
+                while insert_at < self.messages.len() && self.messages[insert_at].role == Role::Tool
+                {
                     if let Some(id) = &self.messages[insert_at].tool_call_id {
                         found.insert(id.clone());
                     }
@@ -540,7 +562,7 @@ impl Conversation {
                     }
                     orphan_ids.push(id.clone());
                     let msg = ConversationMessage {
-                        role: "tool".to_string(),
+                        role: Role::Tool,
                         content: Some("[cancelled by user]".to_string()),
                         tool_calls: None,
                         tool_call_id: Some(id),
@@ -595,7 +617,7 @@ impl Conversation {
             .messages
             .iter()
             .enumerate()
-            .filter(|(_, m)| m.role == "assistant" && m.tool_calls.is_some())
+            .filter(|(_, m)| m.role == Role::Assistant && m.tool_calls.is_some())
             .map(|(i, _)| i)
             .collect();
 
@@ -615,7 +637,7 @@ impl Conversation {
             let mut tool_idxs = Vec::new();
             let mut found: HashSet<String> = HashSet::new();
             let mut j = asst_idx + 1;
-            while j < self.messages.len() && self.messages[j].role == "tool" {
+            while j < self.messages.len() && self.messages[j].role == Role::Tool {
                 if let Some(ref id) = self.messages[j].tool_call_id {
                     found.insert(id.clone());
                 }
@@ -698,7 +720,7 @@ impl Conversation {
         }
 
         // Role and other fields (small but count them)
-        total += msg.role.len();
+        total += msg.role.as_str().len();
 
         if let Some(name) = &msg.name {
             total += name.len();
@@ -757,13 +779,13 @@ mod tests {
         // Add user message
         conversation.add_user_message("Hello".to_string());
         assert_eq!(conversation.messages.len(), 1);
-        assert_eq!(conversation.messages[0].role, "user");
+        assert_eq!(conversation.messages[0].role, Role::User);
         assert_eq!(conversation.messages[0].content, Some("Hello".to_string()));
 
         // Add assistant response
         conversation.add_assistant_message(Some("Hi there!".to_string()), None);
         assert_eq!(conversation.messages.len(), 2);
-        assert_eq!(conversation.messages[1].role, "assistant");
+        assert_eq!(conversation.messages[1].role, Role::Assistant);
         assert_eq!(
             conversation.messages[1].content,
             Some("Hi there!".to_string())
@@ -808,7 +830,7 @@ mod tests {
         conversation.add_tool_result(tool_result);
 
         assert_eq!(conversation.messages.len(), 3);
-        assert_eq!(conversation.messages[2].role, "tool");
+        assert_eq!(conversation.messages[2].role, Role::Tool);
         assert_eq!(
             conversation.messages[2].content,
             Some("File contents here".to_string())
@@ -830,7 +852,7 @@ mod tests {
         );
 
         let message = tool_result.to_message();
-        assert_eq!(message.role, "tool");
+        assert_eq!(message.role, Role::Tool);
         assert!(message.content.unwrap().starts_with("Error: "));
         assert_eq!(message.tool_call_id, Some("call_123".to_string()));
         assert_eq!(message.name, Some("read_file".to_string()));
@@ -935,7 +957,7 @@ mod tests {
         assert!(conversation.sanitize_orphan_tool_calls());
         // Assistant message removed → only user left.
         assert_eq!(conversation.messages.len(), 1);
-        assert_eq!(conversation.messages[0].role, "user");
+        assert_eq!(conversation.messages[0].role, Role::User);
     }
 
     /// Orphan with content: keep the assistant message but strip tool_calls.
@@ -959,7 +981,7 @@ mod tests {
 
         assert!(conversation.sanitize_orphan_tool_calls());
         assert_eq!(conversation.messages.len(), 2);
-        assert_eq!(conversation.messages[1].role, "assistant");
+        assert_eq!(conversation.messages[1].role, Role::Assistant);
         assert_eq!(
             conversation.messages[1].content,
             Some("I'll read that file now.".to_string())
@@ -987,8 +1009,8 @@ mod tests {
         assert!(conversation.sanitize_orphan_tool_calls());
         // Orphan assistant removed; both user messages remain.
         assert_eq!(conversation.messages.len(), 2);
-        assert_eq!(conversation.messages[0].role, "user");
-        assert_eq!(conversation.messages[1].role, "user");
+        assert_eq!(conversation.messages[0].role, Role::User);
+        assert_eq!(conversation.messages[1].role, Role::User);
         assert_eq!(
             conversation.messages[1].content.as_deref(),
             Some("continue")
@@ -1031,7 +1053,7 @@ mod tests {
         assert!(conversation.sanitize_orphan_tool_calls());
         // Both the assistant (no content) and the partial result should be gone.
         assert_eq!(conversation.messages.len(), 1);
-        assert_eq!(conversation.messages[0].role, "user");
+        assert_eq!(conversation.messages[0].role, Role::User);
     }
 
     /// Sanitize is a no-op when every tool_call has its result.
@@ -1138,7 +1160,7 @@ mod tests {
         let mut conversation = Conversation::new();
 
         let msg = ConversationMessage {
-            role: "assistant".to_string(),         // 9 bytes
+            role: Role::Assistant,                 // 9 bytes
             content: Some("Response".to_string()), // 8 bytes
             tool_calls: Some(vec![ToolCall {
                 id: "call_1".to_string(),
@@ -1183,8 +1205,8 @@ mod tests {
         conversation.clear_turn_history();
 
         assert_eq!(conversation.messages.len(), 2);
-        assert_eq!(conversation.messages[0].role, "system");
-        assert_eq!(conversation.messages[1].role, "system");
+        assert_eq!(conversation.messages[0].role, Role::System);
+        assert_eq!(conversation.messages[1].role, Role::System);
     }
 
     #[test]
@@ -1199,7 +1221,7 @@ mod tests {
         conversation.clear_turn_history();
 
         assert_eq!(conversation.messages.len(), 2);
-        assert!(conversation.messages.iter().all(|m| m.role == "system"));
+        assert!(conversation.messages.iter().all(|m| m.role == Role::System));
     }
 
     #[test]
@@ -1235,7 +1257,7 @@ mod tests {
         let kind = conv.cancel_in_flight_turn();
         assert_eq!(kind, CancelKind::Thinking);
         assert_eq!(conv.messages.len(), 3);
-        assert_eq!(conv.messages[2].role, "assistant");
+        assert_eq!(conv.messages[2].role, Role::Assistant);
     }
 
     #[test]
@@ -1264,7 +1286,7 @@ mod tests {
         }
         assert_eq!(conv.messages.len(), 3);
         let result = &conv.messages[2];
-        assert_eq!(result.role, "tool");
+        assert_eq!(result.role, Role::Tool);
         assert_eq!(result.tool_call_id.as_deref(), Some("call_1"));
         assert_eq!(result.content.as_deref(), Some("[cancelled by user]"));
     }
@@ -1327,11 +1349,11 @@ mod tests {
         assert_eq!(conv.messages.len(), 3);
 
         let user = &conv.messages[0];
-        assert_eq!(user.role, "user");
+        assert_eq!(user.role, Role::User);
         assert_eq!(user.content.as_deref(), Some("review @src/main.rs"));
 
         let call = &conv.messages[1];
-        assert_eq!(call.role, "assistant");
+        assert_eq!(call.role, Role::Assistant);
         let tool_calls = call.tool_calls.as_ref().expect("synthetic tool call");
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].function.name, ReadFileTool::NAME);
@@ -1340,7 +1362,7 @@ mod tests {
         assert_eq!(args["path"], "src/main.rs");
 
         let result = &conv.messages[2];
-        assert_eq!(result.role, "tool");
+        assert_eq!(result.role, Role::Tool);
         assert_eq!(
             result.tool_call_id.as_deref(),
             Some(tool_calls[0].id.as_str())
@@ -1378,7 +1400,7 @@ mod tests {
         );
 
         let result = &conv.messages[2];
-        assert_eq!(result.role, "tool");
+        assert_eq!(result.role, Role::Tool);
         let content = result.content.as_deref().unwrap();
         assert!(content.contains("gone.rs"));
         assert!(content.contains("not found"));

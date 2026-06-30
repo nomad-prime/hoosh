@@ -482,10 +482,10 @@ async fn backend_configuration_with_custom_values() {
 
 #[tokio::test]
 async fn wire_message_emits_content_parts_for_attachments() {
-    use crate::agent::{Attachment, AttachmentKind, ConversationMessage};
+    use crate::agent::{Attachment, AttachmentKind, ConversationMessage, Role};
 
     let msgs = vec![ConversationMessage {
-        role: "user".to_string(),
+        role: Role::User,
         content: Some("what is this?".to_string()),
         tool_calls: None,
         tool_call_id: None,
@@ -514,10 +514,10 @@ async fn wire_message_emits_content_parts_for_attachments() {
 
 #[tokio::test]
 async fn wire_message_keeps_string_content_when_no_attachments() {
-    use crate::agent::ConversationMessage;
+    use crate::agent::{ConversationMessage, Role};
 
     let msgs = vec![ConversationMessage {
-        role: "user".to_string(),
+        role: Role::User,
         content: Some("hello".to_string()),
         tool_calls: None,
         tool_call_id: None,

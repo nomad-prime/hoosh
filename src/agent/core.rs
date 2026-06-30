@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
 use crate::agent::agent_events::AgentEvent;
-use crate::agent::{Conversation, ToolCall, ToolCallResponse};
+use crate::agent::{Conversation, Role, ToolCall, ToolCallResponse};
 use crate::backends::{LlmBackend, LlmResponse};
 use crate::context_management::ContextManager;
 use crate::permissions::PermissionScope;
@@ -104,7 +104,7 @@ impl Agent {
             && let Some(first_user_msg) = conversation
                 .messages
                 .iter()
-                .find(|m| m.role == "user")
+                .find(|m| m.role == Role::User)
                 .and_then(|m| m.content.as_ref())
         {
             match self.generate_title(first_user_msg).await {

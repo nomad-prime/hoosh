@@ -1,5 +1,5 @@
 use super::{LlmBackend, LlmResponse, RequestExecutor};
-use crate::agent::{Conversation, ConversationMessage, ToolCall};
+use crate::agent::{Conversation, ConversationMessage, Role, ToolCall};
 use crate::backends::llm_error::LlmError;
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
@@ -90,7 +90,7 @@ impl From<&ConversationMessage> for OllamaMessage {
         });
 
         OllamaMessage {
-            role: msg.role.clone(),
+            role: msg.role.as_str().to_string(),
             content: msg.content.clone(),
             tool_calls,
             tool_call_id: msg.tool_call_id.clone(),
@@ -389,7 +389,7 @@ impl OllamaBackend {
         let options = self.create_model_options();
 
         let user_msg = ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some(message.to_string()),
             tool_calls: None,
             tool_call_id: None,

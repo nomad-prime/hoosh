@@ -1,5 +1,5 @@
 use super::{LlmBackend, LlmResponse, RequestExecutor};
-use crate::agent::{Conversation, ConversationMessage, ToolCall};
+use crate::agent::{Conversation, ConversationMessage, Role, ToolCall};
 use crate::backends::llm_error::LlmError;
 use crate::tools::ToolRegistry;
 use anyhow::{Context, Result};
@@ -158,7 +158,7 @@ impl AnthropicBackend {
         let mut anthropic_messages: Vec<AnthropicMessage> = Vec::new();
 
         for msg in messages {
-            if msg.role == "system" {
+            if msg.role == Role::System {
                 // Anthropic uses a separate system parameter
                 if let Some(content) = &msg.content {
                     system_prompt = Some(content.clone());
@@ -166,10 +166,9 @@ impl AnthropicBackend {
             } else {
                 // Anthropic only accepts "user" or "assistant" roles
                 // Convert "tool" role to "user" (tool results are user messages)
-                let role = if msg.role == "tool" {
-                    "user".to_string()
-                } else {
-                    msg.role.clone()
+                let role = match msg.role {
+                    Role::Tool => "user".to_string(),
+                    other => other.as_str().to_string(),
                 };
 
                 let content = if let Some(tool_calls) = &msg.tool_calls {
@@ -1007,7 +1006,7 @@ mod tests {
     #[test]
     fn user_message_with_image_emits_image_block() {
         let msg = ConversationMessage {
-            role: "user".to_string(),
+            role: Role::User,
             content: Some("what is this?".to_string()),
             tool_calls: None,
             tool_call_id: None,

@@ -32,7 +32,7 @@ pub mod tools;
 pub mod tui;
 
 pub use agent::{
-    Agent, AgentEvent, Conversation, ConversationMessage, ToolCall, ToolCallResponse,
+    Agent, AgentEvent, Conversation, ConversationMessage, Role, ToolCall, ToolCallResponse,
     ToolExecutionContext, ToolFunction,
 };
 pub use agent_definition::{AgentDefinition, AgentDefinitionManager};

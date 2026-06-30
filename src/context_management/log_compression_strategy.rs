@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use regex::Regex;
 
-use crate::agent::{Conversation, ConversationMessage};
+use crate::agent::{Conversation, ConversationMessage, Role};
 use crate::context_management::{ContextManagementStrategy, LogCompressionConfig, StrategyResult};
 use crate::tools::ToolRegistry;
 
@@ -642,7 +642,7 @@ impl LogCompressionStrategy {
     }
 
     fn is_tool_result(message: &ConversationMessage) -> bool {
-        message.role == "tool" && message.tool_call_id.is_some()
+        message.role == Role::Tool && message.tool_call_id.is_some()
     }
 
     fn produces_log_output(&self, name: Option<&str>) -> bool {

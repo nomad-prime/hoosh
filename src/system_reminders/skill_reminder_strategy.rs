@@ -1,4 +1,5 @@
 use crate::Conversation;
+use crate::agent::Role;
 use crate::skill_management::SkillManager;
 use crate::system_reminders::{ReminderContext, ReminderStrategy, SideEffectResult};
 use anyhow::Result;
@@ -28,7 +29,7 @@ impl ReminderStrategy for SkillReminderStrategy {
 
             if !summary.is_empty()
                 && let Some(last_msg) = conversation.messages.last()
-                && last_msg.role == "user"
+                && last_msg.role == Role::User
             {
                 conversation.add_system_message(summary);
             }
