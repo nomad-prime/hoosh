@@ -73,11 +73,9 @@ async fn test_strategy_execution_order() {
             preserve_last_tool_result: true,
         }),
         sliding_window: Some(SlidingWindowConfig {
-            window_size: 5, // Keep only last 5 messages
             preserve_system: false,
-            min_messages_before_windowing: 0,
             preserve_initial_task: false,
-            strict_window_size: false,
+            max_tokens: 4000,
         }),
     };
 
@@ -182,11 +180,9 @@ async fn test_pressure_recalculation_after_compression() {
         log_compression: None,
         tool_output_truncation: Some(ToolOutputTruncationConfig::default()),
         sliding_window: Some(SlidingWindowConfig {
-            window_size: 10,
             preserve_system: false,
-            min_messages_before_windowing: 0,
             preserve_initial_task: false,
-            strict_window_size: false,
+            max_tokens: 25_000,
         }),
     };
 

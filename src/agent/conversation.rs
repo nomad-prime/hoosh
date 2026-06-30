@@ -701,6 +701,12 @@ impl Conversation {
             / APPROX_BYTES_PER_TOKEN
     }
 
+    pub fn estimate_message_tokens(msg: &ConversationMessage) -> usize {
+        const APPROX_BYTES_PER_TOKEN: usize = 4;
+        let bytes = Self::estimate_message_bytes(msg);
+        bytes.saturating_add(APPROX_BYTES_PER_TOKEN.saturating_sub(1)) / APPROX_BYTES_PER_TOKEN
+    }
+
     /// Estimate the byte size of a single conversation message.
     /// This accounts for all message fields including large tool outputs.
     fn estimate_message_bytes(msg: &ConversationMessage) -> usize {

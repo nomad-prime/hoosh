@@ -43,26 +43,22 @@ impl Default for ToolOutputTruncationConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SlidingWindowConfig {
-    pub window_size: usize,
     pub preserve_system: bool,
-    pub min_messages_before_windowing: usize,
     pub preserve_initial_task: bool,
-    #[serde(default = "default_strict_window_size")]
-    pub strict_window_size: bool,
+    #[serde(default = "default_sliding_window_max_tokens")]
+    pub max_tokens: usize,
 }
 
-fn default_strict_window_size() -> bool {
-    false
+fn default_sliding_window_max_tokens() -> usize {
+    96_000
 }
 
 impl Default for SlidingWindowConfig {
     fn default() -> Self {
         Self {
-            window_size: 40,
             preserve_system: true,
-            min_messages_before_windowing: 50,
             preserve_initial_task: true,
-            strict_window_size: false,
+            max_tokens: 96_000,
         }
     }
 }
