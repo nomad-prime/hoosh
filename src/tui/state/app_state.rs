@@ -753,6 +753,15 @@ impl AppState {
         self.add_message(format!("\n{} {}", glyphs::TOOL_REJECTED, name));
     }
 
+    pub fn clear_conversation_display(&mut self) {
+        self.messages.clear();
+        self.pending_messages.clear();
+        self.todos.clear();
+        self.current_retry_status = None;
+        self.clear_active_tool_calls();
+        self.scroll = ScrollState::default();
+    }
+
     pub fn add_status_message(&mut self, message: &str) {
         self.add_styled_line(continuation_line(format!(
             "[{}]",

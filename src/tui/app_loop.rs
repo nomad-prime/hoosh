@@ -382,13 +382,15 @@ pub(crate) fn restore_cancelled_prompt(app: &mut AppState) {
 
 async fn clear_conversation(app: &mut AppState, context: &mut EventLoopContext) {
     let mut conv = context.conversation_state.conversation.lock().await;
-    conv.messages.clear();
+    conv.clear_preserving_system();
+    drop(conv);
     context
         .conversation_state
         .context_manager
         .token_accountant
         .reset();
     app.metrics.reset();
+    app.clear_conversation_display();
     app.add_status_message("Conversation cleared.");
 }
 

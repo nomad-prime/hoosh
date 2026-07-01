@@ -394,6 +394,16 @@ impl Conversation {
         }
     }
 
+    /// Drop all turns but keep the leading system messages, however many there are.
+    pub fn clear_preserving_system(&mut self) {
+        let keep = self
+            .messages
+            .iter()
+            .take_while(|m| m.role == Role::System)
+            .count();
+        self.messages.truncate(keep);
+    }
+
     pub fn get_messages_for_api(&self) -> &Vec<ConversationMessage> {
         &self.messages
     }
@@ -1228,6 +1238,32 @@ mod tests {
 
         assert_eq!(conversation.messages.len(), 2);
         assert!(conversation.messages.iter().all(|m| m.role == Role::System));
+    }
+
+    #[test]
+    fn test_clear_preserving_system_keeps_all_leading_system_messages() {
+        let mut conversation = Conversation::new();
+        conversation.add_system_message("sys1".to_string());
+        conversation.add_system_message("sys2".to_string());
+        conversation.add_system_message("sys3".to_string());
+        conversation.add_user_message("hello".to_string());
+        conversation.add_assistant_message(Some("hi".to_string()), None);
+
+        conversation.clear_preserving_system();
+
+        assert_eq!(conversation.messages.len(), 3);
+        assert!(conversation.messages.iter().all(|m| m.role == Role::System));
+    }
+
+    #[test]
+    fn test_clear_preserving_system_with_no_system_messages_clears_all() {
+        let mut conversation = Conversation::new();
+        conversation.add_user_message("hello".to_string());
+        conversation.add_assistant_message(Some("hi".to_string()), None);
+
+        conversation.clear_preserving_system();
+
+        assert!(conversation.messages.is_empty());
     }
 
     #[test]
