@@ -44,12 +44,9 @@ impl Component for StatusBar {
     type State = AppState;
 
     fn render(&self, state: &Self::State, area: Rect, buf: &mut Buffer) {
-        let retry_spinners = ["⠈", "⠐", "⠠", "⠄", "⠂", "⠆", "⡆", "⡇"];
-
         let (status_text, status_color) = if let Some(retry_status) = &state.current_retry_status {
-            let retry_spinner = retry_spinners[state.animation.frame % retry_spinners.len()];
             (
-                format!("{} {}", retry_spinner, retry_status),
+                format!("{} {}", radio_wave(state.animation.frame), retry_status),
                 palette::DESTRUCTIVE,
             )
         } else if state.is_showing_tool_permission_dialog() || state.is_showing_approval_dialog() {

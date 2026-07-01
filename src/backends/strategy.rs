@@ -122,9 +122,14 @@ impl RetryStrategy {
                             e.short_message()
                         );
 
+                        // This branch is always terminal (we return Err next),
+                        // so mark the event as the final attempt. Otherwise a
+                        // non-retryable error arriving mid-sequence (e.g. a
+                        // truncated response) would report attempt < max_attempts
+                        // and the status bar would spin on the failure forever.
                         self.send_event(AgentEvent::RetryEvent {
                             operation_name: self.operation_name.clone(),
-                            attempt: attempts + 1,
+                            attempt: self.max_attempts,
                             max_attempts: self.max_attempts,
                             message: final_message,
                             is_success: false,
